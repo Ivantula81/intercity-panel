@@ -25,23 +25,46 @@ function inbox_media_ext(string $mime, string $fileName): string
     return $map[$mime] ?? 'bin';
 }
 
+// Защита от SSRF: только https и публичный (не внутренний) адрес назначения.
+function inbox_media_url_safe(string $url): bool
+{
+    $p = parse_url($url);
+    if (!$p || ($p['scheme'] ?? '') !== 'https' || empty($p['host'])) return false;
+    $host = $p['host'];
+    $ips = filter_var($host, FILTER_VALIDATE_IP) ? [$host] : (@gethostbynamel($host) ?: []);
+    if (!$ips) return false;
+    foreach ($ips as $ip) {
+        // отсекаем приватные/зарезервированные диапазоны (127.*, 10.*, 169.254.*, ::1 и т.п.)
+        if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 function inbox_media_fetch(string $url): string
 {
+    if (!inbox_media_url_safe($url)) return '';
     $max = 20 * 1024 * 1024; // ≤20 МБ
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 3,
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,        // только https
+            CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,  // и редиректы только на https
             CURLOPT_TIMEOUT => 25,
-            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_SSL_VERIFYPEER => true,              // проверяем TLS-сертификат
+            CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_MAXFILESIZE => $max,
         ]);
         $d = curl_exec($ch);
         curl_close($ch);
         return is_string($d) ? $d : '';
     }
-    $ctx = stream_context_create(['http' => ['timeout' => 25], 'ssl' => ['verify_peer' => false, 'verify_peer_name' => false]]);
+    $ctx = stream_context_create(['http' => ['timeout' => 25, 'follow_location' => 1, 'max_redirects' => 3]]);
     $d = @file_get_contents($url, false, $ctx, 0, $max);
     return is_string($d) ? $d : '';
 }
