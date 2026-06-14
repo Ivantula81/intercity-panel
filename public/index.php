@@ -1,0 +1,248 @@
+<?php
+
+require dirname(__DIR__) . '/app/bootstrap.php';
+
+$page = $_GET['p'] ?? 'dashboard';
+
+if ($page === 'login') {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        csrf_check();
+        if (authenticate((string) ($_POST['login'] ?? ''), (string) ($_POST['password'] ?? ''))) {
+            header('Location: /');
+            exit;
+        }
+        sleep(1);
+        view('login', ['error' => 'Неверный логин или пароль']);
+        exit;
+    }
+    view('login', ['error' => '']);
+    exit;
+}
+
+if ($page === 'logout') {
+    session_destroy();
+    header('Location: /?p=login');
+    exit;
+}
+
+require_login();
+
+if ($page === 'api') {
+    require PANEL_ROOT . '/app/api.php';
+    exit;
+}
+
+switch ($page) {
+    case 'dashboard':
+        $links = db()->query('SELECT * FROM links ORDER BY sort, id')->fetchAll();
+        $stats = [
+            'manifests' => (int) db()->query('SELECT COUNT(*) FROM manifests')->fetchColumn(),
+            'sent_today' => (int) db()->query("SELECT COUNT(*) FROM messages WHERE status='sent' AND sent_at >= CURDATE()")->fetchColumn(),
+            'failed' => (int) db()->query("SELECT COUNT(*) FROM messages WHERE status='failed'")->fetchColumn(),
+        ];
+        $recentManifests = db()->query('SELECT * FROM manifests ORDER BY id DESC LIMIT 6')->fetchAll();
+        view('layout', ['title' => 'Панель управления', 'page' => 'dashboard',
+            'content' => fn() => view('dashboard', ['links' => $links, 'stats' => $stats, 'recentManifests' => $recentManifests])]);
+        break;
+
+    case 'manifests':
+        require PANEL_ROOT . '/app/manifests_controller.php';
+        break;
+
+    case 'manifest':
+        $m = db()->prepare('SELECT * FROM manifests WHERE id = ?');
+        $m->execute([(int) ($_GET['id'] ?? 0)]);
+        $manifest = $m->fetch();
+        if (!$manifest) { http_response_code(404); die('Ведомость не найдена'); }
+        $ps = db()->prepare('SELECT * FROM passengers WHERE manifest_id = ? ORDER BY sort, id');
+        $ps->execute([$manifest['id']]);
+        $passengers = $ps->fetchAll();
+        view('layout', ['title' => 'Ведомость №' . $manifest['trip_number'], 'page' => 'manifests',
+            'content' => fn() => view('manifest', ['manifest' => $manifest, 'passengers' => $passengers])]);
+        break;
+
+    case 'document':
+        $m = db()->prepare('SELECT * FROM manifests WHERE id = ?');
+        $m->execute([(int) ($_GET['id'] ?? 0)]);
+        $manifest = $m->fetch();
+        if (!$manifest) { http_response_code(404); die('Ведомость не найдена'); }
+        $ps = db()->prepare('SELECT * FROM passengers WHERE manifest_id = ? ORDER BY sort, id');
+        $ps->execute([$manifest['id']]);
+        $passengers = $ps->fetchAll();
+
+        $type = ($_GET['type'] ?? 'driver') === 'road' ? 'road' : 'driver';
+        $format = in_array($_GET['format'] ?? 'pdf', ['pdf', 'html', 'word'], true) ? $_GET['format'] : 'pdf';
+        $carrierId = (int) ($_GET['carrier'] ?? 0);
+        $withStamp = !empty($_GET['stamp']);
+
+        $cst = db()->prepare('SELECT * FROM carriers WHERE id = ?');
+        $cst->execute([$carrierId]);
+        $carrier = $cst->fetch() ?: (db()->query('SELECT * FROM carriers ORDER BY id LIMIT 1')->fetch() ?: ['atp' => '', 'contract_no' => '', 'contract_date' => '']);
+
+        $req = [
+            'frahtovatel' => opt('doc_frahtovatel', 'ООО «ТерраТрансКрым»'),
+            'signer' => opt('doc_signer', ''),
+            'stamp' => $withStamp ? opt('doc_stamp_url', '') : '',
+            'sign' => $withStamp ? opt('doc_sign_url', '') : '',
+        ];
+        // картинки печати/подписи отдаём data-URL (Gotenberg рендерит без доступа к файлам по сети)
+        foreach (['stamp', 'sign'] as $k) {
+            if ($req[$k] !== '' && is_file(PANEL_ROOT . '/public' . $req[$k])) {
+                $req[$k] = 'data:image/png;base64,' . base64_encode(file_get_contents(PANEL_ROOT . '/public' . $req[$k]));
+            } else {
+                $req[$k] = '';
+            }
+        }
+
+        require_once PANEL_ROOT . '/app/doc_templates.php';
+        $html = $type === 'road' ? doc_road($manifest, $carrier, $passengers, $req) : doc_driver($manifest, $carrier, $passengers, $req);
+
+        $base = ($type === 'road' ? 'dorozhnaya' : 'voditel') . '_' . $manifest['trip_number'] . '_' . date('Ymd');
+
+        if ($format === 'html') {
+            header('Content-Type: text/html; charset=utf-8');
+            echo $html;
+            exit;
+        }
+
+        if ($format === 'word') {
+            // .doc на основе HTML — открывается и редактируется в Word (альбомная ориентация)
+            $wordHtml = str_replace('<head>',
+                '<head><!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->'
+                . '<style>@page{size:A4 landscape;mso-page-orientation:landscape;}</style>', $html);
+            header('Content-Type: application/msword; charset=utf-8');
+            header('Content-Disposition: attachment; filename="' . $base . '.doc"');
+            echo $wordHtml;
+            exit;
+        }
+
+        require_once PANEL_ROOT . '/lib/PdfService.php';
+        $pdf = PdfService::htmlToPdf($html, 'landscape');
+        if ($pdf === null) {
+            http_response_code(502);
+            die('Не удалось сформировать PDF (сервис Gotenberg недоступен).');
+        }
+        // inline — PDF открывается в браузере, скачать можно из просмотрщика
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: inline; filename="' . $base . '.pdf"');
+        echo $pdf;
+        exit;
+
+    case 'boarding':
+        $m = db()->prepare('SELECT * FROM manifests WHERE id = ?');
+        $m->execute([(int) ($_GET['id'] ?? 0)]);
+        $manifest = $m->fetch();
+        if (!$manifest) { http_response_code(404); die('Ведомость не найдена'); }
+        $ps = db()->prepare('SELECT * FROM passengers WHERE manifest_id = ? ORDER BY sort, id');
+        $ps->execute([$manifest['id']]);
+        $passengers = $ps->fetchAll();
+        view('boarding', ['manifest' => $manifest, 'passengers' => $passengers]);
+        break;
+
+    case 'notifications':
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['manifest'])) {
+            csrf_check();
+            require_once PANEL_ROOT . '/app/manifest_import.php';
+            try {
+                $newId = import_manifest_csv($_FILES['manifest']);
+                $cnt = db()->query('SELECT COUNT(*) FROM passengers WHERE manifest_id = ' . $newId)->fetchColumn();
+                flash('Ведомость загружена: ' . $cnt . ' пассажиров.');
+                header('Location: /?p=notifications&manifest_id=' . $newId);
+                exit;
+            } catch (Exception $e) {
+                $uploadError = $e->getMessage();
+            }
+        }
+        $manifests = db()->query('SELECT * FROM manifests ORDER BY id DESC LIMIT 30')->fetchAll();
+        $fresh = !empty($_GET['fresh']);
+        $selectedId = $fresh ? 0 : (int) ($_GET['manifest_id'] ?? ($manifests[0]['id'] ?? 0));
+        $selected = null;
+        foreach ($manifests as $mRow) {
+            if ((int) $mRow['id'] === $selectedId) { $selected = $mRow; break; }
+        }
+        $journal = db()->query('SELECT * FROM messages ORDER BY id DESC LIMIT 60')->fetchAll();
+        try {
+            $inbox = db()->query('SELECT * FROM inbox ORDER BY id DESC LIMIT 30')->fetchAll();
+        } catch (Exception $e) {
+            $inbox = [];
+        }
+        view('layout', ['title' => 'Уведомления', 'page' => 'notifications',
+            'content' => fn() => view('notifications', ['manifests' => $manifests, 'selectedId' => $selectedId,
+                'selected' => $selected, 'journal' => $journal, 'inbox' => $inbox, 'uploadError' => $uploadError ?? ''])]);
+        break;
+
+    case 'broadcast':
+        $manifests = db()->query('SELECT * FROM manifests ORDER BY id DESC LIMIT 30')->fetchAll();
+        view('layout', ['title' => 'Свободная рассылка', 'page' => 'broadcast',
+            'content' => fn() => view('broadcast', ['manifests' => $manifests])]);
+        break;
+
+    case 'chats':
+        $startPhone = (string) ($_GET['phone'] ?? '');
+        view('layout', ['title' => 'Чаты', 'page' => 'chats',
+            'content' => fn() => view('chats', ['startPhone' => $startPhone])]);
+        break;
+
+    case 'catalogs':
+        view('layout', ['title' => 'Справочники', 'page' => 'catalogs',
+            'content' => fn() => view('catalogs')]);
+        break;
+
+    case 'contacts':
+        $q = trim((string) ($_GET['q'] ?? ''));
+        $sort = in_array($_GET['sort'] ?? '', ['name', 'messages_count', 'trips_count', 'last_seen'], true) ? $_GET['sort'] : 'last_seen';
+        $where = '';
+        $params = [];
+        if ($q !== '') {
+            $where = 'WHERE phone LIKE ? OR name LIKE ? OR tags LIKE ?';
+            $params = ['%' . $q . '%', '%' . $q . '%', '%' . $q . '%'];
+        }
+        $st = db()->prepare("SELECT * FROM contacts $where ORDER BY $sort " . ($sort === 'name' ? 'ASC' : 'DESC') . " LIMIT 500");
+        $st->execute($params);
+        $contacts = $st->fetchAll();
+        $total = (int) db()->query('SELECT COUNT(*) FROM contacts')->fetchColumn();
+        view('layout', ['title' => 'Контакты', 'page' => 'contacts',
+            'content' => fn() => view('contacts', ['contacts' => $contacts, 'total' => $total, 'q' => $q, 'sort' => $sort])]);
+        break;
+
+    case 'contact':
+        $st = db()->prepare('SELECT * FROM contacts WHERE id = ?');
+        $st->execute([(int) ($_GET['id'] ?? 0)]);
+        $contact = $st->fetch();
+        if (!$contact) { http_response_code(404); die('Контакт не найден'); }
+        $hist = db()->prepare('SELECT * FROM messages WHERE recipient = ? ORDER BY id DESC LIMIT 100');
+        $hist->execute([$contact['phone']]);
+        $history = $hist->fetchAll();
+        try {
+            $inb = db()->prepare('SELECT * FROM inbox WHERE phone = ? ORDER BY id DESC LIMIT 50');
+            $inb->execute([$contact['phone']]);
+            $incoming = $inb->fetchAll();
+        } catch (Exception $e) {
+            $incoming = [];
+        }
+        view('layout', ['title' => $contact['name'] ?: $contact['phone'], 'page' => 'contacts',
+            'content' => fn() => view('contact', ['contact' => $contact, 'history' => $history, 'incoming' => $incoming])]);
+        break;
+
+    case 'contacts_export':
+        $rows = db()->query('SELECT phone, name, messages_count, trips_count, last_route, last_seen, tags, note FROM contacts ORDER BY name')->fetchAll();
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="contacts_' . date('Ymd_Hi') . '.csv"');
+        $out = fopen('php://output', 'w');
+        fwrite($out, "\xEF\xBB\xBF");
+        fputcsv($out, ['Телефон', 'Имя', 'Сообщений', 'Поездок', 'Последний маршрут', 'Последний контакт', 'Теги', 'Заметка'], ';', '"', '\\');
+        foreach ($rows as $r) {
+            fputcsv($out, [$r['phone'], $r['name'], $r['messages_count'], $r['trips_count'], $r['last_route'], $r['last_seen'], $r['tags'], $r['note']], ';', '"', '\\');
+        }
+        fclose($out);
+        exit;
+
+    case 'settings':
+        view('layout', ['title' => 'Настройки', 'page' => 'settings',
+            'content' => fn() => view('settings')]);
+        break;
+
+    default:
+        http_response_code(404);
+        die('Страница не найдена');
+}

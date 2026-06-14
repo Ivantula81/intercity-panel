@@ -1,0 +1,17 @@
+# OS / редакторы
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Логи
+*.log
+
+# Пользовательские загрузки (медиа/файлы — не код).
+# На сервере живут в /var/www/panel/public/uploads.
+/public/uploads/
+
+# Локальные секреты. Боевые — в /etc/panel.env, в репозиторий НЕ кладём.
+.env
+*.env
+config.local.php

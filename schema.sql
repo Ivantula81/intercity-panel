@@ -1,0 +1,64 @@
+-- Панель управления Интерсити Тур
+
+CREATE TABLE IF NOT EXISTS manifests (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  file_name VARCHAR(255) NOT NULL DEFAULT '',
+  trip_number VARCHAR(32) NOT NULL DEFAULT '',
+  route VARCHAR(255) NOT NULL DEFAULT '',
+  departure_at DATETIME NULL,
+  carrier VARCHAR(255) NOT NULL DEFAULT '',
+  bus VARCHAR(255) NOT NULL DEFAULT '',
+  drivers VARCHAR(255) NOT NULL DEFAULT '',
+  gds_race_uid VARCHAR(64) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS passengers (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  manifest_id INT NOT NULL,
+  seat VARCHAR(16) NOT NULL DEFAULT '',
+  name VARCHAR(255) NOT NULL DEFAULT '',
+  phone VARCHAR(32) NOT NULL DEFAULT '',
+  doc VARCHAR(255) NOT NULL DEFAULT '',
+  ticket VARCHAR(64) NOT NULL DEFAULT '',
+  from_stop VARCHAR(255) NOT NULL DEFAULT '',
+  to_stop VARCHAR(255) NOT NULL DEFAULT '',
+  status VARCHAR(64) NOT NULL DEFAULT '',
+  note VARCHAR(255) NOT NULL DEFAULT '',
+  sort INT NOT NULL DEFAULT 0,
+  KEY idx_manifest (manifest_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS messages (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  manifest_id INT NOT NULL DEFAULT 0,
+  channel VARCHAR(16) NOT NULL,
+  recipient VARCHAR(128) NOT NULL,
+  passenger_name VARCHAR(255) NOT NULL DEFAULT '',
+  body TEXT NOT NULL,
+  status ENUM('pending','sent','failed') NOT NULL DEFAULT 'pending',
+  error TEXT NULL,
+  attempts INT NOT NULL DEFAULT 0,
+  sent_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_manifest (manifest_id),
+  KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS options (
+  name VARCHAR(64) NOT NULL PRIMARY KEY,
+  value TEXT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS links (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(128) NOT NULL,
+  url VARCHAR(512) NOT NULL,
+  icon VARCHAR(32) NOT NULL DEFAULT 'link',
+  color VARCHAR(16) NOT NULL DEFAULT 'violet',
+  sort INT NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO links (title, url, icon, color, sort)
+SELECT * FROM (SELECT 'Планфикс' t, 'https://planfix.ru' u, 'briefcase' i, 'violet' c, 1 s) x
+WHERE NOT EXISTS (SELECT 1 FROM links);

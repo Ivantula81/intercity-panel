@@ -1,0 +1,3 @@
+-- v11: вложения во входящих (чат)
+ALTER TABLE inbox ADD COLUMN IF NOT EXISTS media_url VARCHAR(512) NOT NULL DEFAULT '' AFTER body;
+ALTER TABLE inbox ADD COLUMN IF NOT EXISTS media_type VARCHAR(60) NOT NULL DEFAULT '' AFTER media_url;
