@@ -2,16 +2,7 @@
 
 declare(strict_types=1);
 
-if (session_status() !== PHP_SESSION_ACTIVE) {
-    session_set_cookie_params([
-        'lifetime' => 0,
-        'path' => '/',
-        'httponly' => true,
-        'secure' => !empty($_SERVER['HTTPS']) || ($_SERVER['SERVER_PORT'] ?? '') === '443',
-        'samesite' => 'Lax',
-    ]);
-    session_start();
-}
+session_start();
 date_default_timezone_set('Europe/Moscow');
 mb_internal_encoding('UTF-8');
 
@@ -75,7 +66,6 @@ function authenticate(string $login, string $password): bool
     }
 
     if ($u && password_verify($password, $u['password_hash'])) {
-        session_regenerate_id(true); // против фиксации сессии
         $_SESSION['panel_user'] = (int) $u['id'];
         $_SESSION['user_name'] = $u['name'];
         $_SESSION['user_role'] = $u['role'];
