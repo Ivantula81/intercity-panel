@@ -33,6 +33,7 @@ function icon(string $name): string
 // порядок: для нижней мобильной панели берутся первые 4 + «Ещё»
 $nav = [
     'dashboard'     => ['/', 'Дашборд', 'home'],
+    'sales'         => ['/?p=sales', 'Продажи', 'chart'],
     'notifications' => ['/?p=notifications', 'Уведомления', 'bell'],
     'chats'         => ['/?p=chats', 'Чаты', 'chat'],
     'manifests'     => ['/?p=manifests', 'Ведомости', 'file'],
@@ -41,8 +42,8 @@ $nav = [
     'catalogs'      => ['/?p=catalogs', 'Справочники', 'briefcase'],
     'settings'      => ['/?p=settings', 'Настройки', 'settings'],
 ];
-$bottom = ['dashboard', 'notifications', 'chats', 'manifests'];
-$sheetKeys = ['contacts', 'broadcast', 'catalogs', 'settings'];
+$bottom = ['dashboard', 'sales', 'chats', 'manifests'];
+$sheetKeys = ['notifications', 'contacts', 'broadcast', 'catalogs', 'settings'];
 ?><!doctype html>
 <html lang="ru">
 <head>

@@ -636,6 +636,38 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 }
 
 /* ============================================================
+   ПРОДАЖИ
+   ============================================================ */
+.seg { display: inline-flex; gap: 2px; padding: 3px; margin-bottom: 18px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 11px; }
+.seg-item { padding: 7px 14px; border-radius: 8px; color: var(--muted); font-size: 13.5px; font-weight: 600; }
+.seg-item:hover { color: var(--ink); text-decoration: none; }
+.seg-item.active { background: var(--surface); color: var(--brand-700); box-shadow: var(--sh-1); }
+
+.ch-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+
+.topdates { display: flex; flex-direction: column; gap: 9px; }
+.td-row { display: grid; grid-template-columns: 78px 1fr 28px; align-items: center; gap: 10px; }
+.td-date { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.td-bar { height: 8px; background: var(--line-soft); border-radius: 99px; overflow: hidden; }
+.td-bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--brand), #8a7ef2); border-radius: 99px; }
+.td-cnt { text-align: right; font-weight: 700; font-size: 13.5px; }
+
+.sfeed { display: flex; flex-direction: column; }
+.sf-row { display: grid; grid-template-columns: 84px 110px 92px 1fr auto; align-items: center; gap: 12px; padding: 9px 4px; border-bottom: 1px solid var(--line-soft); font-size: 13.5px; }
+.sf-row:last-child { border-bottom: 0; }
+.sf-time { color: var(--faint); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+.sf-ch { color: #fff; font-size: 11.5px; font-weight: 700; padding: 3px 8px; border-radius: 7px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sf-kind { justify-self: start; }
+.sf-route { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sf-amount { font-weight: 700; color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 860px) {
+    .split { grid-template-columns: 1fr !important; }
+    .sf-row { grid-template-columns: 64px 84px 1fr auto; }
+    .sf-kind { display: none; }
+}
+
+/* ============================================================
    ПЕЧАТЬ
    ============================================================ */
 @media print {

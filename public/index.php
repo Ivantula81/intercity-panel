@@ -188,6 +188,40 @@ switch ($page) {
             'content' => fn() => view('chats', ['startPhone' => $startPhone])]);
         break;
 
+    case 'sales':
+        $period = in_array($_GET['period'] ?? '7d', ['today', '7d', '30d', 'all'], true) ? $_GET['period'] : '7d';
+        $where = match ($period) {
+            'today' => 'occurred_at >= CURDATE()',
+            '7d'    => 'occurred_at >= (CURDATE() - INTERVAL 6 DAY)',
+            '30d'   => 'occurred_at >= (CURDATE() - INTERVAL 29 DAY)',
+            default => '1',
+        };
+        try {
+            $metrics = db()->query("SELECT
+                    SUM(kind='sale') sales_cnt,
+                    SUM(kind='refund') refund_cnt,
+                    SUM(kind='cancel') cancel_cnt,
+                    COALESCE(SUM(CASE WHEN kind IN ('sale','payment') THEN amount END),0) sales_sum,
+                    COALESCE(SUM(CASE WHEN kind='refund' THEN amount END),0) refund_sum,
+                    COUNT(*) total
+                  FROM sales WHERE $where")->fetch();
+            $byChannel = db()->query("SELECT channel,
+                    SUM(kind='sale') sales, SUM(kind='refund') refunds, SUM(kind='cancel') cancels,
+                    COALESCE(SUM(CASE WHEN kind IN ('sale','payment') THEN amount END),0) sum
+                  FROM sales WHERE $where GROUP BY channel ORDER BY sales DESC, channel")->fetchAll();
+            $topDates = db()->query("SELECT DATE(depart_at) d, COUNT(*) c FROM sales
+                  WHERE $where AND kind='sale' AND depart_at IS NOT NULL
+                  GROUP BY DATE(depart_at) ORDER BY c DESC, d LIMIT 8")->fetchAll();
+            $feed = db()->query("SELECT * FROM sales WHERE $where ORDER BY occurred_at DESC LIMIT 60")->fetchAll();
+        } catch (Exception $e) {
+            $metrics = ['sales_cnt'=>0,'refund_cnt'=>0,'cancel_cnt'=>0,'sales_sum'=>0,'refund_sum'=>0,'total'=>0];
+            $byChannel = $topDates = $feed = [];
+        }
+        view('layout', ['title' => 'Продажи', 'page' => 'sales',
+            'content' => fn() => view('sales', ['period' => $period, 'metrics' => $metrics,
+                'byChannel' => $byChannel, 'topDates' => $topDates, 'feed' => $feed])]);
+        break;
+
     case 'catalogs':
         view('layout', ['title' => 'Справочники', 'page' => 'catalogs',
             'content' => fn() => view('catalogs')]);
