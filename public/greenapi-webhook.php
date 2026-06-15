@@ -69,8 +69,9 @@ switch ($type) {
                 ?? ($md['extendedTextMessageData']['text'] ?? '');
         }
         if (trim((string) $body) !== '' || $mediaUrl !== '') {
-            db()->prepare('INSERT INTO inbox (instance, phone, name, body, media_url, media_type) VALUES (?,?,?,?,?,?)')
-                ->execute(['greenapi', $phone, $name, mb_substr((string) $body, 0, 2000), $mediaUrl, $mediaType]);
+            // chat_id MAX/Green API — чтобы отвечать в тот же чат (для MAX это не телефон)
+            db()->prepare('INSERT INTO inbox (instance, phone, name, body, media_url, media_type, chat_id) VALUES (?,?,?,?,?,?,?)')
+                ->execute(['greenapi', $phone, $name, mb_substr((string) $body, 0, 2000), $mediaUrl, $mediaType, $chatId]);
         }
         break;
 

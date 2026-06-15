@@ -81,6 +81,45 @@ function active_wa_client()
     return active_wa_provider() === 'greenapi' ? green_api() : evolution();
 }
 
+// Мессенджер по провайдеру: Green API = MAX, Evolution = WhatsApp.
+function wa_messenger(string $provider): string
+{
+    return $provider === 'greenapi' ? 'max' : 'whatsapp';
+}
+
+// Клиент для мессенджера: whatsapp → Evolution, max → Green API (по wa_accounts, иначе дефолт).
+function wa_client_for(string $messenger)
+{
+    try {
+        $row = db()->query('SELECT provider, instance FROM wa_accounts WHERE messenger = '
+            . db()->quote($messenger) . ' ORDER BY is_active DESC, id LIMIT 1')->fetch();
+    } catch (Exception $e) { $row = null; }
+    if ($row && $row['provider'] === 'greenapi') return green_api();
+    if ($row && $row['provider'] === 'evolution') return evolution($row['instance']);
+    return $messenger === 'max' ? green_api() : evolution();
+}
+
+// Исходящие пассажирам по телефону = WhatsApp (Evolution). MAX по телефону не адресуется.
+function wa_outbound()
+{
+    return wa_client_for('whatsapp');
+}
+
+// Куда отвечать в чате: по последнему входящему каналу.
+// [client, target, messenger]: для MAX target = chat_id, для WhatsApp = телефон.
+function wa_reply_target(string $phone): array
+{
+    try {
+        $in = db()->prepare('SELECT instance, chat_id FROM inbox WHERE phone = ? AND chat_id <> \'\' ORDER BY id DESC LIMIT 1');
+        $in->execute([$phone]);
+        $row = $in->fetch();
+    } catch (Exception $e) { $row = null; }
+    if ($row && $row['instance'] === 'greenapi' && $row['chat_id'] !== '') {
+        return [green_api(), $row['chat_id'], 'max'];
+    }
+    return [wa_outbound(), $phone, 'whatsapp'];
+}
+
 // Грубая транслитерация для имени инстанса
 function translit_lat(string $s): string
 {
@@ -390,7 +429,7 @@ switch ($action) {
     case 'campaign.send':
         set_time_limit(0);
         $manifest = get_manifest((int) $body['manifest_id']);
-        $evo = active_wa_client();
+        $evo = wa_outbound(); // пассажирам по телефону = WhatsApp (Evolution)
         if (!$evo->isConfigured()) json_out(['ok' => false, 'error' => 'WhatsApp-канал не настроен']);
 
         $station = (string) ($body['station'] ?? '');
@@ -452,7 +491,7 @@ switch ($action) {
         $text = MessageTemplate::render(trim((string) ($body['text'] ?? '')), custom_vars());
         if (!valid_phone($phone)) json_out(['ok' => false, 'error' => 'Укажите корректный номер телефона.']);
         if ($text === '') json_out(['ok' => false, 'error' => 'Введите текст сообщения.']);
-        $evo = active_wa_client();
+        $evo = wa_outbound(); // по телефону = WhatsApp (Evolution)
         if (!$evo->isConfigured()) json_out(['ok' => false, 'error' => 'WhatsApp-канал не настроен.']);
 
         db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (0, ?, ?, ?, ?, ?)')
@@ -470,7 +509,7 @@ switch ($action) {
     case 'broadcast.send':
         set_time_limit(0);
         require_once PANEL_ROOT . '/lib/MessageTemplate.php';
-        $evo = active_wa_client();
+        $evo = wa_outbound(); // по телефону = WhatsApp (Evolution)
         if (!$evo->isConfigured()) json_out(['ok' => false, 'error' => 'WhatsApp-канал не настроен']);
         $text = MessageTemplate::render(trim((string) ($body['text'] ?? '')), custom_vars());
         $image = (string) ($body['image'] ?? '');
@@ -598,15 +637,15 @@ switch ($action) {
         $text = trim((string) ($body['text'] ?? ''));
         if (!valid_phone($phone)) json_out(['ok' => false, 'error' => 'Некорректный номер']);
         if ($text === '') json_out(['ok' => false, 'error' => 'Пустое сообщение']);
-        $evo = active_wa_client();
-        if (!$evo->isConfigured()) json_out(['ok' => false, 'error' => 'Канал не настроен']);
 
         require_once PANEL_ROOT . '/lib/MessageTemplate.php';
         $text = MessageTemplate::render($text, custom_vars());
+        [$cli, $target, $messenger] = wa_reply_target($phone); // ответ тем же каналом, что пришло входящее
+        if (!$cli->isConfigured()) json_out(['ok' => false, 'error' => 'Канал не настроен']);
         db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (0, ?, ?, ?, ?, ?)')
-            ->execute(['whatsapp', $phone, 'Чат', $text, current_user_name()]);
+            ->execute([$messenger, $phone, 'Чат', $text, current_user_name()]);
         $mid = (int) db()->lastInsertId();
-        $res = $evo->sendText($phone, $text);
+        $res = $cli->sendText($target, $text);
         if ($res['ok']) {
             db()->prepare("UPDATE messages SET status='sent', attempts=1, sent_at=NOW(), wa_id=? WHERE id=?")
                 ->execute([(string) ($res['data']['key']['id'] ?? ''), $mid]);

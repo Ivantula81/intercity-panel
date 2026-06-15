@@ -615,6 +615,7 @@ async function waAccounts() {
                 <div class="wa-top">
                     ${a.is_active ? '<span class="wa-star" title="Активен для рассылки">★</span>' : ''}
                     <b>${esc(a.number || a.label)}</b>${a.name ? ' · ' + esc(a.name) : ''}
+                    <span class="badge ${a.messenger === 'max' ? 'info' : (a.messenger === 'telegram' ? 'info' : 'ok')}">${a.messenger === 'max' ? 'MAX' : (a.messenger === 'telegram' ? 'Telegram' : 'WhatsApp')}</span>
                     <span class="badge ${cls}">${txt}</span>
                 </div>
                 <div class="muted small">${esc(a.label)} · инстанс ${esc(a.instance)}</div>

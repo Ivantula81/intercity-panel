@@ -26,9 +26,15 @@ class GreenApiClient
         return $this->base . '/waInstance' . $this->id . '/' . $method . '/' . $this->token;
     }
 
-    private function chatId($phone)
+    // Принимает телефон (→ WhatsApp-формат phone@c.us) или готовый chatId.
+    // Короткий числовой id (MAX user_id) и любое значение с '@' используются как есть.
+    private function chatId($v)
     {
-        return preg_replace('/\D+/', '', (string) $phone) . '@c.us';
+        $v = (string) $v;
+        if (str_contains($v, '@')) return $v;                 // уже chatId (c.us / g.us / max)
+        $digits = preg_replace('/\D+/', '', $v);
+        if (str_starts_with($v, '+') || strlen($digits) >= 10) return $digits . '@c.us'; // телефон → WhatsApp
+        return $v;                                            // короткий id (напр. MAX) — как есть
     }
 
     // Состояние: authorized → open, прочее → close/connecting
