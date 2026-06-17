@@ -7,6 +7,8 @@
     <div class="head-actions"><span id="waStatus" class="badge muted">проверяю канал…</span></div>
 </div>
 
+<div class="wa-note"><?= icon('whatsapp') ?><span>Рассылка уходит по <b>WhatsApp</b> (Evolution). MAX — только для ответов в диалогах «Чаты».</span></div>
+
 <div class="split">
     <div class="card">
         <h2>Получатели</h2>

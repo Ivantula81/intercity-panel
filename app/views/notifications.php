@@ -13,6 +13,8 @@
     </div>
 </div>
 
+<div class="wa-note"><?= icon('whatsapp') ?><span>Отправка уведомлений идёт по <b>WhatsApp</b> (Evolution). MAX — только для ответов в диалогах «Чаты».</span></div>
+
 <?php if ($uploadError !== ''): ?><div class="alert err"><?= e($uploadError) ?></div><?php endif; ?>
 
 <!-- ШАГ 1 — ведомость -->

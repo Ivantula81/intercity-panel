@@ -667,6 +667,11 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
     .sf-kind { display: none; }
 }
 
+/* плашка «отправка по WhatsApp» */
+.wa-note { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; padding: 11px 15px; border-radius: var(--r); background: var(--ok-bg); color: var(--ok); border: 1px solid #bfe6cb; font-size: 13.5px; font-weight: 600; }
+.wa-note svg { width: 20px; height: 20px; flex: none; }
+.wa-note b { font-weight: 800; }
+
 /* ============================================================
    ПЕЧАТЬ
    ============================================================ */
