@@ -87,16 +87,15 @@ function wa_messenger(string $provider): string
     return $provider === 'greenapi' ? 'max' : 'whatsapp';
 }
 
-// Клиент для мессенджера: whatsapp → Evolution, max → Green API (по wa_accounts, иначе дефолт).
+// Клиент для мессенджера: max → Green API; whatsapp/прочее → Evolution на РЕАЛЬНЫЙ
+// evolution-инстанс из wa_accounts (а не «активный», которым может быть greenapi).
 function wa_client_for(string $messenger)
 {
+    if ($messenger === 'max') return green_api();
     try {
-        $row = db()->query('SELECT provider, instance FROM wa_accounts WHERE messenger = '
-            . db()->quote($messenger) . ' ORDER BY is_active DESC, id LIMIT 1')->fetch();
-    } catch (Exception $e) { $row = null; }
-    if ($row && $row['provider'] === 'greenapi') return green_api();
-    if ($row && $row['provider'] === 'evolution') return evolution($row['instance']);
-    return $messenger === 'max' ? green_api() : evolution();
+        $inst = db()->query("SELECT instance FROM wa_accounts WHERE provider = 'evolution' ORDER BY is_active DESC, id LIMIT 1")->fetchColumn();
+    } catch (Exception $e) { $inst = ''; }
+    return evolution($inst ?: null);
 }
 
 // Исходящие пассажирам по телефону = WhatsApp (Evolution). MAX по телефону не адресуется.
@@ -885,7 +884,8 @@ switch ($action) {
         $evo = evolution($instance);
         $resp = $evo->createInstance($instance);
         if (!$resp['ok']) json_out(['ok' => false, 'error' => $resp['error']]);
-        db()->prepare('INSERT INTO wa_accounts (instance, label, is_active) VALUES (?,?,0)')->execute([$instance, $label]);
+        // аккаунты, создаваемые здесь — это Evolution = WhatsApp
+        db()->prepare("INSERT INTO wa_accounts (instance, label, is_active, provider, messenger) VALUES (?,?,0,'evolution','whatsapp')")->execute([$instance, $label]);
         json_out(['ok' => true, 'instance' => $instance]);
 
     case 'wa.setactive':
