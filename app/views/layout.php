@@ -40,10 +40,11 @@ $nav = [
     'contacts'      => ['/?p=contacts', 'Контакты', 'user'],
     'broadcast'     => ['/?p=broadcast', 'Рассылка', 'send'],
     'catalogs'      => ['/?p=catalogs', 'Справочники', 'briefcase'],
+    'logs'          => ['/?p=logs', 'Логи', 'doc'],
     'settings'      => ['/?p=settings', 'Настройки', 'settings'],
 ];
 $bottom = ['dashboard', 'sales', 'chats', 'manifests'];
-$sheetKeys = ['notifications', 'contacts', 'broadcast', 'catalogs', 'settings'];
+$sheetKeys = ['notifications', 'contacts', 'broadcast', 'catalogs', 'logs', 'settings'];
 ?><!doctype html>
 <html lang="ru">
 <head>

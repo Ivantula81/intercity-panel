@@ -182,6 +182,27 @@ switch ($page) {
             'content' => fn() => view('broadcast', ['manifests' => $manifests])]);
         break;
 
+    case 'logs':
+        $filter = in_array($_GET['f'] ?? 'all', ['all', 'failed', 'sent', 'undelivered'], true) ? $_GET['f'] : 'all';
+        $where = match ($filter) {
+            'failed'      => "status = 'failed'",
+            'sent'        => "status = 'sent'",
+            'undelivered' => "status = 'sent' AND delivered_at IS NULL",
+            default       => '1',
+        };
+        try {
+            $counts = db()->query("SELECT COUNT(*) total, SUM(status='failed') failed,
+                    SUM(status='sent') sent, SUM(status='sent' AND delivered_at IS NULL) undelivered
+                  FROM messages")->fetch();
+            $rows = db()->query("SELECT * FROM messages WHERE $where ORDER BY id DESC LIMIT 300")->fetchAll();
+        } catch (Exception $e) {
+            $counts = ['total'=>0,'failed'=>0,'sent'=>0,'undelivered'=>0];
+            $rows = [];
+        }
+        view('layout', ['title' => 'Логи', 'page' => 'logs',
+            'content' => fn() => view('logs', ['filter' => $filter, 'counts' => $counts, 'rows' => $rows])]);
+        break;
+
     case 'chats':
         $startPhone = (string) ($_GET['phone'] ?? '');
         view('layout', ['title' => 'Чаты', 'page' => 'chats',
