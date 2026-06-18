@@ -206,7 +206,10 @@ function group_vars(array $manifest, array $passenger, array $group): array
         '{время}' => $group['time'] ?? '',
         '{посадка}' => $boarding,
         '{карта}' => $group['map_url'] ?? '',
+        '{ссылка на карту}' => $group['map_url'] ?? '',          // алиас
         '{тел_водителя}' => $manifest['driver_phone'] ?: '—',
+        '{телефон водителя}' => $manifest['driver_phone'] ?: '—', // алиас
+        '{телефон}' => $manifest['driver_phone'] ?: '—',          // алиас
         '{доп}' => $manifest['extra_info'],
     ]);
 }
