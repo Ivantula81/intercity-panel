@@ -214,6 +214,18 @@ function group_vars(array $manifest, array $passenger, array $group): array
     ]);
 }
 
+// Рендер сообщения группы + авто-добавление «доп. информации», если она заполнена,
+// но в шаблоне нет явного {доп} (как обещает подпись «в сообщение, если заполнено»).
+function render_group_message(string $template, array $vars, string $extra): string
+{
+    require_once PANEL_ROOT . '/lib/MessageTemplate.php';
+    $text = MessageTemplate::render($template, $vars);
+    if (trim($extra) !== '' && !preg_match('/\{\s*доп[^}]*\}/ui', $template)) {
+        $text = rtrim($text) . "\n\n" . trim($extra);
+    }
+    return $text;
+}
+
 // Сборка групп по точке посадки
 function build_groups(array $manifest): array
 {
@@ -420,7 +432,7 @@ switch ($action) {
             $vars = group_vars($manifest, $p, $g);
             json_out([
                 'ok' => true,
-                'preview' => MessageTemplate::render((string) $body['text'], $vars),
+                'preview' => render_group_message((string) $body['text'], $vars, $manifest['extra_info']),
                 'unknown' => MessageTemplate::unknownVars((string) $body['text'], $vars),
             ]);
         }
@@ -466,7 +478,7 @@ switch ($action) {
             $seenPhones[$p['phone']] = true;
             $batch++;
 
-            $msg = MessageTemplate::render($tpl, group_vars($manifest, $p, $group));
+            $msg = render_group_message($tpl, group_vars($manifest, $p, $group), $manifest['extra_info']);
             db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (?,?,?,?,?,?)')
                 ->execute([$manifest['id'], 'whatsapp', $p['phone'], $p['name'], $msg, current_user_name()]);
             $mid = (int) db()->lastInsertId();
