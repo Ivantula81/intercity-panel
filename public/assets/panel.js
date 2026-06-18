@@ -14,6 +14,16 @@ async function apiUpload(action, formData) {
 function esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+// WhatsApp-разметка → HTML для превью: сначала экранируем, потом *жирный* _курсив_ ~зачёркнутый~ ```моно```.
+// Маркеры срабатывают только на границе слова — ссылки с _ внутри (max.ru/...) не ломаются.
+function waFmt(raw) {
+    let s = esc(raw);
+    s = s.replace(/```([\s\S]+?)```/g, '<code>$1</code>');
+    s = s.replace(/(^|[\s(])\*(?=\S)([^*\n]+?)\*(?=[\s).,!?:;]|$)/g, '$1<b>$2</b>');
+    s = s.replace(/(^|[\s(])_(?=\S)([^_\n]+?)_(?=[\s).,!?:;]|$)/g, '$1<i>$2</i>');
+    s = s.replace(/(^|[\s(])~(?=\S)([^~\n]+?)~(?=[\s).,!?:;]|$)/g, '$1<s>$2</s>');
+    return s.replace(/\n/g, '<br>');
+}
 
 /* ── Автосохранение ячеек (редактор ведомости) ── */
 let saveTimers = {};
@@ -255,7 +265,7 @@ function schedulePreview(card, gi, now = false) {
             time: card.querySelector('.g-time').value,
         });
         if (r.ok) {
-            let html = esc(r.preview).replace(/\n/g, '<br>');
+            let html = waFmt(r.preview);
             if (r.unknown && r.unknown.length) {
                 html += `<div class="badge warn" style="margin-top:8px">⚠️ не распознаны переменные: ${r.unknown.map(esc).join(', ')} — проверьте написание или добавьте в Справочники → Переменные</div>`;
             }
