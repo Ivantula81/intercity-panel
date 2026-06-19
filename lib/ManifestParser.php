@@ -101,7 +101,9 @@ class ManifestParser
             'route' => $this->first($record, array('Маршрут', 'Рейс')),
             'departure_at' => $this->first($record, array('Дата/время отправления', 'date1')),
             'carrier' => $this->first($record, array('ATP')),
-            'bus' => $this->first($record, array('Номер_авт.', 'Транспорт', 'Transport')),
+            // номер автобуса — только из «Номер_авт.» (госномер). «Транспорт» — это места/категория, не номер
+            'bus' => $this->first($record, array('Номер_авт.', 'Transport')),
+            'transport_info' => $this->first($record, array('Транспорт')),
             'drivers' => $this->first($record, array('Водители')),
         );
     }
@@ -165,6 +167,8 @@ class ManifestParser
                     . $this->first($record, array('Номер_билета'))),
                 'from_id' => ctype_digit($fromId) ? (int) $fromId : null,
                 'to_id' => ctype_digit($toId) ? (int) $toId : null,
+                // время отправления именно ЭТОЙ остановки (у каждой посадки своё, бывает +1 день)
+                'depart_at' => $this->first($record, array('Дата/время отправления', 'date1')),
                 'price' => $price !== '' ? (float) $price : null,
                 'citizenship' => $citizenship,
                 'pay_note' => trim($payNote),
