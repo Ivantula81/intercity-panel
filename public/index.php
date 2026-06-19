@@ -76,7 +76,8 @@ switch ($page) {
         $passengers = $ps->fetchAll();
 
         $type = ($_GET['type'] ?? 'driver') === 'road' ? 'road' : 'driver';
-        $format = in_array($_GET['format'] ?? 'pdf', ['pdf', 'html', 'word'], true) ? $_GET['format'] : 'pdf';
+        $format = $_GET['format'] ?? 'pdf';
+        if (!in_array($format, ['pdf', 'html', 'word'], true)) $format = 'pdf';
         $carrierId = (int) ($_GET['carrier'] ?? 0);
         $withStamp = !empty($_GET['stamp']);
 
@@ -183,7 +184,8 @@ switch ($page) {
         break;
 
     case 'logs':
-        $filter = in_array($_GET['f'] ?? 'all', ['all', 'failed', 'sent', 'undelivered'], true) ? $_GET['f'] : 'all';
+        $filter = $_GET['f'] ?? 'all';
+        if (!in_array($filter, ['all', 'failed', 'sent', 'undelivered'], true)) $filter = 'all';
         $where = match ($filter) {
             'failed'      => "status = 'failed'",
             'sent'        => "status = 'sent'",
@@ -210,7 +212,8 @@ switch ($page) {
         break;
 
     case 'sales':
-        $period = in_array($_GET['period'] ?? '7d', ['today', '7d', '30d', 'all'], true) ? $_GET['period'] : '7d';
+        $period = $_GET['period'] ?? '7d';
+        if (!in_array($period, ['today', '7d', '30d', 'all'], true)) $period = '7d';
         $where = match ($period) {
             'today' => 'occurred_at >= CURDATE()',
             '7d'    => 'occurred_at >= (CURDATE() - INTERVAL 6 DAY)',

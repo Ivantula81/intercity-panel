@@ -464,7 +464,9 @@ switch ($action) {
         }
 
         require_once PANEL_ROOT . '/lib/MessageTemplate.php';
-        $ids = array_map('intval', (array) ($body['ids'] ?? []));
+        // защита: отправляем ТОЛЬКО пассажирам этой группы, даже если с клиента пришли чужие id
+        $groupIds = array_map(fn($r) => (int) $r['id'], $group['recipients']);
+        $ids = array_values(array_intersect(array_map('intval', (array) ($body['ids'] ?? [])), $groupIds));
         $tpl = (string) ($body['text'] ?? '');
         $sent = 0; $failed = 0; $skipped = 0; $errors = []; $seenPhones = []; $batch = 0;
 

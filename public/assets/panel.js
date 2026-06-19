@@ -351,7 +351,7 @@ async function addGroupRecipient(btn, gi) {
 }
 
 async function sendGroup(btn, gi, silent = false) {
-    const card = btn.closest('.card');
+    const card = btn.closest('.gcard');
     const ids = [...card.querySelectorAll('.g-cb:checked')].map(c => +c.value);
     const state = card.querySelector('.g-state');
     if (!ids.length) { state.textContent = 'Никто не выбран'; return { sent: 0, failed: 0 }; }
@@ -382,7 +382,7 @@ async function sendAllGroups(btn) {
     btn.disabled = true;
     const all = document.getElementById('allState');
     let total = 0, failed = 0;
-    const cards = document.querySelectorAll('.group-card');
+    const cards = document.querySelectorAll('.gcard');
     for (let gi = 0; gi < cards.length; gi++) {
         all.innerHTML = `<div class="alert warn">Группа ${gi + 1} из ${cards.length}: ${esc(GROUPS[gi].station)}…</div>`;
         const r = await sendGroup(cards[gi].querySelector('.g-send'), gi, true) || {};
