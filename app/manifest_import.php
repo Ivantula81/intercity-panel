@@ -21,16 +21,27 @@ function import_manifest_csv(array $file): int
         $departure = sprintf('%s-%s-%s %02d:%02d:00', $mm[3], $mm[2], $mm[1], $mm[4] ?? 0, $mm[5] ?? 0);
     }
 
-    // авто-поиск автобуса в справочнике → телефон водителя
+    // Телефон водителя: водитель берётся ИЗ ФАЙЛА, телефон подтягиваем по его ФИО из справочника водителей;
+    // если там пусто — запасной вариант по справочнику автобусов (старое поведение).
     $driverPhone = '';
-    $busStr = mb_strtolower($parsed['trip']['bus'] . ' ' . $parsed['trip']['drivers'], 'UTF-8');
-    if (trim($busStr) !== '') {
-        foreach (db()->query('SELECT plate, code, driver_phone FROM buses')->fetchAll() as $b) {
-            foreach ([$b['plate'], $b['code']] as $needle) {
-                $needle = mb_strtolower(trim((string) $needle), 'UTF-8');
-                if ($needle !== '' && mb_strlen($needle) >= 3 && str_contains($busStr, $needle)) {
-                    $driverPhone = $b['driver_phone'];
-                    break 2;
+    foreach (preg_split('/\s*,\s*/u', (string) $parsed['trip']['drivers']) as $dn) {
+        $dn = trim($dn);
+        if ($dn === '') continue;
+        $q = db()->prepare("SELECT phone FROM drivers WHERE LOWER(name) = LOWER(?) AND phone <> '' LIMIT 1");
+        $q->execute([$dn]);
+        $ph = (string) $q->fetchColumn();
+        if ($ph !== '') { $driverPhone = $ph; break; }
+    }
+    if ($driverPhone === '') {
+        $busStr = mb_strtolower($parsed['trip']['bus'] . ' ' . $parsed['trip']['drivers'], 'UTF-8');
+        if (trim($busStr) !== '') {
+            foreach (db()->query('SELECT plate, code, driver_phone FROM buses')->fetchAll() as $b) {
+                foreach ([$b['plate'], $b['code']] as $needle) {
+                    $needle = mb_strtolower(trim((string) $needle), 'UTF-8');
+                    if ($needle !== '' && mb_strlen($needle) >= 3 && str_contains($busStr, $needle)) {
+                        $driverPhone = $b['driver_phone'];
+                        break 2;
+                    }
                 }
             }
         }

@@ -29,6 +29,8 @@ $ln = str_repeat('=', 70);
 echo "$ln\nСУХОЙ ПРОГОН ИМПОРТА (manifest_id=$mid, всё откатится)\n$ln\n";
 echo sprintf("Справочники +новых: станции +%d, автобусы +%d, водители +%d\n",
     $after['stops'] - $before['stops'], $after['buses'] - $before['buses'], $after['drivers'] - $before['drivers']);
+$dp = $pdo->prepare('SELECT driver_phone FROM manifests WHERE id=?'); $dp->execute([$mid]);
+echo "driver_phone ведомости (подтянут по ФИО из справочника): «" . (string) $dp->fetchColumn() . "»\n";
 
 echo "\n— manifest_groups (время посадки по группам из ведомости) —\n";
 $g = $pdo->prepare('SELECT station, boarding_date, boarding_time FROM manifest_groups WHERE manifest_id=? ORDER BY station');

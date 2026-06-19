@@ -182,8 +182,9 @@ function custom_vars(): array
     return $vars;
 }
 
-// Переменные сообщения для пассажира с учётом группы посадки
-function group_vars(array $manifest, array $passenger, array $group): array
+// Переменные сообщения для пассажира с учётом группы посадки.
+// $opts: bus_label (готовая подпись автобуса «описание+номер»), show_phone (bool), phone_fallback (фраза при выкл. галочке)
+function group_vars(array $manifest, array $passenger, array $group, array $opts = []): array
 {
     require_once PANEL_ROOT . '/lib/MessageTemplate.php';
     $trip = [
@@ -200,6 +201,14 @@ function group_vars(array $manifest, array $passenger, array $group): array
     $boarding = $group['station'] ?? $passenger['from_stop'];
     if (!empty($group['address'])) $boarding .= ', ' . $group['address'];
 
+    // телефон водителя: галочка вкл и телефон есть → номер; иначе → фраза-заглушка («сообщим позднее»)
+    $fallback = $opts['phone_fallback'] ?? 'сообщим позднее';
+    $showPhone = $opts['show_phone'] ?? true;
+    $phone = ($showPhone && trim((string) $manifest['driver_phone']) !== '') ? $manifest['driver_phone'] : $fallback;
+
+    // автобус: «описание + номер» из карточки справочника (готовится в вызывающем коде), иначе номер из ведомости
+    $busLabel = $opts['bus_label'] ?? ($manifest['bus'] ?: '');
+
     return array_merge(custom_vars(), $vars, [
         '{дата_рейса}' => $manifest['departure_at'] ? date('d.m.Y', strtotime($manifest['departure_at'])) : '',
         '{дата}' => $group['date'] ?: ($manifest['departure_at'] ? date('d.m.Y', strtotime($manifest['departure_at'])) : ''),
@@ -207,11 +216,29 @@ function group_vars(array $manifest, array $passenger, array $group): array
         '{посадка}' => $boarding,
         '{карта}' => $group['map_url'] ?? '',
         '{ссылка на карту}' => $group['map_url'] ?? '',          // алиас
-        '{тел_водителя}' => $manifest['driver_phone'] ?: '—',
-        '{телефон водителя}' => $manifest['driver_phone'] ?: '—', // алиас
-        '{телефон}' => $manifest['driver_phone'] ?: '—',          // алиас
+        '{автобус}' => $busLabel,
+        '{тел_водителя}' => $phone,
+        '{телефон водителя}' => $phone, // алиас
+        '{телефон}' => $phone,          // алиас
         '{доп}' => $manifest['extra_info'],
     ]);
+}
+
+// Опции отправки/превью: подпись автобуса (описание+номер из справочника), показывать ли телефон, фраза-заглушка.
+function send_opts(array $manifest, array $body): array
+{
+    $busLabel = $manifest['bus'] ?: '';
+    $b = manifest_bus($manifest);
+    if ($b) {
+        $lbl = trim((string) ($b['model'] ?? '') . ' ' . (string) ($b['plate'] ?? ''));
+        if ($lbl !== '') $busLabel = $lbl;
+    }
+    return [
+        'bus_label' => $busLabel,
+        // галочка телефона: нет ключа phone_on → показываем (по умолчанию вкл); явный 0 → прячем
+        'show_phone' => !array_key_exists('phone_on', $body) || !empty($body['phone_on']),
+        'phone_fallback' => opt('driver_phone_fallback', 'сообщим позднее'),
+    ];
 }
 
 // Рендер сообщения группы + авто-добавление «доп. информации», если она заполнена,
@@ -382,8 +409,25 @@ switch ($action) {
         $raceStartTime = $gds['race_start'] ? date('H:i', strtotime($gds['race_start'])) : '';
         $updated = 0;
         $unmatched = [];
+        $kept = 0;
         foreach (build_groups($manifest) as $g) {
+            // ВРЕМЯ ИЗ ФАЙЛА — ГЛАВНОЕ: если у группы уже есть время (из ведомости), GDS его НЕ трогает,
+            // только уточняет привязку station_id. GDS заполняет время лишь там, где в файле его не было.
+            $exq = db()->prepare('SELECT boarding_time FROM manifest_groups WHERE manifest_id = ? AND station = ?');
+            $exq->execute([$manifest['id'], $g['station']]);
+            $hasFileTime = trim((string) $exq->fetchColumn()) !== '';
+
             $stop = GdsRace::matchStop($gds, $g['station'], $g['station_id'] ?? null);
+
+            if ($hasFileTime) {
+                if ($stop !== null) {
+                    db()->prepare('UPDATE manifest_groups SET station_id = ? WHERE manifest_id = ? AND station = ?')
+                        ->execute([$g['station_id'] ?? null, $manifest['id'], $g['station']]);
+                }
+                $kept++;
+                continue;
+            }
+
             if ($stop === null) {
                 $unmatched[] = $g['station'];
                 continue;
@@ -402,7 +446,7 @@ switch ($action) {
             $updated++;
         }
         json_out(['ok' => true, 'race_uid' => $gds['race_uid'], 'race_start' => $gds['race_start'],
-            'statement_match' => $gds['statement_match'], 'updated' => $updated, 'unmatched' => $unmatched,
+            'statement_match' => $gds['statement_match'], 'updated' => $updated, 'kept_from_file' => $kept, 'unmatched' => $unmatched,
             'from_cache' => $fromCache, 'cached_at' => $gds['cached_at'] ?? '', 'gds_error' => $gdsError]);
 
     case 'group.save':
@@ -429,7 +473,7 @@ switch ($action) {
             $pst = db()->prepare('SELECT * FROM passengers WHERE id = ?');
             $pst->execute([$first['id']]);
             $p = $pst->fetch();
-            $vars = group_vars($manifest, $p, $g);
+            $vars = group_vars($manifest, $p, $g, send_opts($manifest, $body));
             json_out([
                 'ok' => true,
                 'preview' => render_group_message((string) $body['text'], $vars, $manifest['extra_info']),
@@ -468,6 +512,7 @@ switch ($action) {
         $groupIds = array_map(fn($r) => (int) $r['id'], $group['recipients']);
         $ids = array_values(array_intersect(array_map('intval', (array) ($body['ids'] ?? [])), $groupIds));
         $tpl = (string) ($body['text'] ?? '');
+        $sendOpts = send_opts($manifest, $body);
         $sent = 0; $failed = 0; $skipped = 0; $errors = []; $seenPhones = []; $batch = 0;
 
         foreach ($ids as $pid) {
@@ -480,7 +525,7 @@ switch ($action) {
             $seenPhones[$p['phone']] = true;
             $batch++;
 
-            $msg = render_group_message($tpl, group_vars($manifest, $p, $group), $manifest['extra_info']);
+            $msg = render_group_message($tpl, group_vars($manifest, $p, $group, $sendOpts), $manifest['extra_info']);
             db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (?,?,?,?,?,?)')
                 ->execute([$manifest['id'], 'whatsapp', $p['phone'], $p['name'], $msg, current_user_name()]);
             $mid = (int) db()->lastInsertId();
@@ -703,6 +748,12 @@ switch ($action) {
     case 'doc_req.save':
         opt_set('doc_frahtovatel', trim((string) ($body['frahtovatel'] ?? '')));
         opt_set('doc_signer', trim((string) ($body['signer'] ?? '')));
+        json_out(['ok' => true]);
+
+    case 'notif.save':
+        // фраза вместо телефона водителя, когда галочка «указать телефон» снята
+        $fb = trim((string) ($body['driver_phone_fallback'] ?? ''));
+        opt_set('driver_phone_fallback', $fb !== '' ? $fb : 'сообщим позднее');
         json_out(['ok' => true]);
 
     case 'upload':

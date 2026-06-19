@@ -199,6 +199,7 @@ function renderGroups() {
                 <label class="f" style="margin:0;flex:1">Шаблон<select class="g-tpl"><option value="">— свой текст —</option>${tplOptions}</select></label>
             </div>
             <textarea class="template-box g-body" rows="5">${esc(g.body ?? defaultBody())}</textarea>
+            <div class="g-saved small" style="min-height:16px;margin:3px 0"></div>
             <div class="msg-preview g-preview mt"></div>
             <details class="mt"><summary class="muted small" style="cursor:pointer">Получатели (${g.recipients.length})</summary>
                 <div class="table-wrap mt"><table class="t"><tbody>
@@ -263,6 +264,7 @@ function schedulePreview(card, gi, now = false) {
             text: card.querySelector('.g-body').value,
             date: card.querySelector('.g-date').value,
             time: card.querySelector('.g-time').value,
+            phone_on: document.getElementById('driverPhoneOn')?.checked ? 1 : 0,
         });
         if (r.ok) {
             let html = waFmt(r.preview);
@@ -273,16 +275,39 @@ function schedulePreview(card, gi, now = false) {
         }
     }, now ? 50 : 700);
 }
+function refreshAllPreviews() {
+    document.querySelectorAll('.gcard').forEach((card, gi) => schedulePreview(card, gi, true));
+}
+
+function setSaved(card, state) {
+    const st = card.querySelector('.g-saved');
+    if (!st) return;
+    const map = {
+        dirty: ['● есть несохранённые изменения', '#b26a00'],
+        saving: ['сохраняю…', '#777'],
+        saved: ['✓ сохранено', '#1a7f37'],
+        error: ['⚠ не удалось сохранить — повторите правку', '#c0392b'],
+    };
+    const [txt, color] = map[state] || ['', '#777'];
+    st.textContent = txt;
+    st.style.color = color;
+}
+
 let draftTimers = {};
 function scheduleDraft(card, gi) {
     clearTimeout(draftTimers[gi]);
-    draftTimers[gi] = setTimeout(() => api('group.save', {
-        manifest_id: manifestId(),
-        station: GROUPS[gi].station,
-        body: card.querySelector('.g-body').value,
-        date: card.querySelector('.g-date').value,
-        time: card.querySelector('.g-time').value,
-    }), 900);
+    setSaved(card, 'dirty');
+    draftTimers[gi] = setTimeout(async () => {
+        setSaved(card, 'saving');
+        const r = await api('group.save', {
+            manifest_id: manifestId(),
+            station: GROUPS[gi].station,
+            body: card.querySelector('.g-body').value,
+            date: card.querySelector('.g-date').value,
+            time: card.querySelector('.g-time').value,
+        });
+        setSaved(card, r && r.ok ? 'saved' : 'error');
+    }, 900);
 }
 
 async function gdsTimes(silent) {
@@ -328,13 +353,15 @@ async function resetGroupBody(btn, gi) {
     const t = TEMPLATES.find(x => x.id == sel.value) || TEMPLATES[0];
     if (!t) return;
     card.querySelector('.g-body').value = t.body;
-    await api('group.save', {
+    setSaved(card, 'saving');
+    const r = await api('group.save', {
         manifest_id: manifestId(),
         station: GROUPS[gi].station,
         body: t.body,
         date: card.querySelector('.g-date').value,
         time: card.querySelector('.g-time').value,
     });
+    setSaved(card, r && r.ok ? 'saved' : 'error');
     schedulePreview(card, gi, true);
 }
 
@@ -367,6 +394,7 @@ async function sendGroup(btn, gi, silent = false) {
             date: card.querySelector('.g-date').value,
             time: card.querySelector('.g-time').value,
             attach_photo: document.getElementById('attachPhoto').checked ? 1 : 0,
+            phone_on: document.getElementById('driverPhoneOn')?.checked ? 1 : 0,
         });
         if (!r.ok) { state.innerHTML = '<span class="badge err">' + esc(r.error) + '</span>'; return r; }
         state.innerHTML = `<span class="badge ${r.failed ? 'warn' : 'ok'}">отправлено ${r.sent}, ошибок ${r.failed}${r.rest ? ', в очереди ' + r.rest : ''}</span>`
@@ -752,6 +780,12 @@ async function saveDocReq() {
     });
     document.getElementById('docReqState').textContent = 'Сохранено ✓';
     setTimeout(() => document.getElementById('docReqState').textContent = '', 2000);
+}
+async function saveNotif() {
+    await api('notif.save', { driver_phone_fallback: document.getElementById('msgDriverFallback').value });
+    const s = document.getElementById('notifState');
+    s.textContent = 'Сохранено ✓';
+    setTimeout(() => s.textContent = '', 2000);
 }
 async function uploadReq(inp, kind) {
     if (!inp.files.length) return;

@@ -74,6 +74,19 @@
     </div>
 </div>
 
+<div class="card">
+    <h2><?= icon('bell') ?> Сообщения пассажирам</h2>
+    <p class="muted small">Если при отправке снять галочку «указать телефон водителя», в переменную <code>{тел_водителя}</code> подставится эта фраза.</p>
+    <div class="grid grid-3">
+        <label class="f">Фраза вместо телефона водителя<input type="text" id="msgDriverFallback" value="<?= e(opt('driver_phone_fallback', 'сообщим позднее')) ?>" placeholder="сообщим позднее"></label>
+        <div></div><div></div>
+    </div>
+    <div class="row">
+        <button class="btn sm" onclick="saveNotif()">Сохранить</button>
+        <span class="muted small" id="notifState"></span>
+    </div>
+</div>
+
 <?php if (is_admin()):
     $users = db()->query('SELECT id, name, login, role, active, last_login FROM users ORDER BY id')->fetchAll();
 ?>
