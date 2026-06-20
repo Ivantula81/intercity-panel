@@ -391,6 +391,19 @@ async function loadGroupMonitor(el, gi) {
     if (det && det.open && pending) card._monTimer = setTimeout(() => { if (det.open) loadGroupMonitor(det, gi); }, 12000);
 }
 
+async function checkContactsChannels(btn) {
+    const phones = [...document.querySelectorAll('#contactsTable .phone a')].map(a => a.textContent.trim()).filter(Boolean);
+    if (!phones.length) return;
+    btn.disabled = true;
+    const st = document.getElementById('chChkState');
+    for (let i = 0; i < phones.length; i += 50) {
+        if (st) st.textContent = `проверяю ${Math.min(i + 50, phones.length)}/${phones.length}…`;
+        await api('channels.check', { phones: phones.slice(i, i + 50) }).catch(() => null);
+    }
+    if (st) st.textContent = 'готово, обновляю…';
+    location.reload();
+}
+
 function channelBadges(ch) {
     if (!ch) return '';
     const defs = { whatsapp: ['WA', 'WhatsApp'], max: ['MAX', 'MAX'], telegram: ['TG', 'Telegram'] };
