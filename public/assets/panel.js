@@ -106,7 +106,7 @@ async function delService(ev, id) {
 }
 
 /* ── Уведомления: экран-мастер ── */
-let GROUPS = [], TEMPLATES = [], BUS_PHOTO = '', GDS_LOADED = false;
+let GROUPS = [], TEMPLATES = [], BUS_PHOTO = '', GDS_LOADED = false, CHANNELS_ACTIVE = ['whatsapp'];
 
 function manifestId() {
     const tf = document.getElementById('tripFacts');
@@ -146,6 +146,7 @@ async function loadGroups(autoGds) {
     if (!r.ok) { box.innerHTML = '<div class="alert err">' + esc(r.error) + '</div>'; return; }
     GROUPS = r.groups;
     TEMPLATES = r.templates;
+    CHANNELS_ACTIVE = (r.channels_active && r.channels_active.length) ? r.channels_active : ['whatsapp'];
     BUS_PHOTO = r.bus_photo;
     const ap = document.getElementById('attachPhoto');
     if (ap) ap.disabled = !BUS_PHOTO;
@@ -206,10 +207,14 @@ function renderGroups() {
                 ${g.recipients.map(p => `
                     <tr data-pid="${p.id}"><td style="width:30px"><input type="checkbox" class="g-cb" value="${p.id}" ${p.valid ? 'checked' : ''}></td>
                     <td><b>${esc(p.name) || '—'}</b> <span class="muted small">→ ${esc(p.to)}</span></td>
-                    <td style="width:170px"><input class="cell g-phone ${p.valid ? '' : 'phone-bad'}" data-pid="${p.id}" value="${esc(p.phone)}" placeholder="+7…"></td></tr>`).join('')}
+                    <td style="width:170px"><input class="cell g-phone ${p.valid ? '' : 'phone-bad'}" data-pid="${p.id}" value="${esc(p.phone)}" placeholder="+7…"></td>
+                    <td class="ch-cell" style="white-space:nowrap">${channelBadges(p.channels)}</td></tr>`).join('')}
                 </tbody></table></div>
-                <div class="muted small mt">Телефон редактируется прямо здесь — исправьте корявые номера и нажмите Enter.</div>
-                <button class="btn ghost sm mt" onclick="addGroupRecipient(this, ${gi})">+ Добавить получателя</button>
+                <div class="muted small mt">Телефон редактируется прямо здесь — исправьте корявые номера и нажмите Enter. Бейджи WA/MAX/TG — наличие мессенджера у номера.</div>
+                <div class="row mt">
+                    <button class="btn ghost sm" onclick="addGroupRecipient(this, ${gi})">+ Добавить получателя</button>
+                    <button class="btn ghost sm" onclick="checkGroupChannels(this, ${gi})" title="Проверить наличие WhatsApp/MAX/Telegram у номеров группы">⟲ Проверить каналы</button>
+                </div>
             </details>
             <div class="row mt">
                 <button class="btn sm g-send" onclick="sendGroup(this, ${gi})">Отправить этой группе</button>
@@ -308,6 +313,38 @@ function scheduleDraft(card, gi) {
         });
         setSaved(card, r && r.ok ? 'saved' : 'error');
     }, 900);
+}
+
+function channelBadges(ch) {
+    if (!ch) return '';
+    const defs = { whatsapp: ['WA', 'WhatsApp'], max: ['MAX', 'MAX'], telegram: ['TG', 'Telegram'] };
+    const items = CHANNELS_ACTIVE.filter(k => defs[k]).map(k => {
+        const on = ch[k], lbl = defs[k][0], name = defs[k][1];
+        if (on === true) return `<span class="badge ok" style="padding:1px 6px;font-size:11px" title="${name}: есть">${lbl}</span>`;
+        if (on === false) return `<span class="badge" style="padding:1px 6px;font-size:11px;opacity:.4" title="${name}: нет">${lbl}</span>`;
+        return `<span class="badge muted" style="padding:1px 6px;font-size:11px" title="${name}: не проверено">${lbl}</span>`;
+    });
+    return items.length ? `<span style="display:inline-flex;gap:3px">${items.join('')}</span>` : '';
+}
+
+async function checkGroupChannels(btn, gi) {
+    const card = btn.closest('.gcard');
+    const phones = [...card.querySelectorAll('.g-phone')].map(i => i.value.trim()).filter(Boolean);
+    if (!phones.length) return;
+    btn.disabled = true;
+    const old = btn.textContent;
+    btn.textContent = 'проверяю каналы…';
+    const r = await api('channels.check', { phones }).catch(() => null);
+    btn.disabled = false;
+    btn.textContent = old;
+    if (r && r.ok && r.presence) {
+        card.querySelectorAll('tr[data-pid]').forEach(tr => {
+            const norm = (tr.querySelector('.g-phone')?.value || '').replace(/\D+/g, '');
+            const key = Object.keys(r.presence).find(k => k.replace(/\D+/g, '') === norm);
+            const cell = tr.querySelector('.ch-cell');
+            if (key && cell) cell.innerHTML = channelBadges(r.presence[key]);
+        });
+    }
 }
 
 async function gdsTimes(silent) {

@@ -343,6 +343,38 @@ function build_groups(array $manifest): array
     return array_values($groups);
 }
 
+// null/0/1 из ?bool — для кэша наличия канала.
+function tri(?bool $v): ?int { return $v === null ? null : (int) $v; }
+
+// Подмешать кэш наличия каналов (из contacts) к получателям групп.
+function attach_channel_presence(array $groups): array
+{
+    $phones = [];
+    foreach ($groups as $g) foreach ($g['recipients'] as $r) if ($r['phone'] !== '') $phones[$r['phone']] = true;
+    $map = [];
+    if ($phones) {
+        $phones = array_keys($phones);
+        $in = implode(',', array_fill(0, count($phones), '?'));
+        $st = db()->prepare("SELECT phone, has_whatsapp, has_max, has_telegram, channels_checked_at FROM contacts WHERE phone IN ($in)");
+        $st->execute($phones);
+        foreach ($st->fetchAll() as $row) {
+            $map[$row['phone']] = [
+                'whatsapp' => $row['has_whatsapp'] === null ? null : (bool) $row['has_whatsapp'],
+                'max'      => $row['has_max'] === null ? null : (bool) $row['has_max'],
+                'telegram' => $row['has_telegram'] === null ? null : (bool) $row['has_telegram'],
+                'checked'  => $row['channels_checked_at'] !== null,
+            ];
+        }
+    }
+    $blank = ['whatsapp' => null, 'max' => null, 'telegram' => null, 'checked' => false];
+    foreach ($groups as &$g) {
+        foreach ($g['recipients'] as &$r) $r['channels'] = $map[$r['phone']] ?? $blank;
+        unset($r);
+    }
+    unset($g);
+    return $groups;
+}
+
 const P_FIELDS = ['seat', 'name', 'phone', 'doc', 'ticket', 'from_stop', 'to_stop', 'note', 'pay_note', 'citizenship'];
 const M_FIELDS = ['route', 'carrier', 'bus', 'drivers', 'trip_number', 'driver_phone', 'extra_info'];
 
@@ -402,6 +434,7 @@ switch ($action) {
     /* ── Группы и GDS ── */
 
     case 'groups':
+        require_once PANEL_ROOT . '/lib/Channels.php';
         $manifest = get_manifest((int) $body['manifest_id']);
         $bus = manifest_bus($manifest);
         json_out([
@@ -415,9 +448,45 @@ switch ($action) {
                 'bus' => $manifest['bus'],
             ],
             'bus_photo' => $bus && $bus['photo'] !== '' ? $bus['photo'] : '',
-            'groups' => build_groups($manifest),
+            'groups' => attach_channel_presence(build_groups($manifest)),
+            'channels_active' => Channels::active(),
             'templates' => db()->query('SELECT id, name, body FROM templates ORDER BY sort, id')->fetchAll(),
         ]);
+
+    case 'channels.check':
+        // Проверка наличия каналов у номеров (CheckAccount/whatsappNumbers) + запись в кэш contacts.
+        require_once PANEL_ROOT . '/lib/Channels.php';
+        set_time_limit(0);
+        $phones = [];
+        foreach ((array) ($body['phones'] ?? []) as $raw) {
+            $ph = normalize_phone((string) $raw);
+            if (valid_phone($ph)) $phones[$ph] = true;
+        }
+        $phones = array_slice(array_keys($phones), 0, 60);
+        if (!$phones) json_out(['ok' => true, 'presence' => []]);
+
+        // WhatsApp — одним батч-запросом; MAX/Telegram — по одному (CheckAccount не батчится).
+        $waMap = [];
+        if (Channels::configured('whatsapp')) {
+            $r = Channels::client('whatsapp')->checkNumbers($phones);
+            if (!empty($r['ok'])) $waMap = $r['exists'];
+        }
+        $hasMax = Channels::configured('max');
+        $hasTg = Channels::configured('telegram');
+
+        $upIns = db()->prepare('INSERT INTO contacts (phone) VALUES (?) ON DUPLICATE KEY UPDATE phone = phone');
+        $upSet = db()->prepare('UPDATE contacts SET has_whatsapp = ?, has_max = ?, has_telegram = ?, channels_checked_at = NOW() WHERE phone = ?');
+        $out = [];
+        foreach ($phones as $ph) {
+            $num = preg_replace('/\D+/', '', $ph);
+            $wa = array_key_exists($num, $waMap) ? (bool) $waMap[$num] : null;
+            $max = $hasMax ? Channels::presence('max', $ph) : null;
+            $tg = $hasTg ? Channels::presence('telegram', $ph) : null;
+            $upIns->execute([$ph]);
+            $upSet->execute([tri($wa), tri($max), tri($tg), $ph]);
+            $out[$ph] = ['whatsapp' => $wa, 'max' => $max, 'telegram' => $tg, 'checked' => true];
+        }
+        json_out(['ok' => true, 'presence' => $out]);
 
     case 'gds.times':
         require_once PANEL_ROOT . '/lib/GdsRace.php';
