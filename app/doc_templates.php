@@ -38,8 +38,10 @@ function doc_render(string $title, array $manifest, array $carrier, array $passe
     .foot-row { display: flex; justify-content: space-between; align-items: flex-end; }
     .sign-box { position: relative; width: 320px; text-align: center; }
     .sign-line { border-top: 1px solid #000; margin-top: 34px; padding-top: 3px; }
-    .stamp { position: absolute; right: 40px; bottom: -10px; width: 120px; opacity: .85; }
-    .sign { position: absolute; left: 90px; bottom: 6px; width: 130px; }
+    /* mix-blend-mode: multiply — белый фон скана печати/подписи становится прозрачным,
+       синяя печать ложится ПОВЕРХ текста как настоящий штамп, текст остаётся виден. */
+    .stamp { position: absolute; right: 40px; bottom: -10px; width: 120px; opacity: .9; mix-blend-mode: multiply; }
+    .sign { position: absolute; left: 90px; bottom: 6px; width: 130px; mix-blend-mode: multiply; }
     </style></head><body>
     <div class="corner">Приложение №2<br>к договору № ' . doc_e($carrier['contract_no']) . ' от ' . doc_e($carrier['contract_date']) . '<br>фрахтования транспортного средства<br>для перевозки пассажиров по заказу</div>
     <h1>' . doc_e($title) . '</h1>
