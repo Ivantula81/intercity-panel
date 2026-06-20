@@ -329,6 +329,7 @@ async function gdsTimes(silent) {
             let html = `<div class="alert warn"><b>⚠️ GDS не ответил — времена взяты из сохранённого расписания`
                 + (r.cached_at ? ' от ' + esc(r.cached_at.slice(0, 16).replace('T', ' ')) : '') + '.</b> Обязательно проверьте время по станциям перед отправкой!';
             if (r.gds_error) html += `<br><span class="small">Причина: ${esc(r.gds_error)}</span>`;
+            if (r.kept_from_file) html += `<br>Оставлено из ведомости (в ГДС нет): ${r.kept_from_file}.`;
             if (r.unmatched.length) html += `<br>Без времени: ${r.unmatched.map(esc).join(', ')} — заполните вручную.`;
             info.innerHTML = html + '</div>';
         } else {
@@ -336,8 +337,9 @@ async function gdsTimes(silent) {
                 badge.className = r.statement_match ? 'badge ok' : 'badge warn';
                 badge.textContent = r.statement_match ? 'времена из GDS ✓' : 'GDS: номер ведомости не совпал';
             }
-            let html = `<div class="alert ${r.statement_match ? 'ok' : 'warn'}">Рейс найден, времена обновлены для ${r.updated} групп.`
+            let html = `<div class="alert ${r.statement_match ? 'ok' : 'warn'}">Рейс найден, времена обновлены из ГДС для ${r.updated} групп.`
                 + (r.statement_match ? '' : ' <b>Номер ведомости НЕ совпадает — проверьте рейс!</b>');
+            if (r.kept_from_file) html += `<br>Оставлено из ведомости (в ГДС нет): ${r.kept_from_file}.`;
             if (r.unmatched.length) html += `<br>Без времени остались: ${r.unmatched.map(esc).join(', ')} — заполните вручную.`;
             info.innerHTML = html + '</div>';
         }

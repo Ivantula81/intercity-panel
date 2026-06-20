@@ -427,39 +427,48 @@ switch ($action) {
         $unmatched = [];
         $kept = 0;
         foreach (build_groups($manifest) as $g) {
-            // ВРЕМЯ ИЗ ФАЙЛА — ГЛАВНОЕ: если у группы уже есть время (из ведомости), GDS его НЕ трогает,
-            // только уточняет привязку station_id. GDS заполняет время лишь там, где в файле его не было.
+            // ГДС — ПЕРВИЧНЫЙ источник времени: если рейс найден в ГДС, время станции
+            // ПЕРЕЗАПИСЫВАЕТСЯ значением из ГДС (даже если оно пришло из ведомости).
+            // Время из файла остаётся только там, где ГДС не знает станцию или не даёт по ней времени.
+            $stop = GdsRace::matchStop($gds, $g['station'], $g['station_id'] ?? null);
+
+            $time = '';
+            $date = '';
+            if ($stop !== null) {
+                $when = $stop['arrival'] !== '' ? $stop['arrival'] : $stop['dispatch'];
+                $ts = strtotime($when);
+                if ($ts) {
+                    $time = date('H:i', $ts);
+                    $date = date('d.m.Y', $ts);
+                }
+            }
+
+            if ($time !== '') {
+                // станция отправления — совпадение со стартом это норма; для остальных — предупреждение
+                $isStart = GdsRace::norm($g['station']) === GdsRace::norm(explode('-', $manifest['route'])[0] ?? '');
+                $warning = (int) (!$isStart && $time === $raceStartTime);
+                db()->prepare('INSERT INTO manifest_groups (manifest_id, station, station_id, boarding_date, boarding_time, time_warning)
+                    VALUES (?,?,?,?,?,?)
+                    ON DUPLICATE KEY UPDATE station_id = VALUES(station_id), boarding_date = VALUES(boarding_date), boarding_time = VALUES(boarding_time), time_warning = VALUES(time_warning)')
+                    ->execute([$manifest['id'], $g['station'], $g['station_id'] ?? null, $date, $time, $warning]);
+                $updated++;
+                continue;
+            }
+
+            // ГДС времени по станции не дал — оставляем то, что было в ведомости (если было)
             $exq = db()->prepare('SELECT boarding_time FROM manifest_groups WHERE manifest_id = ? AND station = ?');
             $exq->execute([$manifest['id'], $g['station']]);
             $hasFileTime = trim((string) $exq->fetchColumn()) !== '';
-
-            $stop = GdsRace::matchStop($gds, $g['station'], $g['station_id'] ?? null);
-
+            if ($stop !== null) {
+                // станция в рейсе есть, но без времени — хотя бы уточняем привязку station_id
+                db()->prepare('UPDATE manifest_groups SET station_id = ? WHERE manifest_id = ? AND station = ?')
+                    ->execute([$g['station_id'] ?? null, $manifest['id'], $g['station']]);
+            }
             if ($hasFileTime) {
-                if ($stop !== null) {
-                    db()->prepare('UPDATE manifest_groups SET station_id = ? WHERE manifest_id = ? AND station = ?')
-                        ->execute([$g['station_id'] ?? null, $manifest['id'], $g['station']]);
-                }
                 $kept++;
-                continue;
-            }
-
-            if ($stop === null) {
+            } else {
                 $unmatched[] = $g['station'];
-                continue;
             }
-            $when = $stop['arrival'] !== '' ? $stop['arrival'] : $stop['dispatch'];
-            $ts = strtotime($when);
-            $time = $ts ? date('H:i', $ts) : '';
-            $date = $ts ? date('d.m.Y', $ts) : '';
-            // станция отправления — совпадение со стартом это норма; для остальных — предупреждение
-            $isStart = GdsRace::norm($g['station']) === GdsRace::norm(explode('-', $manifest['route'])[0] ?? '');
-            $warning = (int) (!$isStart && $time !== '' && $time === $raceStartTime);
-            db()->prepare('INSERT INTO manifest_groups (manifest_id, station, station_id, boarding_date, boarding_time, time_warning)
-                VALUES (?,?,?,?,?,?)
-                ON DUPLICATE KEY UPDATE station_id = VALUES(station_id), boarding_date = VALUES(boarding_date), boarding_time = VALUES(boarding_time), time_warning = VALUES(time_warning)')
-                ->execute([$manifest['id'], $g['station'], $g['station_id'] ?? null, $date, $time, $warning]);
-            $updated++;
         }
         json_out(['ok' => true, 'race_uid' => $gds['race_uid'], 'race_start' => $gds['race_start'],
             'statement_match' => $gds['statement_match'], 'updated' => $updated, 'kept_from_file' => $kept, 'unmatched' => $unmatched,
