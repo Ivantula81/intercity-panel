@@ -221,6 +221,10 @@ function renderGroups() {
                 <button class="btn ghost sm" onclick="resetGroupBody(this, ${gi})" title="Заменить текст группы актуальным шаблоном">↺ Сбросить к шаблону</button>
                 <span class="small g-state"></span>
             </div>
+            <details class="mt g-monitor-wrap" ontoggle="if(this.open)loadGroupMonitor(this, ${gi})">
+                <summary class="muted small" style="cursor:pointer">📊 Статусы доставки</summary>
+                <div class="g-monitor mt"><span class="muted small">раскройте, чтобы загрузить статусы</span></div>
+            </details>
         </div>`;
         box.appendChild(card);
 
@@ -313,6 +317,45 @@ function scheduleDraft(card, gi) {
         });
         setSaved(card, r && r.ok ? 'saved' : 'error');
     }, 900);
+}
+
+function monitorChip(rec) {
+    if (!rec.sent) return '<span class="badge muted">не отправлено</span>';
+    const map = { read: ['ok', 'прочитано ✓✓'], delivered: ['ok', 'доставлено ✓✓'], sent: ['muted', 'отправлено ✓'], failed: ['err', 'ошибка'], pending: ['muted', 'в очереди'] };
+    const [cls, label] = map[rec.state] || ['muted', '—'];
+    const ch = rec.channel && rec.channel !== 'whatsapp' ? ` <span class="muted small">${esc(rec.channel.toUpperCase())}</span>` : '';
+    const title = rec.error ? ` title="${esc(rec.error)}"` : '';
+    let html = `<span class="badge ${cls}"${title}>${label}</span>${ch}`;
+    if (rec.replied) html += ' <span class="badge ok" title="пассажир ответил">есть ответ</span>';
+    return html;
+}
+
+function renderMonitor(r) {
+    if (!r.recipients || !r.recipients.length) return '<span class="muted small">нет получателей</span>';
+    const c = (s) => r.recipients.filter(x => x.state === s).length;
+    const repl = r.recipients.filter(x => x.replied).length;
+    const head = `<div class="muted small" style="margin-bottom:8px">${r.recipients.length} получателей · прочитали ${c('read')} · доставлено ${c('delivered')}${c('failed') ? ' · ошибок ' + c('failed') : ''}${repl ? ' · ответили ' + repl : ''}</div>`;
+    const rows = r.recipients.map(rec => `
+        <tr><td><b>${esc(rec.name) || '—'}</b> <span class="muted small">${esc(rec.phone)}</span></td>
+        <td>${monitorChip(rec)}</td>
+        <td style="white-space:nowrap">${channelBadges(rec.channels)}</td>
+        <td style="text-align:right"><a class="btn ghost sm" href="/?p=chats&phone=${encodeURIComponent(rec.phone)}">чат</a></td></tr>`).join('');
+    return head + `<div class="table-wrap"><table class="t"><tbody>${rows}</tbody></table></div>`;
+}
+
+async function loadGroupMonitor(el, gi) {
+    const card = el.closest('.gcard');
+    const box = card.querySelector('.g-monitor');
+    if (!box) return;
+    if (!box.dataset.loaded) box.innerHTML = '<span class="muted small">загружаю статусы…</span>';
+    const r = await api('campaign.status', { manifest_id: manifestId(), station: GROUPS[gi].station }).catch(() => null);
+    if (!r || !r.ok) { box.innerHTML = '<span class="muted small">не удалось загрузить статусы</span>'; return; }
+    box.dataset.loaded = '1';
+    box.innerHTML = renderMonitor(r);
+    const det = card.querySelector('.g-monitor-wrap');
+    clearTimeout(card._monTimer);
+    const pending = r.recipients.some(x => x.sent && x.state !== 'read' && x.state !== 'failed');
+    if (det && det.open && pending) card._monTimer = setTimeout(() => { if (det.open) loadGroupMonitor(det, gi); }, 12000);
 }
 
 function channelBadges(ch) {
@@ -438,6 +481,8 @@ async function sendGroup(btn, gi, silent = false) {
         if (!r.ok) { state.innerHTML = '<span class="badge err">' + esc(r.error) + '</span>'; return r; }
         state.innerHTML = `<span class="badge ${r.failed ? 'warn' : 'ok'}">отправлено ${r.sent}, ошибок ${r.failed}${r.rest ? ', в очереди ' + r.rest : ''}</span>`
             + (r.errors?.length ? `<div class="muted small">${r.errors.map(esc).join('<br>')}</div>` : '');
+        const mon = card.querySelector('.g-monitor-wrap');
+        if (mon && !silent) { mon.open = true; loadGroupMonitor(mon, gi); }
         return r;
     } finally {
         btn.disabled = false;

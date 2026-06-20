@@ -375,6 +375,25 @@ function attach_channel_presence(array $groups): array
     return $groups;
 }
 
+// Лучший статус по получателю среди всех каналов: read > delivered > sent > failed > pending.
+function monitor_aggregate(array $byChan): array
+{
+    $rank = ['read' => 5, 'delivered' => 4, 'sent' => 3, 'failed' => 2, 'pending' => 1, 'none' => 0];
+    $best = ['state' => 'none', 'channel' => '', 'sent_at' => null, 'delivered_at' => null, 'read_at' => null, 'error' => ''];
+    foreach ($byChan as $chan => $m) {
+        if (!empty($m['read_at'])) $state = 'read';
+        elseif (!empty($m['delivered_at'])) $state = 'delivered';
+        elseif ($m['status'] === 'sent') $state = 'sent';
+        elseif ($m['status'] === 'failed') $state = 'failed';
+        else $state = 'pending';
+        if ($rank[$state] >= $rank[$best['state']]) {
+            $best = ['state' => $state, 'channel' => $chan, 'sent_at' => $m['sent_at'],
+                'delivered_at' => $m['delivered_at'], 'read_at' => $m['read_at'], 'error' => (string) $m['error']];
+        }
+    }
+    return $best;
+}
+
 const P_FIELDS = ['seat', 'name', 'phone', 'doc', 'ticket', 'from_stop', 'to_stop', 'note', 'pay_note', 'citizenship'];
 const M_FIELDS = ['route', 'carrier', 'bus', 'drivers', 'trip_number', 'driver_phone', 'extra_info'];
 
@@ -591,6 +610,57 @@ switch ($action) {
         json_out(['ok' => false, 'error' => 'Группа не найдена']);
 
     /* ── Отправка ── */
+
+    case 'campaign.status':
+        // Монитор доставки по группе: статус каждого получателя из messages + ответы из inbox + наличие каналов.
+        require_once PANEL_ROOT . '/lib/Channels.php';
+        $manifest = get_manifest((int) $body['manifest_id']);
+        $station = (string) ($body['station'] ?? '');
+        $group = null;
+        foreach (build_groups($manifest) as $g) {
+            if ($g['station'] === $station) { $group = $g; break; }
+        }
+        if ($group === null) json_out(['ok' => false, 'error' => 'Группа не найдена']);
+
+        $phones = [];
+        foreach ($group['recipients'] as $r) if ($r['phone'] !== '') $phones[$r['phone']] = true;
+        $phones = array_keys($phones);
+
+        $msgByPhone = [];
+        $replied = [];
+        if ($phones) {
+            $in = implode(',', array_fill(0, count($phones), '?'));
+            $st = db()->prepare("SELECT recipient, channel, status, sent_at, delivered_at, read_at, error
+                FROM messages WHERE manifest_id = ? AND recipient IN ($in) ORDER BY id ASC");
+            $st->execute(array_merge([$manifest['id']], $phones));
+            foreach ($st->fetchAll() as $m) $msgByPhone[$m['recipient']][$m['channel']] = $m;
+
+            $rs = db()->prepare("SELECT DISTINCT phone FROM inbox WHERE phone IN ($in)");
+            $rs->execute($phones);
+            foreach ($rs->fetchAll(PDO::FETCH_COLUMN) as $p) $replied[$p] = true;
+        }
+
+        $withPresence = attach_channel_presence([$group]);
+        $presByPhone = [];
+        foreach ($withPresence[0]['recipients'] as $r) $presByPhone[$r['phone']] = $r['channels'];
+
+        $recipients = [];
+        foreach ($group['recipients'] as $r) {
+            $ph = $r['phone'];
+            $byChan = $msgByPhone[$ph] ?? [];
+            $agg = monitor_aggregate($byChan);
+            $recipients[] = [
+                'id' => $r['id'], 'name' => $r['name'], 'phone' => $ph, 'to' => $r['to'],
+                'sent' => !empty($byChan),
+                'state' => $agg['state'], 'channel' => $agg['channel'],
+                'sent_at' => $agg['sent_at'], 'delivered_at' => $agg['delivered_at'], 'read_at' => $agg['read_at'],
+                'error' => $agg['error'],
+                'replied' => isset($replied[$ph]),
+                'channels' => $presByPhone[$ph] ?? null,
+            ];
+        }
+        json_out(['ok' => true, 'station' => $station, 'channels_active' => Channels::active(),
+            'body' => $group['body'] ?? '', 'recipients' => $recipients]);
 
     case 'campaign.send':
         set_time_limit(0);
