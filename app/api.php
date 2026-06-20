@@ -64,14 +64,14 @@ function evo_ensure_webhook(EvolutionApiClient $evo): void
 function green_api()
 {
     require_once PANEL_ROOT . '/lib/GreenApiClient.php';
-    return new GreenApiClient(env_get('GREENAPI_URL'), env_get('GREENAPI_ID'), env_get('GREENAPI_TOKEN'));
+    return new GreenApiClient(env_get('GREENAPI_URL'), env_get('GREENAPI_ID'), env_get('GREENAPI_TOKEN'), 'max');
 }
 
-// Green API для Telegram — отдельный инстанс. URL по умолчанию общий с MAX; ключи появятся позже.
+// Green API для Telegram — отдельный инстанс. URL по умолчанию общий с MAX.
 function green_api_tg()
 {
     require_once PANEL_ROOT . '/lib/GreenApiClient.php';
-    return new GreenApiClient(env_get('GREENAPI_TG_URL') ?: env_get('GREENAPI_URL'), env_get('GREENAPI_TG_ID'), env_get('GREENAPI_TG_TOKEN'));
+    return new GreenApiClient(env_get('GREENAPI_TG_URL') ?: env_get('GREENAPI_URL'), env_get('GREENAPI_TG_ID'), env_get('GREENAPI_TG_TOKEN'), 'telegram');
 }
 
 // SMS-канал через SMS.RU (сервисные сообщения). Ключ и отправитель — из panel.env.

@@ -8,12 +8,14 @@ class GreenApiClient
     private $base;
     private $id;
     private $token;
+    private $messenger;
 
-    public function __construct($base, $id, $token)
+    public function __construct($base, $id, $token, $messenger = 'whatsapp')
     {
         $this->base = rtrim((string) $base, '/');
         $this->id = trim((string) $id);
         $this->token = trim((string) $token);
+        $this->messenger = (string) $messenger; // whatsapp | max | telegram — влияет на формат chatId
     }
 
     public function isConfigured()
@@ -31,10 +33,12 @@ class GreenApiClient
     private function chatId($v)
     {
         $v = (string) $v;
-        if (str_contains($v, '@')) return $v;                 // уже chatId (c.us / g.us / max)
+        if (str_contains($v, '@')) return $v;                 // уже chatId (c.us / g.us)
         $digits = preg_replace('/\D+/', '', $v);
-        if (str_starts_with($v, '+') || strlen($digits) >= 10) return $digits . '@c.us'; // телефон → WhatsApp
-        return $v;                                            // короткий id (напр. MAX) — как есть
+        // Для MAX/Telegram значение из CheckAccount — это уже готовый chatId (числовой), НЕ телефон.
+        if ($this->messenger === 'max' || $this->messenger === 'telegram') return $digits !== '' ? $digits : $v;
+        if (str_starts_with($v, '+') || strlen($digits) >= 10) return $digits . '@c.us'; // WhatsApp: телефон → phone@c.us
+        return $v;                                            // короткий id — как есть
     }
 
     // Состояние: authorized → open, прочее → close/connecting
