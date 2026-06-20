@@ -781,6 +781,17 @@ async function saveDocReq() {
     document.getElementById('docReqState').textContent = 'Сохранено ✓';
     setTimeout(() => document.getElementById('docReqState').textContent = '', 2000);
 }
+async function fixWebhook(btn) {
+    const st = document.getElementById('whFixState');
+    btn.disabled = true;
+    if (st) { st.className = 'badge warn'; st.textContent = 'ставлю вебхук…'; }
+    const r = await api('wa.webhook.fix', {});
+    if (st) {
+        st.className = 'badge ' + (r && r.ok ? 'ok' : 'err');
+        st.textContent = r && r.ok ? 'вебхук статусов переустановлен ✓' : ('ошибка: ' + ((r && r.error) || '—'));
+    }
+    btn.disabled = false;
+}
 async function saveNotif() {
     await api('notif.save', { driver_phone_fallback: document.getElementById('msgDriverFallback').value });
     const s = document.getElementById('notifState');

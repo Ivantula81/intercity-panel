@@ -9,9 +9,12 @@
     <div class="card">
         <div class="row" style="justify-content:space-between">
             <h2 style="margin:0"><?= icon('whatsapp') ?> Аккаунты WhatsApp</h2>
-            <button class="btn sm" onclick="waAddAccount()"><?= icon('plus') ?> Добавить аккаунт</button>
+            <div class="row" style="gap:8px">
+                <button class="btn ghost sm" onclick="fixWebhook(this)" title="Переустановить приёмник статусов доставки/прочтения и входящих">🔧 Починить статусы</button>
+                <button class="btn sm" onclick="waAddAccount()"><?= icon('plus') ?> Добавить аккаунт</button>
+            </div>
         </div>
-        <p class="muted small">Можно подключить несколько номеров. Звёздочка — с какого номера идёт рассылка. Подключение — по QR, как WhatsApp Web.</p>
+        <p class="muted small">Можно подключить несколько номеров. Звёздочка — с какого номера идёт рассылка. Подключение — по QR, как WhatsApp Web. <span id="whFixState" class="badge"></span></p>
         <div id="waAccounts" class="mt"><p class="muted">Загружаю…</p></div>
         <div class="qr-box" id="qrBox" style="display:none">
             <img id="qrImg" alt="QR для WhatsApp">

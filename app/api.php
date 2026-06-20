@@ -45,6 +45,22 @@ function evolution(?string $instance = null): EvolutionApiClient
     );
 }
 
+// URL и события вебхука для Evolution-инстанса (приёмник статусов/входящих/состояния канала)
+function evo_webhook_url(): string
+{
+    $base = env_get('PANEL_BASE_URL') ?: 'https://crm.terratranskrym.ru';
+    return rtrim($base, '/') . '/webhook.php?token=' . rawurlencode(env_get('WEBHOOK_TOKEN'));
+}
+function evo_webhook_events(): array
+{
+    return ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE'];
+}
+// Выставить вебхук на инстансе — идемпотентно, ошибку глушим (не критично для основного действия)
+function evo_ensure_webhook(EvolutionApiClient $evo): void
+{
+    try { $evo->setWebhook(evo_webhook_url(), evo_webhook_events()); } catch (Exception $e) { /* не критично */ }
+}
+
 function green_api()
 {
     require_once PANEL_ROOT . '/lib/GreenApiClient.php';
@@ -952,6 +968,7 @@ switch ($action) {
         $evo = evolution($instance);
         $resp = $evo->createInstance($instance);
         if (!$resp['ok']) json_out(['ok' => false, 'error' => $resp['error']]);
+        evo_ensure_webhook($evo); // сразу вешаем приёмник статусов/входящих, чтобы не потерять
         // аккаунты, создаваемые здесь — это Evolution = WhatsApp
         db()->prepare("INSERT INTO wa_accounts (instance, label, is_active, provider, messenger) VALUES (?,?,0,'evolution','whatsapp')")->execute([$instance, $label]);
         json_out(['ok' => true, 'instance' => $instance]);
@@ -975,6 +992,7 @@ switch ($action) {
     case 'wa.qr':
         $evo = evolution($body['instance'] ?? null);
         if (!$evo->isConfigured()) json_out(['ok' => false, 'error' => 'не настроен']);
+        evo_ensure_webhook($evo); // при каждом подключении гарантируем актуальный вебхук
         $resp = $evo->connectQr();
         if (!$resp['ok']) json_out(['ok' => false, 'error' => $resp['error']]);
         json_out(['ok' => true, 'qr' => $resp['data']['base64'] ?? '', 'count' => $resp['data']['count'] ?? 0]);
@@ -985,6 +1003,13 @@ switch ($action) {
         $resp = $evo->logout();
         if (!$resp['ok']) json_out(['ok' => false, 'error' => $resp['error']]);
         json_out(['ok' => true]);
+
+    case 'wa.webhook.fix':
+        // переустановить приёмник статусов/входящих на активном (или указанном) инстансе
+        $evo = evolution($body['instance'] ?? null);
+        if (!$evo->isConfigured()) json_out(['ok' => false, 'error' => 'WhatsApp-канал не настроен']);
+        $resp = $evo->setWebhook(evo_webhook_url(), evo_webhook_events());
+        json_out(['ok' => (bool) ($resp['ok'] ?? false), 'error' => $resp['error'] ?? '', 'events' => evo_webhook_events()]);
 
     /* ── Сотрудники (admin) ── */
     case 'user.save':
