@@ -330,7 +330,40 @@ function monitorChip(rec) {
     return html;
 }
 
-function renderMonitor(r) {
+function needsResend(rec) {
+    if (!rec.sent || rec.state === 'failed') return true;
+    if (rec.channels && rec.channels.whatsapp === false && rec.state !== 'read' && rec.state !== 'delivered') return true;
+    if (rec.state === 'sent' && rec.sent_at) {
+        const t = new Date(rec.sent_at.replace(' ', 'T')).getTime();
+        if (!isNaN(t) && (Date.now() - t) / 60000 > 30) return true;
+    }
+    return false;
+}
+
+function resendButtons(rec, gi) {
+    const fallbacks = CHANNELS_ACTIVE.filter(c => c !== 'whatsapp');
+    if (!fallbacks.length) return '';
+    const urgent = needsResend(rec);
+    const labels = { max: 'МАКС', sms: 'SMS', telegram: 'TG' };
+    return fallbacks.map(c => {
+        const has = rec.channels ? rec.channels[c] : null;
+        if (has === false && c !== 'sms') return '';
+        const st = urgent ? 'style="border-color:#e0a96d;color:#a85d00"' : 'style="opacity:.55"';
+        return `<button class="btn ghost sm" ${st} onclick="resendOne(this, ${gi}, '${esc(rec.phone)}', '${c}')" title="Дослать в ${labels[c] || c}">${labels[c] || c}</button>`;
+    }).filter(Boolean).join(' ');
+}
+
+async function resendOne(btn, gi, phone, channel) {
+    btn.disabled = true;
+    const old = btn.textContent;
+    btn.textContent = '…';
+    const r = await api('recipient.resend', { manifest_id: manifestId(), phone, channel }).catch(() => null);
+    if (!r || !r.ok) { btn.disabled = false; btn.textContent = old; alert((r && r.error) || 'Не удалось дослать'); return; }
+    const det = btn.closest('.gcard').querySelector('.g-monitor-wrap');
+    if (det) loadGroupMonitor(det, gi);
+}
+
+function renderMonitor(r, gi) {
     if (!r.recipients || !r.recipients.length) return '<span class="muted small">нет получателей</span>';
     const c = (s) => r.recipients.filter(x => x.state === s).length;
     const repl = r.recipients.filter(x => x.replied).length;
@@ -339,7 +372,7 @@ function renderMonitor(r) {
         <tr><td><b>${esc(rec.name) || '—'}</b> <span class="muted small">${esc(rec.phone)}</span></td>
         <td>${monitorChip(rec)}</td>
         <td style="white-space:nowrap">${channelBadges(rec.channels)}</td>
-        <td style="text-align:right"><a class="btn ghost sm" href="/?p=chats&phone=${encodeURIComponent(rec.phone)}">чат</a></td></tr>`).join('');
+        <td style="text-align:right;white-space:nowrap">${resendButtons(rec, gi)} <a class="btn ghost sm" href="/?p=chats&phone=${encodeURIComponent(rec.phone)}">чат</a></td></tr>`).join('');
     return head + `<div class="table-wrap"><table class="t"><tbody>${rows}</tbody></table></div>`;
 }
 
@@ -351,7 +384,7 @@ async function loadGroupMonitor(el, gi) {
     const r = await api('campaign.status', { manifest_id: manifestId(), station: GROUPS[gi].station }).catch(() => null);
     if (!r || !r.ok) { box.innerHTML = '<span class="muted small">не удалось загрузить статусы</span>'; return; }
     box.dataset.loaded = '1';
-    box.innerHTML = renderMonitor(r);
+    box.innerHTML = renderMonitor(r, gi);
     const det = card.querySelector('.g-monitor-wrap');
     clearTimeout(card._monTimer);
     const pending = r.recipients.some(x => x.sent && x.state !== 'read' && x.state !== 'failed');

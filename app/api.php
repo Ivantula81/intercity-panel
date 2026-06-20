@@ -662,6 +662,49 @@ switch ($action) {
         json_out(['ok' => true, 'station' => $station, 'channels_active' => Channels::active(),
             'body' => $group['body'] ?? '', 'recipients' => $recipients]);
 
+    case 'recipient.resend':
+        // Дослать сообщение конкретному получателю в другой канал (МАКС/SMS/Telegram).
+        require_once PANEL_ROOT . '/lib/Channels.php';
+        $manifestId = (int) ($body['manifest_id'] ?? 0);
+        $phone = normalize_phone((string) ($body['phone'] ?? ''));
+        $channel = (string) ($body['channel'] ?? '');
+        if (!valid_phone($phone)) json_out(['ok' => false, 'error' => 'Некорректный номер.']);
+        if (!isset(Channels::LABELS[$channel])) json_out(['ok' => false, 'error' => 'Неизвестный канал.']);
+        if (!Channels::configured($channel)) json_out(['ok' => false, 'error' => Channels::label($channel) . ': канал не подключён.']);
+
+        // текст — переданный либо последнее сообщение этому номеру по ведомости
+        $text = trim((string) ($body['text'] ?? ''));
+        $pname = '';
+        if ($text === '') {
+            $st = db()->prepare('SELECT body, passenger_name FROM messages WHERE manifest_id = ? AND recipient = ? ORDER BY id DESC LIMIT 1');
+            $st->execute([$manifestId, $phone]);
+            if ($orig = $st->fetch()) { $text = (string) $orig['body']; $pname = (string) $orig['passenger_name']; }
+        }
+        if ($text === '') json_out(['ok' => false, 'error' => 'Нет текста для пересылки.']);
+
+        // адресат: для MAX/Telegram нужен chatId (через CheckAccount); для WhatsApp/SMS — номер
+        $target = $phone;
+        if ($channel === 'max' || $channel === 'telegram') {
+            $chk = Channels::client($channel)->checkAccount($phone);
+            if (empty($chk['ok']) || empty($chk['exists'])) {
+                json_out(['ok' => false, 'error' => 'У номера нет ' . Channels::label($channel) . '.']);
+            }
+            $target = $chk['chatId'] !== '' ? $chk['chatId'] : $phone;
+        }
+
+        db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (?,?,?,?,?,?)')
+            ->execute([$manifestId, $channel, $phone, $pname, $text, current_user_name()]);
+        $mid = (int) db()->lastInsertId();
+        $res = Channels::sendText($channel, $target, $text);
+        if (!empty($res['ok'])) {
+            db()->prepare("UPDATE messages SET status='sent', attempts=1, sent_at=NOW(), wa_id=? WHERE id=?")
+                ->execute([(string) ($res['data']['key']['id'] ?? ''), $mid]);
+            contact_log_message($phone, $pname, '');
+            json_out(['ok' => true]);
+        }
+        db()->prepare("UPDATE messages SET status='failed', attempts=1, error=? WHERE id=?")->execute([$res['error'] ?? 'ошибка', $mid]);
+        json_out(['ok' => false, 'error' => $res['error'] ?? 'Ошибка отправки.']);
+
     case 'campaign.send':
         set_time_limit(0);
         $manifest = get_manifest((int) $body['manifest_id']);
