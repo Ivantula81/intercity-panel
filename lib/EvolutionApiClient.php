@@ -107,6 +107,25 @@ class EvolutionApiClient
         return $this->request('GET', '/instance/fetchInstances');
     }
 
+    // Проверка наличия номеров в WhatsApp. Возвращает ['ok'=>bool, 'exists'=>[number=>bool]].
+    public function checkNumbers(array $phones)
+    {
+        $nums = array();
+        foreach ($phones as $p) {
+            $n = preg_replace('/\D+/', '', (string) $p);
+            if ($n !== '') $nums[] = $n;
+        }
+        if (!$nums) return array('ok' => true, 'exists' => array());
+        $resp = $this->request('POST', '/chat/whatsappNumbers/' . rawurlencode($this->instance), array('numbers' => array_values(array_unique($nums))));
+        if (!$resp['ok']) return array('ok' => false, 'error' => isset($resp['error']) ? $resp['error'] : 'ошибка проверки номеров');
+        $out = array();
+        foreach ((array) $resp['data'] as $row) {
+            $num = preg_replace('/\D+/', '', (string) (isset($row['number']) ? $row['number'] : ''));
+            if ($num !== '') $out[$num] = !empty($row['exists']);
+        }
+        return array('ok' => true, 'exists' => $out);
+    }
+
     // Настроить webhook инстанса на наш приёмник.
     public function setWebhook($url, $events)
     {

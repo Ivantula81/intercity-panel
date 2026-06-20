@@ -67,6 +67,20 @@ function green_api()
     return new GreenApiClient(env_get('GREENAPI_URL'), env_get('GREENAPI_ID'), env_get('GREENAPI_TOKEN'));
 }
 
+// Green API для Telegram — отдельный инстанс. URL по умолчанию общий с MAX; ключи появятся позже.
+function green_api_tg()
+{
+    require_once PANEL_ROOT . '/lib/GreenApiClient.php';
+    return new GreenApiClient(env_get('GREENAPI_TG_URL') ?: env_get('GREENAPI_URL'), env_get('GREENAPI_TG_ID'), env_get('GREENAPI_TG_TOKEN'));
+}
+
+// SMS-канал через SMS.RU (сервисные сообщения). Ключ и отправитель — из panel.env.
+function sms_ru()
+{
+    require_once PANEL_ROOT . '/lib/SmsRuClient.php';
+    return new SmsRuClient(env_get('SMSRU_API_ID'), env_get('SMSRU_FROM'));
+}
+
 function smtp_mailer()
 {
     require_once PANEL_ROOT . '/lib/SmtpMailer.php';

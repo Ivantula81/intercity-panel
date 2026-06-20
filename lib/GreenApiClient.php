@@ -110,6 +110,18 @@ class GreenApiClient
         ]);
     }
 
+    // Проверка наличия аккаунта в мессенджере (MAX/Telegram). ['ok'=>bool, 'exists'=>bool, 'chatId'=>string]
+    public function checkAccount($phone)
+    {
+        $number = preg_replace('/\D+/', '', (string) $phone);
+        if ($number === '') return ['ok' => false, 'error' => 'Пустой номер.'];
+        $r = $this->post('checkAccount', ['phoneNumber' => (int) $number]);
+        if (!$r['ok']) return ['ok' => false, 'error' => 'Green API: HTTP ' . ($r['code'] ?? '?')];
+        $d = is_array($r['data'] ?? null) ? $r['data'] : [];
+        $exists = $d['exist'] ?? ($d['existsWhatsapp'] ?? null);
+        return ['ok' => true, 'exists' => (bool) $exists, 'chatId' => (string) ($d['chatId'] ?? '')];
+    }
+
     private function mapSend($r)
     {
         if (!$r['ok']) {
