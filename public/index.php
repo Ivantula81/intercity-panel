@@ -172,9 +172,12 @@ switch ($page) {
         } catch (Exception $e) {
             $inbox = [];
         }
+        $buses = db()->query('SELECT * FROM buses ORDER BY code, model')->fetchAll();
+        $drivers = db()->query('SELECT * FROM drivers ORDER BY name')->fetchAll();
         view('layout', ['title' => 'Уведомления', 'page' => 'notifications',
             'content' => fn() => view('notifications', ['manifests' => $manifests, 'selectedId' => $selectedId,
-                'selected' => $selected, 'journal' => $journal, 'inbox' => $inbox, 'uploadError' => $uploadError ?? ''])]);
+                'selected' => $selected, 'journal' => $journal, 'inbox' => $inbox, 'buses' => $buses, 'drivers' => $drivers,
+                'uploadError' => $uploadError ?? ''])]);
         break;
 
     case 'broadcast':

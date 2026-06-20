@@ -71,8 +71,28 @@
             </div>
             <div class="facts mt">
                 <div><span>Дата и время</span><input class="cell" data-f="departure_view" value="<?= $selected['departure_at'] ? date('d.m.Y H:i', strtotime($selected['departure_at'])) : '' ?>" placeholder="дд.мм.гггг чч:мм"></div>
-                <div><span>Автобус</span><input class="cell" data-f="bus" value="<?= e($selected['bus']) ?>"></div>
-                <div><span>Телефон водителя</span><input class="cell" data-f="driver_phone" value="<?= e($selected['driver_phone']) ?>" placeholder="+7…"></div>
+                <div><span>Автобус</span>
+                    <?php if (!empty($buses)): ?>
+                    <select class="pick" onchange="pickBus(this)" title="Подобрать из справочника автобусов" style="width:100%;margin-bottom:4px;font-size:12px">
+                        <option value="">— из справочника —</option>
+                        <?php foreach ($buses as $b): $bl = trim(($b['code'] ?: '') . ' · ' . $b['model'] . ($b['plate'] ? ' · ' . $b['plate'] : ''), ' ·'); ?>
+                        <option data-code="<?= e($b['code'] ?: $b['plate']) ?>" data-phone="<?= e($b['driver_phone']) ?>"><?= e($bl ?: 'автобус') ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <?php endif; ?>
+                    <input class="cell" data-f="bus" value="<?= e($selected['bus']) ?>" placeholder="напр. 322 или вручную">
+                </div>
+                <div><span>Телефон водителя</span>
+                    <?php if (!empty($drivers)): ?>
+                    <select class="pick" onchange="pickDriver(this)" title="Подобрать водителя из справочника" style="width:100%;margin-bottom:4px;font-size:12px">
+                        <option value="">— водитель из справочника —</option>
+                        <?php foreach ($drivers as $d): ?>
+                        <option data-name="<?= e($d['name']) ?>" data-phone="<?= e($d['phone']) ?>"><?= e($d['name'] . ($d['phone'] ? ' · ' . $d['phone'] : '')) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <?php endif; ?>
+                    <input class="cell" data-f="driver_phone" value="<?= e($selected['driver_phone']) ?>" placeholder="+7…">
+                </div>
                 <div><span>Доп. информация <span class="muted" style="text-transform:none">(в сообщение, если заполнено)</span></span><input class="cell" data-f="extra_info" value="<?= e($selected['extra_info']) ?>" placeholder="напр. «при себе паспорт»"></div>
             </div>
             <div class="row mt" style="gap:14px">

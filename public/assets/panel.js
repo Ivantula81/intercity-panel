@@ -284,6 +284,39 @@ function schedulePreview(card, gi, now = false) {
         }
     }, now ? 50 : 700);
 }
+// Выбор автобуса из справочника → подставить номер + телефон водителя, применить к группам.
+async function pickBus(sel) {
+    const opt = sel.options[sel.selectedIndex];
+    sel.selectedIndex = 0;
+    if (!opt || (!opt.dataset.code && !opt.dataset.phone)) return;
+    const id = +document.getElementById('tripFacts').dataset.id;
+    if (opt.dataset.code) {
+        document.querySelector('#tripFacts [data-f="bus"]').value = opt.dataset.code;
+        await api('manifest.update', { id, field: 'bus', value: opt.dataset.code });
+    }
+    if (opt.dataset.phone) {
+        document.querySelector('#tripFacts [data-f="driver_phone"]').value = opt.dataset.phone;
+        await api('manifest.update', { id, field: 'driver_phone', value: opt.dataset.phone });
+    }
+    setState('Применено к группам');
+    refreshAllPreviews();
+}
+
+// Выбор водителя из справочника → подставить имя (в ведомость) + телефон, применить к группам.
+async function pickDriver(sel) {
+    const opt = sel.options[sel.selectedIndex];
+    sel.selectedIndex = 0;
+    if (!opt || (!opt.dataset.name && !opt.dataset.phone)) return;
+    const id = +document.getElementById('tripFacts').dataset.id;
+    if (opt.dataset.name) await api('manifest.update', { id, field: 'drivers', value: opt.dataset.name });
+    if (opt.dataset.phone) {
+        document.querySelector('#tripFacts [data-f="driver_phone"]').value = opt.dataset.phone;
+        await api('manifest.update', { id, field: 'driver_phone', value: opt.dataset.phone });
+    }
+    setState('Применено к группам');
+    refreshAllPreviews();
+}
+
 function refreshAllPreviews() {
     document.querySelectorAll('.gcard').forEach((card, gi) => schedulePreview(card, gi, true));
 }
