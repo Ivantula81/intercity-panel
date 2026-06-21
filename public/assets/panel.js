@@ -439,12 +439,12 @@ async function checkContactsChannels(btn) {
 
 function channelBadges(ch) {
     if (!ch) return '';
-    const defs = { whatsapp: ['WA', 'WhatsApp'], max: ['MAX', 'MAX'], telegram: ['TG', 'Telegram'] };
+    const defs = { whatsapp: ['WA', 'WhatsApp', 'wa'], max: ['MAX', 'MAX', 'max'], telegram: ['TG', 'Telegram', 'tg'] };
     const items = CHANNELS_ACTIVE.filter(k => defs[k]).map(k => {
-        const on = ch[k], lbl = defs[k][0], name = defs[k][1];
-        if (on === true) return `<span class="badge ok" style="padding:1px 6px;font-size:11px" title="${name}: есть">${lbl}</span>`;
-        if (on === false) return `<span class="badge" style="padding:1px 6px;font-size:11px;opacity:.4" title="${name}: нет">${lbl}</span>`;
-        return `<span class="badge muted" style="padding:1px 6px;font-size:11px" title="${name}: не проверено">${lbl}</span>`;
+        const on = ch[k], lbl = defs[k][0], name = defs[k][1], key = defs[k][2];
+        const cls = on === true ? 'on-' + key : (on === false ? 'off' : 'unk');
+        const t = on === true ? 'есть' : (on === false ? 'нет' : 'не проверено');
+        return `<span class="ch-badge ${cls}" title="${name}: ${t}">${lbl}</span>`;
     });
     return items.length ? `<span style="display:inline-flex;gap:3px">${items.join('')}</span>` : '';
 }

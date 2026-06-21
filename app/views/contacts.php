@@ -49,11 +49,11 @@
                         <td><span class="badge muted"><?= (int) $c['messages_count'] ?></span></td>
                         <td><?= (int) $c['trips_count'] ?></td>
                         <td style="white-space:nowrap"><?php
-                            foreach (['has_whatsapp' => 'WA', 'has_max' => 'MAX', 'has_telegram' => 'TG'] as $col => $lbl):
+                            foreach (['has_whatsapp' => ['WA', 'wa'], 'has_max' => ['MAX', 'max'], 'has_telegram' => ['TG', 'tg']] as $col => $d):
                                 $v = $c[$col] ?? null;
-                                if ($v === null) echo '<span class="badge muted" style="padding:1px 6px;font-size:11px" title="не проверено">' . $lbl . '</span> ';
-                                elseif ((int) $v === 1) echo '<span class="badge ok" style="padding:1px 6px;font-size:11px" title="есть">' . $lbl . '</span> ';
-                                else echo '<span class="badge" style="padding:1px 6px;font-size:11px;opacity:.4" title="нет">' . $lbl . '</span> ';
+                                $cls = $v === null ? 'unk' : ((int) $v === 1 ? 'on-' . $d[1] : 'off');
+                                $tt = $v === null ? 'не проверено' : ((int) $v === 1 ? 'есть' : 'нет');
+                                echo '<span class="ch-badge ' . $cls . '" title="' . $d[0] . ': ' . $tt . '">' . $d[0] . '</span> ';
                             endforeach;
                         ?></td>
                         <td class="muted small"><?= e($c['last_route']) ?></td>

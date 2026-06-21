@@ -274,6 +274,13 @@ table.cat input.cell, table.cat select.cell { font-size: 13.5px; }
 .badge.warn { color: var(--warn); background: var(--warn-bg); }
 .badge.err { color: var(--err); background: var(--err-bg); }
 .badge.muted { color: var(--muted); background: var(--line-soft); }
+/* Бейджи наличия каналов — фирменные цвета (WhatsApp зелёный, MAX фиолетовый, Telegram голубой) */
+.ch-badge { display: inline-block; padding: 1px 7px; border-radius: 6px; font-size: 11px; font-weight: 600; line-height: 1.55; white-space: nowrap; }
+.ch-badge.on-wa  { color: #0e7a44; background: #e3f7ec; }
+.ch-badge.on-max { color: #5b2bd6; background: #ece6ff; }
+.ch-badge.on-tg  { color: #1683b8; background: #e2f3fc; }
+.ch-badge.off    { color: #9aa0a6; background: transparent; border: 1px solid var(--line-soft); }
+.ch-badge.unk    { color: #9aa0a6; background: var(--line-soft); }
 .status { display: inline-flex; align-items: center; padding: 5px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 650; white-space: nowrap; }
 .status-ok { color: var(--ok); background: var(--ok-bg); }
 .status-warn { color: var(--warn); background: var(--warn-bg); }
