@@ -1,8 +1,7 @@
 <?php
 /** @var string $filter @var array $counts @var array $rows */
-$CHL = ['whatsapp' => ['WhatsApp', '#16a765'], 'max' => ['MAX', '#4986e7'], 'email' => ['Email', '#9a6310']];
-$chName = fn($c) => $CHL[$c][0] ?? ($c ?: '—');
-$chColor = fn($c) => $CHL[$c][1] ?? '#9a9ab0';
+$chName = fn($c) => msg_channel_meta((string) $c)[0];
+$chColor = fn($c) => msg_channel_meta((string) $c)[1];
 $tabs = [
     'all' => ['Все', (int) $counts['total']],
     'failed' => ['Ошибки', (int) $counts['failed']],
@@ -48,6 +47,6 @@ $tabs = [
             </div>
         <?php endforeach; ?>
     </div>
-    <p class="muted small" style="margin-top:12px">Показаны последние 300 записей. Каналы: WhatsApp (Evolution), MAX (Green API), Email (SMTP).</p>
+    <p class="muted small" style="margin-top:12px">Показаны последние 300 записей. Каналы: WhatsApp, MAX, Telegram, SMS, Email.</p>
     <?php endif; ?>
 </div>

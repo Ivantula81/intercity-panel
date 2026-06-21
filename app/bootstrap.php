@@ -122,6 +122,19 @@ function e(?string $v): string
     return htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
 }
 
+// Единый источник: метка и фирменный цвет канала сообщения (WhatsApp/MAX/Telegram/SMS/Email).
+function msg_channel_meta(string $ch): array
+{
+    $m = [
+        'whatsapp' => ['WhatsApp', '#1faa55'],
+        'max'      => ['MAX', '#7c4dff'],
+        'telegram' => ['Telegram', '#229ed9'],
+        'sms'      => ['SMS', '#e0a900'],
+        'email'    => ['Email', '#9a6310'],
+    ];
+    return $m[$ch] ?? [$ch !== '' ? $ch : '—', '#9a9ab0'];
+}
+
 function json_out(array $data, int $code = 200): never
 {
     http_response_code($code);

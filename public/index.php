@@ -43,7 +43,7 @@ switch ($page) {
         $stats = [
             'manifests' => (int) db()->query('SELECT COUNT(*) FROM manifests')->fetchColumn(),
             'sent_today' => (int) db()->query("SELECT COUNT(*) FROM messages WHERE status='sent' AND sent_at >= CURDATE()")->fetchColumn(),
-            'failed' => (int) db()->query("SELECT COUNT(*) FROM messages WHERE status='failed'")->fetchColumn(),
+            'failed' => (int) db()->query("SELECT COUNT(*) FROM messages WHERE status='failed' AND created_at >= CURDATE()")->fetchColumn(),
         ];
         $recentManifests = db()->query('SELECT * FROM manifests ORDER BY id DESC LIMIT 6')->fetchAll();
         view('layout', ['title' => 'Панель управления', 'page' => 'dashboard',

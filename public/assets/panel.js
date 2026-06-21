@@ -1,15 +1,28 @@
+// Все вызовы API всегда возвращают объект {ok, error} — без исключений, чтобы экраны
+// не зависали на «Загрузке…» при обрыве сети, истёкшей сессии или не-JSON ответе.
 async function api(action, data = {}) {
-    const r = await fetch('/?p=api&a=' + action, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF': window.CSRF },
-        body: JSON.stringify(data),
-    });
-    return r.json();
+    let r;
+    try {
+        r = await fetch('/?p=api&a=' + action, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF': window.CSRF },
+            body: JSON.stringify(data),
+        });
+    } catch (e) {
+        return { ok: false, error: 'Нет связи с сервером — проверьте интернет и повторите.' };
+    }
+    if (r.status === 401 || r.status === 403) return { ok: false, error: 'Сессия истекла — обновите страницу и войдите снова.' };
+    try { return await r.json(); }
+    catch (e) { return { ok: false, error: 'Сервер ответил некорректно (код ' + r.status + '). Повторите позже.' }; }
 }
 async function apiUpload(action, formData) {
     formData.append('csrf', window.CSRF);
-    const r = await fetch('/?p=api&a=' + action, { method: 'POST', body: formData });
-    return r.json();
+    let r;
+    try { r = await fetch('/?p=api&a=' + action, { method: 'POST', body: formData }); }
+    catch (e) { return { ok: false, error: 'Нет связи с сервером — проверьте интернет и повторите.' }; }
+    if (r.status === 401 || r.status === 403) return { ok: false, error: 'Сессия истекла — обновите страницу.' };
+    try { return await r.json(); }
+    catch (e) { return { ok: false, error: 'Сервер ответил некорректно (код ' + r.status + ').' }; }
 }
 function esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1011,6 +1024,11 @@ function chatInitial(name, phone) {
     const s = String(name || phone || '?').trim();
     return s ? s[0].toUpperCase() : '?';
 }
+function chatChannelTag(m) {
+    const map = { whatsapp: ['WhatsApp', '#0e7a44'], max: ['MAX', '#5b2bd6'], telegram: ['Telegram', '#1683b8'], sms: ['SMS', '#a85d00'], email: ['Email', '#9a6310'] };
+    const d = map[(m.channel || '').toLowerCase()];
+    return d ? `<span style="color:${d[1]};font-size:10px;font-weight:600;margin-right:5px">${d[0]}</span>` : '';
+}
 function chatTicks(m) {
     if (m.read) return '<span class="cm-tick read">✓✓</span>';
     if (m.delivered) return '<span class="cm-tick">✓✓</span>';
@@ -1108,7 +1126,7 @@ async function chatLoadMessages(force) {
         ? r.messages.map(m => `<div class="cm ${m.dir}"><div class="cm-bubble">
             ${chatMedia(m)}
             ${chatText(m)}
-            <span class="cm-meta">${esc(chatTime(m.ts))}${m.dir === 'out' ? chatTicks(m) : ''}</span>
+            <span class="cm-meta">${chatChannelTag(m)}${esc(chatTime(m.ts))}${m.dir === 'out' ? chatTicks(m) : ''}</span>
           </div></div>`).join('')
         : '<div class="chat-hint">Сообщений пока нет — напишите первым.</div>';
     if (force || atBottom) body.scrollTop = body.scrollHeight;

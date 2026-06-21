@@ -490,6 +490,8 @@ details summary::-webkit-details-marker { color: var(--muted); }
     .stat .num { font-size: 24px; }
     .stat .lbl { font-size: 12px; }
     .facts { grid-template-columns: 1fr; }
+    /* на мобильном панель отправки не липкая — иначе перекрывает форму и нижнюю навигацию */
+    .send-bar { position: static; bottom: auto; box-shadow: none; }
 
     /* крупные тач-цели */
     .btn, .btn-link { min-height: 46px; }

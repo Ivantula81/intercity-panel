@@ -43,8 +43,8 @@ $nav = [
     'logs'          => ['/?p=logs', 'Логи', 'doc'],
     'settings'      => ['/?p=settings', 'Настройки', 'settings'],
 ];
-$bottom = ['dashboard', 'sales', 'chats', 'manifests'];
-$sheetKeys = ['notifications', 'contacts', 'broadcast', 'catalogs', 'logs', 'settings'];
+$bottom = ['dashboard', 'notifications', 'chats', 'manifests'];
+$sheetKeys = ['sales', 'contacts', 'broadcast', 'catalogs', 'logs', 'settings'];
 ?><!doctype html>
 <html lang="ru">
 <head>

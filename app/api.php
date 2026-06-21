@@ -892,6 +892,8 @@ switch ($action) {
         $st->execute([$phone, $phone]);
         $msgs = [];
         foreach ($st->fetchAll() as $m) {
+            $ch = (string) ($m['channel'] ?? '');
+            if ($m['dir'] === 'in') $ch = ($ch === 'greenapi') ? 'max' : 'whatsapp'; // входящие: instance → канал
             $msgs[] = [
                 'body' => $m['body'],
                 'ts' => $m['ts'],
@@ -899,6 +901,7 @@ switch ($action) {
                 'status' => $m['status'],
                 'delivered' => $m['delivered_at'] !== null,
                 'read' => $m['read_at'] !== null,
+                'channel' => $ch,
                 'media' => $m['media_url'] ?: '',
                 'media_type' => $m['media_type'] ?: '',
             ];

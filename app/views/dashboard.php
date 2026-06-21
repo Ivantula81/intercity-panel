@@ -12,7 +12,7 @@
 <div class="grid grid-3">
     <div class="stat"><div class="num"><?= $stats['manifests'] ?></div><div class="lbl">ведомостей в системе</div></div>
     <div class="stat"><div class="num"><?= $stats['sent_today'] ?></div><div class="lbl">уведомлений отправлено сегодня</div></div>
-    <div class="stat"><div class="num" style="<?= $stats['failed'] > 0 ? 'color:var(--err)' : '' ?>"><?= $stats['failed'] ?></div><div class="lbl">ошибок доставки</div></div>
+    <div class="stat"><div class="num" style="<?= $stats['failed'] > 0 ? 'color:var(--err)' : '' ?>"><?= $stats['failed'] ?></div><div class="lbl">ошибок доставки сегодня</div></div>
 </div>
 
 <div class="card mt">

@@ -6,8 +6,8 @@
     </div>
     <div class="head-actions">
         <?php if ($selected): ?>
-            <a class="btn ghost sm" href="/?p=notifications&fresh=1" title="Очистить экран и загрузить новую">✕ Очистить</a>
-            <button class="btn ghost sm" onclick="deleteManifestFromNotif(<?= $selectedId ?>)" title="Удалить ведомость из системы">🗑 Удалить ведомость</button>
+            <a class="btn ghost sm" href="/?p=notifications&fresh=1" title="Сбросить выбор и начать с новой ведомости">↺ Сбросить</a>
+            <button class="btn ghost sm" style="color:var(--err);margin-left:auto" onclick="deleteManifestFromNotif(<?= $selectedId ?>)" title="Удалить ведомость из системы (необратимо)">🗑 Удалить</button>
         <?php endif; ?>
         <span id="waStatus" class="badge muted">проверяю канал…</span>
     </div>
@@ -131,14 +131,8 @@
 </div>
 <?php endif; ?>
 
-<!-- Произвольный номер + журнал -->
-<div class="split mt">
-    <div class="card">
-        <h2>Отправить на произвольный номер</h2>
-        <label class="f">Номер телефона<input type="text" id="sNum" placeholder="+7 905 123-45-67"></label>
-        <label class="f">Текст<textarea id="sText" rows="3" placeholder="Любой текст — уйдёт как есть"></textarea></label>
-        <div class="row"><button class="btn" onclick="sendSingle()"><?= icon('send') ?> Отправить</button><span class="small" id="sState"></span></div>
-    </div>
+<!-- Журнал доставки + ответы пассажиров -->
+<div class="mt">
     <div>
     <div class="card">
         <h2>Журнал доставки</h2>
