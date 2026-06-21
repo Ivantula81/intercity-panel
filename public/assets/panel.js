@@ -1007,8 +1007,15 @@ async function savePass() {
 }
 
 /* ── Чаты ── */
-const chat = { phone: null, name: '', threads: [], poll: null, count: -1, busy: false };
+const chat = { phone: null, name: '', threads: [], poll: null, count: -1, busy: false, channelFilter: 'all', channelCounts: {} };
 const $id = id => document.getElementById(id);
+const CHAN_META = {
+    whatsapp: { name: 'WhatsApp', short: 'WA', color: '#0e7a44' },
+    max:      { name: 'MAX', short: 'MAX', color: '#5b2bd6' },
+    telegram: { name: 'Telegram', short: 'TG', color: '#1683b8' },
+    sms:      { name: 'SMS', short: 'SMS', color: '#a85d00' },
+    email:    { name: 'Email', short: 'Email', color: '#9a6310' },
+};
 
 function chatTime(ts) {
     if (!ts) return '';
@@ -1025,9 +1032,8 @@ function chatInitial(name, phone) {
     return s ? s[0].toUpperCase() : '?';
 }
 function chatChannelTag(m) {
-    const map = { whatsapp: ['WhatsApp', '#0e7a44'], max: ['MAX', '#5b2bd6'], telegram: ['Telegram', '#1683b8'], sms: ['SMS', '#a85d00'], email: ['Email', '#9a6310'] };
-    const d = map[(m.channel || '').toLowerCase()];
-    return d ? `<span style="color:${d[1]};font-size:10px;font-weight:600;margin-right:5px">${d[0]}</span>` : '';
+    const d = CHAN_META[(m.channel || '').toLowerCase()];
+    return d ? `<span style="color:${d.color};font-size:10px;font-weight:600;margin-right:5px">${d.name}</span>` : '';
 }
 function chatTicks(m) {
     if (m.read) return '<span class="cm-tick read">✓✓</span>';
@@ -1057,7 +1063,28 @@ async function chatLoadThreads() {
     const r = await api('chat.threads');
     if (!r.ok) return;
     chat.threads = r.threads || [];
+    chat.channelCounts = r.channel_counts || {};
+    chatRenderTabs();
     chatRenderThreads();
+}
+function chatRenderTabs() {
+    const box = $id('chatChannelTabs');
+    if (!box) return;
+    const c = chat.channelCounts || {};
+    const total = Object.values(c).reduce((a, b) => a + b, 0);
+    let html = `<button class="chtab${chat.channelFilter === 'all' ? ' active' : ''}" onclick="chatSetChannel('all')">Все ${total}</button>`;
+    ['whatsapp', 'max', 'telegram', 'sms', 'email'].forEach(ch => {
+        const n = c[ch] || 0;
+        if (!n) return;
+        const m = CHAN_META[ch];
+        html += `<button class="chtab${chat.channelFilter === ch ? ' active' : ''}" style="--chc:${m.color}" onclick="chatSetChannel('${ch}')">${m.short} ${n}</button>`;
+    });
+    box.innerHTML = html;
+}
+function chatSetChannel(ch) {
+    chat.channelFilter = ch;
+    chatRenderTabs();
+    chatApplyFilters();
 }
 function chatRenderThreads() {
     const box = $id('chatThreads');
@@ -1066,22 +1093,29 @@ function chatRenderThreads() {
     box.innerHTML = chat.threads.map(t => {
         const preview = (t.last_dir === 'out' ? 'Вы: ' : '') + (t.last || '');
         const badge = t.unread > 0 ? `<span class="ct-badge">${t.unread}</span>` : '';
+        const m = CHAN_META[t.channel];
+        const chTag = m ? `<span class="ct-ch" style="color:${m.color}">${m.short}</span>` : '';
         const search = ((t.name || '') + ' ' + t.phone).toLowerCase();
-        return `<div class="chat-thread${t.phone === chat.phone ? ' active' : ''}${t.unread > 0 ? ' unread' : ''}" data-phone="${esc(t.phone)}" data-search="${esc(search)}" onclick="chatOpen('${esc(t.phone)}')">
+        return `<div class="chat-thread${t.phone === chat.phone ? ' active' : ''}${t.unread > 0 ? ' unread' : ''}" data-phone="${esc(t.phone)}" data-channel="${esc(t.channel || '')}" data-search="${esc(search)}" onclick="chatOpen('${esc(t.phone)}')">
             <span class="ct-ava">${esc(chatInitial(t.name, t.phone))}</span>
             <div class="ct-main">
                 <div class="ct-top"><span class="ct-name">${esc(t.name || t.phone)}</span><span class="ct-time">${esc(chatTime(t.last_at))}</span></div>
-                <div class="ct-bot"><span class="ct-last">${esc(preview)}</span>${badge}</div>
+                <div class="ct-bot"><span class="ct-last">${esc(preview)}</span>${chTag}${badge}</div>
             </div></div>`;
     }).join('');
-    const q = $id('chatSearch');
-    if (q && q.value) chatFilter(q.value);
+    chatApplyFilters();
 }
-function chatFilter(v) {
-    const q = v.trim().toLowerCase();
+function chatApplyFilters() {
+    const q = ($id('chatSearch')?.value || '').trim().toLowerCase();
+    const ch = chat.channelFilter;
     document.querySelectorAll('#chatThreads .chat-thread').forEach(el => {
-        el.style.display = (!q || el.dataset.search.includes(q)) ? '' : 'none';
+        const okSearch = !q || el.dataset.search.includes(q);
+        const okChan = ch === 'all' || el.dataset.channel === ch;
+        el.style.display = (okSearch && okChan) ? '' : 'none';
     });
+}
+function chatFilter() {
+    chatApplyFilters();
 }
 
 async function chatOpen(phone) {

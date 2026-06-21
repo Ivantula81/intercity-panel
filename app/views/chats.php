@@ -3,7 +3,8 @@
 
     <aside class="chat-list" id="chatList">
         <div class="chat-list-head">
-            <input type="search" id="chatSearch" class="chat-search" placeholder="Поиск по диалогам" oninput="chatFilter(this.value)" autocomplete="off">
+            <input type="search" id="chatSearch" class="chat-search" placeholder="Поиск по имени, номеру" oninput="chatFilter()" autocomplete="off">
+            <div class="chat-ch-tabs" id="chatChannelTabs"></div>
         </div>
         <div class="chat-threads" id="chatThreads">
             <div class="chat-hint">Загрузка…</div>

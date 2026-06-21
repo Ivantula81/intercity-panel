@@ -841,13 +841,13 @@ switch ($action) {
     /* ── Чаты ── */
 
     case 'chat.threads':
-        // последнее сообщение по каждому контакту (вход + исход), непрочитанные
+        // последнее сообщение по каждому контакту (вход + исход), непрочитанные, канал последнего сообщения
         $rows = db()->query(
-            "SELECT phone, name, body, ts, dir FROM (
-                SELECT recipient phone, passenger_name name, body, COALESCE(sent_at, created_at) ts, 'out' dir
+            "SELECT phone, name, body, ts, dir, channel FROM (
+                SELECT recipient phone, passenger_name name, body, COALESCE(sent_at, created_at) ts, 'out' dir, channel
                   FROM messages WHERE recipient LIKE '+%'
                 UNION ALL
-                SELECT phone, name, body, received_at ts, 'in' dir FROM inbox
+                SELECT phone, name, body, received_at ts, 'in' dir, instance channel FROM inbox
              ) u ORDER BY ts DESC"
         )->fetchAll();
 
@@ -861,9 +861,13 @@ switch ($action) {
         }
 
         $threads = [];
+        $counts = ['whatsapp' => 0, 'max' => 0, 'telegram' => 0, 'sms' => 0, 'email' => 0];
         foreach ($rows as $r) {
             $ph = $r['phone'];
             if (isset($threads[$ph])) continue; // уже взяли последнее
+            $ch = $r['dir'] === 'in'
+                ? (($r['channel'] === 'greenapi') ? 'max' : 'whatsapp')   // входящие: instance → канал
+                : ((string) $r['channel'] ?: 'whatsapp');
             $threads[$ph] = [
                 'phone' => $ph,
                 'name' => $names[$ph] ?? ($r['name'] ?: ''),
@@ -871,9 +875,11 @@ switch ($action) {
                 'last_at' => $r['ts'],
                 'last_dir' => $r['dir'],
                 'unread' => $unread[$ph] ?? 0,
+                'channel' => $ch,
             ];
+            if (isset($counts[$ch])) $counts[$ch]++;
         }
-        json_out(['ok' => true, 'threads' => array_values($threads)]);
+        json_out(['ok' => true, 'threads' => array_values($threads), 'channel_counts' => $counts]);
 
     case 'chat.messages':
         $phone = (string) ($body['phone'] ?? '');
