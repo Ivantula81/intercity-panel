@@ -3,7 +3,7 @@
 // Загрузка CSV-ведомости в БД + авто-подстановка водителя/телефона из справочника автобусов.
 // Возвращает id ведомости. Бросает Exception при ошибке.
 
-function import_manifest_csv(array $file): int
+function import_manifest_csv(array $file, ?array $parsedData = null): int
 {
     if ((int) $file['error'] !== UPLOAD_ERR_OK) {
         throw new RuntimeException('Не удалось загрузить файл (код ' . (int) $file['error'] . ').');
@@ -14,7 +14,7 @@ function import_manifest_csv(array $file): int
 
     require_once PANEL_ROOT . '/lib/ManifestParser.php';
     $parser = new ManifestParser();
-    $parsed = $parser->parseFile($file['tmp_name'], $file['name']);
+    $parsed = $parsedData ?? $parser->parseFile($file['tmp_name'], $file['name']);
 
     $departure = null;
     if (preg_match('/(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/', (string) $parsed['trip']['departure_at'], $mm) && (int) $mm[3] >= 2000) {
@@ -55,7 +55,7 @@ function import_manifest_csv(array $file): int
         ]);
     $manifestId = (int) $pdo->lastInsertId();
 
-    $ins = $pdo->prepare('INSERT INTO passengers (manifest_id, seat, name, phone, doc, ticket, from_stop, to_stop, status, sort, from_id, to_id, birthdate, price, citizenship, pay_note) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+    $ins = $pdo->prepare('INSERT INTO passengers (manifest_id, seat, name, phone, doc, ticket, from_stop, to_stop, status, sort, from_id, to_id, birthdate, price, citizenship, pay_note, manifest_price, agent_raw) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
     require_once PANEL_ROOT . '/app/contacts.php';
     $newStations = []; // id => название (для авто-заведения в справочник)
     $groupTimes = []; // станция => ['date'=>дд.мм.гггг, 'time'=>чч:мм] — время посадки из ведомости
@@ -65,6 +65,7 @@ function import_manifest_csv(array $file): int
             $p['doc'] ?? '', $p['ticket'] ?? '', $p['from'], $p['to'], $p['status'], $i,
             $p['from_id'] ?? null, $p['to_id'] ?? null,
             $p['birthdate'] ?? '', $p['price'] ?? null, $p['citizenship'] ?? '', $p['pay_note'] ?? '',
+            $p['price'] ?? null, $p['agent_raw'] ?? '',
         ]);
         if (!empty($p['phone_valid'])) {
             contact_log_trip($p['phone'], $p['name'], $parsed['trip']['route']);
