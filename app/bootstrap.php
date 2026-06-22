@@ -14,8 +14,10 @@ session_set_cookie_params([
     'httponly' => true,
     'samesite' => 'Lax',
 ]);
+$hadSessionCookie = isset($_COOKIE[session_name()]);
 session_start();
-if (!headers_sent() && session_id() !== '') {
+// Новую cookie уже отправляет session_start(); существующую продлеваем скользяще.
+if ($hadSessionCookie && !headers_sent() && session_id() !== '') {
     setcookie(session_name(), session_id(), [
         'expires' => time() + $sessionLifetime,
         'path' => '/',
