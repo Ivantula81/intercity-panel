@@ -4,7 +4,7 @@
 
 - PWA manifest и иконки 180/192/512;
 - standalone-режим iOS;
-- service worker с offline-экраном и кэшем статических файлов;
+- PWA работает без перехвата навигации service worker: на iOS он вызывал WebKit `unknown error` до обращения к серверу;
 - безопасную скользящую сессию на 30 дней;
 - защиту session cookie: Secure, HttpOnly, SameSite=Lax;
 - смену session ID после входа.
