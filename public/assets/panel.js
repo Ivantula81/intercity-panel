@@ -1006,8 +1006,10 @@ async function savePass() {
     document.getElementById('passState').textContent = r.ok ? 'Пароль изменён' : (r.error || 'Ошибка');
 }
 
-/* ── Чаты ── */
-const chat = { phone: null, name: '', threads: [], poll: null, count: -1, busy: false, channelFilter: 'all', channelCounts: {} };
+/* ── Чаты / единый inbox ── */
+const chat = { conversationId: null, conversation: null, threads: [], poll: null, busy: false,
+    queue: 'open', channelFilter: 'all', channelCounts: {}, counts: {}, users: [], currentUserId: 0,
+    cursor: null, beforeCursor: null, hasOlder: false, messages: [], events: [], searchTimer: null };
 const $id = id => document.getElementById(id);
 const CHAN_META = {
     whatsapp: { name: 'WhatsApp', short: 'WA', color: '#0e7a44' },
@@ -1017,196 +1019,120 @@ const CHAN_META = {
     email:    { name: 'Email', short: 'Email', color: '#9a6310' },
 };
 
+async function chatInboxApi(action, data = {}) {
+    const response = await fetch('/?p=chat_api&a=' + encodeURIComponent(action), {
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF': window.CSRF}, body: JSON.stringify(data)
+    });
+    const result = await response.json().catch(() => ({ok:false,error:'Некорректный ответ сервера'}));
+    if (!result.ok) throw new Error(result.error || 'Ошибка inbox');
+    return result;
+}
 function chatTime(ts) {
     if (!ts) return '';
-    const [date, t = ''] = String(ts).split(' ');
-    const time = t.slice(0, 5);
-    const now = new Date();
+    const [date, t = ''] = String(ts).split(' '); const time = t.slice(0, 5); const now = new Date();
     const today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
     if (date === today) return time;
-    const p = date.split('-');
-    return p.length === 3 ? p[2] + '.' + p[1] + ' ' + time : time;
+    const p = date.split('-'); return p.length === 3 ? p[2] + '.' + p[1] + ' ' + time : time;
 }
-function chatInitial(name, phone) {
-    const s = String(name || phone || '?').trim();
-    return s ? s[0].toUpperCase() : '?';
-}
-function chatChannelTag(m) {
-    const d = CHAN_META[(m.channel || '').toLowerCase()];
-    return d ? `<span style="color:${d.color};font-size:10px;font-weight:600;margin-right:5px">${d.name}</span>` : '';
-}
+function chatInitial(name, phone) { const s = String(name || phone || '?').trim(); return s ? s[0].toUpperCase() : '?'; }
+function chatChannelTag(m) { const d = CHAN_META[(m.channel || '').toLowerCase()]; return d ? `<span style="color:${d.color};font-size:10px;font-weight:600;margin-right:5px">${d.name}</span>` : ''; }
 function chatTicks(m) {
-    if (m.read) return '<span class="cm-tick read">✓✓</span>';
-    if (m.delivered) return '<span class="cm-tick">✓✓</span>';
+    if (m.read_at || m.read) return '<span class="cm-tick read">✓✓</span>';
+    if (m.delivered_at || m.delivered) return '<span class="cm-tick">✓✓</span>';
     if (m.status === 'sent') return '<span class="cm-tick">✓</span>';
     if (m.status === 'failed') return '<span class="cm-tick fail">!</span>';
     return '<span class="cm-tick">·</span>';
 }
 function chatMedia(m) {
     if (!m.media) return '';
-    if ((m.media_type || '').startsWith('image/')) {
-        return `<a class="cm-media" href="${esc(m.media)}" target="_blank" rel="noopener"><img src="${esc(m.media)}" alt="" loading="lazy"></a>`;
-    }
+    if ((m.media_type || '').startsWith('image/')) return `<a class="cm-media" href="${esc(m.media)}" target="_blank" rel="noopener"><img src="${esc(m.media)}" alt="" loading="lazy"></a>`;
     const label = m.body && m.body.trim() ? m.body : 'Файл';
-    return `<a class="cm-file" href="${esc(m.media)}" target="_blank" rel="noopener" download>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-        <span>${esc(label)}</span></a>`;
+    return `<a class="cm-file" href="${esc(m.media)}" target="_blank" rel="noopener" download><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span>${esc(label)}</span></a>`;
 }
-function chatText(m) {
-    // для картинок показываем подпись; для файлов подпись уже в чипе
-    if (!m.body || !m.body.trim()) return '';
-    if (m.media && !(m.media_type || '').startsWith('image/')) return '';
-    return `<span class="cm-text">${esc(m.body)}</span>`;
-}
+function chatText(m) { if (!m.body || !m.body.trim()) return ''; if (m.media && !(m.media_type || '').startsWith('image/')) return ''; return `<span class="cm-text">${esc(m.body)}</span>`; }
 
-async function chatLoadThreads() {
-    const r = await api('chat.threads');
-    if (!r.ok) return;
-    chat.threads = r.threads || [];
-    chat.channelCounts = r.channel_counts || {};
-    chatRenderTabs();
-    chatRenderThreads();
+async function chatLoadThreads(append = false) {
+    try {
+        const r = await chatInboxApi('threads', {queue:chat.queue,channel:chat.channelFilter,
+            search:($id('chatSearch')?.value || '').trim(),cursor:append ? chat.cursor : null});
+        chat.threads = append ? chat.threads.concat(r.threads || []) : (r.threads || []);
+        chat.cursor = r.next_cursor || null; chat.channelCounts = r.channel_counts || {}; chat.counts = r.counts || {};
+        chatRenderQueues(); chatRenderTabs(); chatRenderThreads();
+    } catch (e) { const box=$id('chatThreads'); if(box) box.innerHTML=`<div class="chat-hint error">${esc(e.message)}</div>`; }
+}
+function chatRenderQueues() {
+    document.querySelectorAll('#chatQueues .cq[data-queue]').forEach(el => el.classList.toggle('active',el.dataset.queue===chat.queue));
+    document.querySelectorAll('#chatQueues [data-count]').forEach(el => el.textContent=Number(chat.counts[el.dataset.count]||0));
 }
 function chatRenderTabs() {
-    const box = $id('chatChannelTabs');
-    if (!box) return;
-    const c = chat.channelCounts || {};
-    const total = Object.values(c).reduce((a, b) => a + b, 0);
-    let html = `<button class="chtab${chat.channelFilter === 'all' ? ' active' : ''}" onclick="chatSetChannel('all')">Все ${total}</button>`;
-    ['whatsapp', 'max', 'telegram', 'sms', 'email'].forEach(ch => {
-        const n = c[ch] || 0;
-        if (!n) return;
-        const m = CHAN_META[ch];
-        html += `<button class="chtab${chat.channelFilter === ch ? ' active' : ''}" style="--chc:${m.color}" onclick="chatSetChannel('${ch}')">${m.short} ${n}</button>`;
-    });
-    box.innerHTML = html;
+    const box=$id('chatChannelTabs'); if(!box) return; const c=chat.channelCounts||{};
+    const total=Object.values(c).reduce((a,b)=>a+Number(b||0),0);
+    let html=`<button class="cq channel${chat.channelFilter==='all'?' active':''}" onclick="chatSetChannel('all')"><span>Все каналы</span><b>${total}</b></button>`;
+    ['whatsapp','max','telegram','sms','email'].forEach(ch=>{const n=Number(c[ch]||0);if(!n)return;const m=CHAN_META[ch];html+=`<button class="cq channel${chat.channelFilter===ch?' active':''}" style="--chc:${m.color}" onclick="chatSetChannel('${ch}')"><span><i></i>${m.name}</span><b>${n}</b></button>`;});
+    box.innerHTML=html;
 }
-function chatSetChannel(ch) {
-    chat.channelFilter = ch;
-    chatRenderTabs();
-    chatApplyFilters();
-}
+function chatSetQueue(queue) { chat.queue=queue; chat.cursor=null; chatLoadThreads(); }
+function chatSetChannel(channel) { chat.channelFilter=channel; chat.cursor=null; chatLoadThreads(); }
 function chatRenderThreads() {
-    const box = $id('chatThreads');
-    if (!box) return;
-    if (!chat.threads.length) { box.innerHTML = '<div class="chat-hint">Пока нет диалогов.<br>Они появятся после первого сообщения.</div>'; return; }
-    box.innerHTML = chat.threads.map(t => {
-        const preview = (t.last_dir === 'out' ? 'Вы: ' : '') + (t.last || '');
-        const badge = t.unread > 0 ? `<span class="ct-badge">${t.unread}</span>` : '';
-        const m = CHAN_META[t.channel];
-        const chTag = m ? `<span class="ct-ch" style="color:${m.color}">${m.short}</span>` : '';
-        const search = ((t.name || '') + ' ' + t.phone).toLowerCase();
-        return `<div class="chat-thread${t.phone === chat.phone ? ' active' : ''}${t.unread > 0 ? ' unread' : ''}" data-phone="${esc(t.phone)}" data-channel="${esc(t.channel || '')}" data-search="${esc(search)}" onclick="chatOpen('${esc(t.phone)}')">
-            <span class="ct-ava">${esc(chatInitial(t.name, t.phone))}</span>
-            <div class="ct-main">
-                <div class="ct-top"><span class="ct-name">${esc(t.name || t.phone)}</span><span class="ct-time">${esc(chatTime(t.last_at))}</span></div>
-                <div class="ct-bot"><span class="ct-last">${esc(preview)}</span>${chTag}${badge}</div>
-            </div></div>`;
-    }).join('');
-    chatApplyFilters();
+    const box=$id('chatThreads'); if(!box)return;
+    if(!chat.threads.length){box.innerHTML='<div class="chat-hint">В этой очереди пока нет диалогов.</div>';return;}
+    box.innerHTML=chat.threads.map(t=>{
+        const name=t.contact_name||t.contact_phone||t.external_chat_id; const preview=(t.last_direction==='out'?'Вы: ':'')+(t.last_message_preview||'');
+        const badge=Number(t.unread_count)>0?`<span class="ct-badge">${Number(t.unread_count)}</span>`:'';const m=CHAN_META[t.channel];
+        const chTag=m?`<span class="ct-ch" style="color:${m.color}">${m.short}</span>`:'';
+        const priority=t.priority==='urgent'?'<span class="ct-priority urgent">!</span>':(t.priority==='high'?'<span class="ct-priority">!</span>':'');
+        return `<div class="chat-thread${Number(t.id)===chat.conversationId?' active':''}${Number(t.unread_count)>0?' unread':''}" data-id="${Number(t.id)}" onclick="chatOpen(${Number(t.id)})"><span class="ct-ava">${esc(chatInitial(name,t.contact_phone))}</span><div class="ct-main"><div class="ct-top"><span class="ct-name">${priority}${esc(name)}</span><span class="ct-time">${esc(chatTime(t.last_message_at))}</span></div><div class="ct-bot"><span class="ct-last">${esc(preview)}</span>${chTag}${badge}</div><div class="ct-owner">${esc(t.assignee_name||'Без оператора')}</div></div></div>`;
+    }).join('')+(chat.cursor?'<button class="chat-more" onclick="chatLoadThreads(true)">Показать ещё</button>':'');
 }
-function chatApplyFilters() {
-    const q = ($id('chatSearch')?.value || '').trim().toLowerCase();
-    const ch = chat.channelFilter;
-    document.querySelectorAll('#chatThreads .chat-thread').forEach(el => {
-        const okSearch = !q || el.dataset.search.includes(q);
-        const okChan = ch === 'all' || el.dataset.channel === ch;
-        el.style.display = (okSearch && okChan) ? '' : 'none';
-    });
-}
-function chatFilter() {
-    chatApplyFilters();
-}
+function chatFilter() { clearTimeout(chat.searchTimer); chat.searchTimer=setTimeout(()=>{chat.cursor=null;chatLoadThreads();},260); }
 
-async function chatOpen(phone) {
-    chat.phone = phone;
-    chat.count = -1;
-    $id('chatEmpty').hidden = true;
-    $id('chatPane').hidden = false;
-    $id('chatWrap').classList.add('conv-open');
-    document.querySelectorAll('#chatThreads .chat-thread').forEach(el =>
-        el.classList.toggle('active', el.dataset.phone === phone));
-    $id('chatBody').innerHTML = '<div class="chat-hint">Загрузка…</div>';
-    history.replaceState(null, '', '/?p=chats&phone=' + encodeURIComponent(phone));
-    await chatLoadMessages(true);
-    await api('chat.markread', { phone });
-    const t = chat.threads.find(x => x.phone === phone);
-    if (t) { t.unread = 0; chatRenderThreads(); }
-    $id('chatText').focus();
+async function chatOpen(id) {
+    chat.conversationId=Number(id); chat.beforeCursor=null;
+    $id('chatEmpty').hidden=true;$id('chatPane').hidden=false;$id('chatWrap').classList.add('conv-open');
+    document.querySelectorAll('#chatThreads .chat-thread').forEach(el=>el.classList.toggle('active',Number(el.dataset.id)===chat.conversationId));
+    $id('chatBody').innerHTML='<div class="chat-hint">Загрузка…</div>';
+    history.replaceState(null,'','/?p=chats&conversation_id='+chat.conversationId);
+    await chatInboxApi('markread',{conversation_id:chat.conversationId}); await chatLoadMessages(true);
+    const t=chat.threads.find(x=>Number(x.id)===chat.conversationId);if(t)t.unread_count=0;chatRenderThreads();$id('chatText').focus();
 }
-function chatCloseConv() {
-    chat.phone = null;
-    $id('chatWrap').classList.remove('conv-open');
-    $id('chatPane').hidden = true;
-    $id('chatEmpty').hidden = false;
-    history.replaceState(null, '', '/?p=chats');
-    chatRenderThreads();
+function chatCloseConv() { chat.conversationId=null;chat.conversation=null;$id('chatWrap').classList.remove('conv-open');$id('chatPane').hidden=true;$id('chatEmpty').hidden=false;history.replaceState(null,'','/?p=chats');chatRenderThreads(); }
+function chatMessageHtml(m){return `<div class="cm ${m.dir}"><div class="cm-bubble">${chatMedia(m)}${chatText(m)}<span class="cm-meta">${chatChannelTag(m)}${esc(chatTime(m.ts))}${m.dir==='out'?chatTicks(m):''}</span></div></div>`;}
+async function chatLoadMessages(force=false,before=false) {
+    if(!chat.conversationId)return; const active=chat.conversationId;
+    try{
+        const r=await chatInboxApi('messages',{conversation_id:active,before_cursor:before?chat.beforeCursor:null});if(active!==chat.conversationId)return;
+        chat.conversation=r.conversation;chat.events=r.events||[];chat.beforeCursor=r.before_cursor||null;chat.hasOlder=!!r.has_more;
+        chat.messages=before?(r.messages||[]).concat(chat.messages):(r.messages||[]);
+        chatRenderHeader();chatRenderNotes();
+        const body=$id('chatBody');const atBottom=body.scrollHeight-body.scrollTop-body.clientHeight<90;
+        const html=(chat.hasOlder?'<button class="chat-load-older" onclick="chatLoadOlder()">Показать предыдущие сообщения</button>':'')+(chat.messages.length?chat.messages.map(chatMessageHtml).join(''):'<div class="chat-hint">Сообщений пока нет — напишите первым.</div>');
+        if(before){const oldHeight=body.scrollHeight;body.innerHTML=html;body.scrollTop=body.scrollHeight-oldHeight;}
+        else {body.innerHTML=html;if(force||atBottom)body.scrollTop=body.scrollHeight;}
+    }catch(e){$id('chatBody').innerHTML=`<div class="chat-hint error">${esc(e.message)}</div>`;}
 }
-
-async function chatLoadMessages(force) {
-    if (!chat.phone) return;
-    const r = await api('chat.messages', { phone: chat.phone });
-    if (!r.ok || chat.phone !== r.phone) return;
-    if (!force && r.messages.length === chat.count) return;
-    chat.count = r.messages.length;
-    chat.name = r.name || '';
-    $id('chatAva').textContent = chatInitial(r.name, r.phone);
-    $id('chatName').textContent = r.name || r.phone;
-    $id('chatPhone').textContent = r.phone;
-    $id('chatCard').href = '/?p=contacts&q=' + encodeURIComponent(r.phone);
-    const body = $id('chatBody');
-    const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 90;
-    body.innerHTML = r.messages.length
-        ? r.messages.map(m => `<div class="cm ${m.dir}"><div class="cm-bubble">
-            ${chatMedia(m)}
-            ${chatText(m)}
-            <span class="cm-meta">${chatChannelTag(m)}${esc(chatTime(m.ts))}${m.dir === 'out' ? chatTicks(m) : ''}</span>
-          </div></div>`).join('')
-        : '<div class="chat-hint">Сообщений пока нет — напишите первым.</div>';
-    if (force || atBottom) body.scrollTop = body.scrollHeight;
+async function chatLoadOlder(){if(chat.beforeCursor)await chatLoadMessages(false,true);}
+function chatRenderHeader(){
+    const c=chat.conversation;if(!c)return;const name=c.contact_name||c.contact_phone||c.external_chat_id;
+    $id('chatAva').textContent=chatInitial(name,c.contact_phone);$id('chatName').textContent=name;$id('chatPhone').textContent=c.contact_phone||'';
+    $id('chatCard').href='/?p=contacts&q='+encodeURIComponent(c.contact_phone||'');$id('chatStatus').value=c.status;$id('chatPriority').value=c.priority;
+    const trip=$id('chatTripLink');if(c.manifest_id){trip.hidden=false;trip.href='/?p=manifest&id='+Number(c.manifest_id);trip.textContent='Рейс №'+(c.trip_number||c.manifest_id)+' · '+(c.route||'');}else{trip.hidden=true;}
+    const m=CHAN_META[c.channel];$id('chatHeadChannel').innerHTML=m?`<span style="color:${m.color}">${m.name}</span>`:'';
+    const assignee=$id('chatAssignee');assignee.innerHTML='<option value="">Без оператора</option>'+chat.users.map(u=>`<option value="${Number(u.id)}">${esc(u.name)}</option>`).join('');assignee.value=c.assignee_user_id||'';
 }
-
-async function chatSend(e) {
-    if (e) e.preventDefault();
-    const ta = $id('chatText');
-    const text = ta.value.trim();
-    if (!text || !chat.phone || chat.busy) return;
-    chat.busy = true;
-    const btn = $id('chatSendBtn');
-    btn.disabled = true;
-    const note = $id('chatChannelNote');
-    note.textContent = '';
-    const r = await api('chat.send', { phone: chat.phone, text });
-    chat.busy = false;
-    btn.disabled = false;
-    if (r.ok) {
-        ta.value = '';
-        ta.style.height = 'auto';
-        await chatLoadMessages(true);
-        chatLoadThreads();
-        ta.focus();
-    } else {
-        note.textContent = '⚠ ' + (r.error || 'Не удалось отправить');
-    }
+async function chatUpdateMeta(field,value){if(!chat.conversationId)return;try{await chatInboxApi('update',{conversation_id:chat.conversationId,field,value});await chatLoadMessages();chatLoadThreads();}catch(e){alert(e.message);}}
+function chatOpenNotes(){chatRenderNotes();$id('chatNotesDialog').showModal();}
+function chatRenderNotes(){const box=$id('chatNotesList');if(!box)return;const notes=chat.events.filter(e=>e.event_type==='note');box.innerHTML=notes.length?notes.map(n=>`<div class="chat-note"><div>${esc(n.body||'')}</div><small>${esc(n.actor_name||'')} · ${esc(chatTime(n.created_at))}</small></div>`).join(''):'<div class="chat-hint">Заметок пока нет.</div>';}
+async function chatAddNote(e){e.preventDefault();const ta=$id('chatNoteText');const body=ta.value.trim();if(!body)return;try{await chatInboxApi('note',{conversation_id:chat.conversationId,body});ta.value='';await chatLoadMessages();}catch(err){alert(err.message);}}
+async function chatSend(e){
+    if(e)e.preventDefault();const ta=$id('chatText');const text=ta.value.trim();if(!text||!chat.conversationId||chat.busy)return;chat.busy=true;$id('chatSendBtn').disabled=true;$id('chatChannelNote').textContent='';
+    const r=await api('chat.send',{conversation_id:chat.conversationId,text});chat.busy=false;$id('chatSendBtn').disabled=false;
+    if(r.ok){ta.value='';ta.style.height='auto';await chatLoadMessages(true);chatLoadThreads();ta.focus();}else{$id('chatChannelNote').textContent='⚠ '+(r.error||'Не удалось отправить');}
 }
-
-function chatInit() {
-    chatLoadThreads().then(() => {
-        const start = $id('chatWrap').dataset.start;
-        if (start) chatOpen(start);
-    });
-    const ta = $id('chatText');
-    if (ta) {
-        ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'; });
-        ta.addEventListener('keydown', e => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chatSend(); }
-        });
-    }
-    chat.poll = setInterval(() => {
-        if (document.hidden) return;
-        chatLoadThreads();
-        if (chat.phone) chatLoadMessages(false);
-    }, 5000);
+async function chatInit(){
+    try{const b=await chatInboxApi('bootstrap');chat.users=b.users||[];chat.currentUserId=Number(b.current_user_id||0);}catch(e){}
+    await chatLoadThreads();const start=$id('chatWrap').dataset.start;if(start){const t=chat.threads.find(x=>x.contact_phone===start||String(x.id)===start);if(t)chatOpen(Number(t.id));}
+    const ta=$id('chatText');if(ta){ta.addEventListener('input',()=>{ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,140)+'px';});ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();chatSend();}});}
+    chat.poll=setInterval(()=>{if(document.hidden)return;chatLoadThreads();if(chat.conversationId)chatLoadMessages(false);},5000);
 }
 
 async function reportApi(action, data = {}) {

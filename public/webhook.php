@@ -41,10 +41,14 @@ switch ($event) {
             $status = strtoupper((string) ($u['status'] ?? ''));
             if ($waId === '' || $status === '') continue;
             if ($status === 'DELIVERY_ACK') {
-                db()->prepare('UPDATE messages SET delivered_at = COALESCE(delivered_at, NOW()) WHERE wa_id = ?')->execute([$waId]);
+                db()->prepare("UPDATE messages SET delivered_at = COALESCE(delivered_at, NOW()) WHERE wa_id = ? AND channel='whatsapp'")->execute([$waId]);
             } elseif ($status === 'READ' || $status === 'PLAYED') {
-                db()->prepare('UPDATE messages SET delivered_at = COALESCE(delivered_at, NOW()), read_at = COALESCE(read_at, NOW()) WHERE wa_id = ?')->execute([$waId]);
+                db()->prepare("UPDATE messages SET delivered_at = COALESCE(delivered_at, NOW()), read_at = COALESCE(read_at, NOW()) WHERE wa_id = ? AND channel='whatsapp'")->execute([$waId]);
             }
+            try {
+                require_once PANEL_ROOT . '/app/conversations.php';
+                conversation_sync_delivery($waId,'whatsapp');
+            } catch (Throwable $e) { /* schema15 ещё может быть не применена */ }
         }
         break;
 
@@ -65,6 +69,11 @@ switch ($event) {
             if ($body === '') continue;
             db()->prepare('INSERT INTO inbox (instance, phone, name, body) VALUES (?,?,?,?)')
                 ->execute([$instance, $phone, (string) ($m['pushName'] ?? ''), mb_substr((string) $body, 0, 2000)]);
+            $inboxId = (int) db()->lastInsertId();
+            try {
+                require_once PANEL_ROOT . '/app/conversations.php';
+                conversation_append_legacy('inbox',$inboxId);
+            } catch (Throwable $e) { /* legacy inbox остаётся рабочим до миграции */ }
         }
         break;
 

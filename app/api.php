@@ -139,10 +139,15 @@ function wa_outbound()
 function wa_reply_target(string $phone): array
 {
     try {
-        $in = db()->prepare('SELECT instance, chat_id FROM inbox WHERE phone = ? AND chat_id <> \'\' ORDER BY id DESC LIMIT 1');
+        // Берём действительно последнее входящее, включая WhatsApp без chat_id.
+        // Раньше фильтр chat_id<>'' мог отправить ответ в старый MAX-чат после нового сообщения в WhatsApp.
+        $in = db()->prepare('SELECT instance, chat_id FROM inbox WHERE phone = ? ORDER BY id DESC LIMIT 1');
         $in->execute([$phone]);
         $row = $in->fetch();
     } catch (Exception $e) { $row = null; }
+    if ($row && $row['instance'] === 'greenapi_tg' && $row['chat_id'] !== '') {
+        return [green_api_tg(), $row['chat_id'], 'telegram'];
+    }
     if ($row && $row['instance'] === 'greenapi' && $row['chat_id'] !== '') {
         return [green_api(), $row['chat_id'], 'max'];
     }
@@ -885,7 +890,7 @@ switch ($action) {
         $phone = (string) ($body['phone'] ?? '');
         if ($phone === '') json_out(['ok' => false, 'error' => 'нет номера']);
         $st = db()->prepare(
-            "SELECT body, ts, dir, status, delivered_at, read_at, channel, media_url, media_type FROM (
+            "SELECT * FROM (SELECT body, ts, dir, status, delivered_at, read_at, channel, media_url, media_type FROM (
                 SELECT body, COALESCE(sent_at, created_at) ts, 'out' dir, status, delivered_at, read_at, channel,
                        '' media_url, '' media_type
                   FROM messages WHERE recipient = ?
@@ -893,7 +898,7 @@ switch ($action) {
                 SELECT body, received_at ts, 'in' dir, NULL status, NULL delivered_at, NULL read_at, instance channel,
                        media_url, media_type
                   FROM inbox WHERE phone = ?
-             ) u ORDER BY ts ASC LIMIT 500"
+             ) u ORDER BY ts DESC LIMIT 500) recent ORDER BY ts ASC"
         );
         $st->execute([$phone, $phone]);
         $msgs = [];
@@ -924,26 +929,52 @@ switch ($action) {
         json_out(['ok' => true]);
 
     case 'chat.send':
-        $phone = normalize_phone((string) ($body['phone'] ?? ''));
+        $conversationId = (int) ($body['conversation_id'] ?? 0);
+        $conversation = null;
+        if ($conversationId > 0) {
+            try {
+                $cv = db()->prepare('SELECT * FROM conversations WHERE id=?');
+                $cv->execute([$conversationId]);
+                $conversation = $cv->fetch();
+            } catch (Throwable $e) { $conversation = null; }
+            if (!$conversation) json_out(['ok'=>false,'error'=>'Разговор не найден'],404);
+        }
+        $phone = normalize_phone((string) ($conversation['contact_phone'] ?? $body['phone'] ?? ''));
         $text = trim((string) ($body['text'] ?? ''));
         if (!valid_phone($phone)) json_out(['ok' => false, 'error' => 'Некорректный номер']);
         if ($text === '') json_out(['ok' => false, 'error' => 'Пустое сообщение']);
 
         require_once PANEL_ROOT . '/lib/MessageTemplate.php';
         $text = MessageTemplate::render($text, custom_vars());
-        [$cli, $target, $messenger] = wa_reply_target($phone); // ответ тем же каналом, что пришло входящее
+        if ($conversation) {
+            require_once PANEL_ROOT . '/lib/Channels.php';
+            $messenger = (string) $conversation['channel'];
+            if (!in_array($messenger,['whatsapp','max','telegram'],true)) json_out(['ok'=>false,'error'=>'Ответ в этот канал пока не поддерживается']);
+            $cli = $messenger === 'whatsapp' && !in_array((string)$conversation['channel_account'],['','legacy'],true)
+                ? evolution((string)$conversation['channel_account']) : Channels::client($messenger);
+            $target = in_array($messenger,['max','telegram'],true)
+                ? (string) $conversation['external_chat_id'] : $phone;
+        } else {
+            [$cli, $target, $messenger] = wa_reply_target($phone); // legacy: последний входящий канал
+        }
         if (!$cli->isConfigured()) json_out(['ok' => false, 'error' => 'Канал не настроен']);
         db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (0, ?, ?, ?, ?, ?)')
             ->execute([$messenger, $phone, 'Чат', $text, current_user_name()]);
         $mid = (int) db()->lastInsertId();
+        if ($conversationId > 0) {
+            require_once PANEL_ROOT . '/app/conversations.php';
+            conversation_append_legacy('messages',$mid,$conversationId);
+        }
         $res = $cli->sendText($target, $text);
         if ($res['ok']) {
             db()->prepare("UPDATE messages SET status='sent', attempts=1, sent_at=NOW(), wa_id=? WHERE id=?")
                 ->execute([(string) ($res['data']['key']['id'] ?? ''), $mid]);
+            if ($conversationId > 0) conversation_append_legacy('messages',$mid,$conversationId);
             contact_log_message($phone, '', '');
             json_out(['ok' => true]);
         }
         db()->prepare("UPDATE messages SET status='failed', attempts=1, error=? WHERE id=?")->execute([$res['error'], $mid]);
+        if ($conversationId > 0) conversation_append_legacy('messages',$mid,$conversationId);
         json_out(['ok' => false, 'error' => $res['error']]);
 
     /* ── Загрузка файлов ── */
