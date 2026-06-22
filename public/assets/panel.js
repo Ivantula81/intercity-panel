@@ -1035,7 +1035,10 @@ function chatTime(ts) {
     const p = date.split('-'); return p.length === 3 ? p[2] + '.' + p[1] + ' ' + time : time;
 }
 function chatInitial(name, phone) { const s = String(name || phone || '?').trim(); return s ? s[0].toUpperCase() : '?'; }
-function chatChannelTag(m) { const d = CHAN_META[(m.channel || '').toLowerCase()]; return d ? `<span style="color:${d.color};font-size:10px;font-weight:600;margin-right:5px">${d.name}</span>` : ''; }
+function chatChannelTag(m) {
+    const d = CHAN_META[(m.channel || '').toLowerCase()];
+    return d ? `<span class="cm-channel" style="--cm-channel:${d.color}">${d.name}</span>` : '';
+}
 function chatTicks(m) {
     if (m.read_at || m.read) return '<span class="cm-tick read">✓✓</span>';
     if (m.delivered_at || m.delivered) return '<span class="cm-tick">✓✓</span>';
