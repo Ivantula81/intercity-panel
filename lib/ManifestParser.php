@@ -150,6 +150,7 @@ class ManifestParser
             $citizenship = $this->first($record, array('STATE'));
             // свободный комментарий кассира (BIRTHPLACE_NAME) — там любая заметка: оплата, пожелание и т.п.
             $payNote = $this->first($record, array('BIRTHPLACE_NAME'));
+            $agentRaw = $this->first($record, array('Агент/кассир', 'Агент', 'Кассир'));
 
             $passengers[] = array(
                 'seat' => $this->first($record, array('Место')),
@@ -172,6 +173,7 @@ class ManifestParser
                 'price' => $price !== '' ? (float) $price : null,
                 'citizenship' => $citizenship,
                 'pay_note' => trim($payNote),
+                'agent_raw' => trim($agentRaw),
             );
         }
 

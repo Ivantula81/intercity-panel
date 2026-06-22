@@ -10,6 +10,7 @@ Thumbs.db
 # Пользовательские загрузки (медиа/файлы — не код).
 # На сервере живут в /var/www/panel/public/uploads.
 /public/uploads/
+/storage/
 
 # Локальные секреты. Боевые — в /etc/panel.env, в репозиторий НЕ кладём.
 .env

@@ -34,6 +34,7 @@ function icon(string $name): string
 $nav = [
     'dashboard'     => ['/', 'Дашборд', 'home'],
     'sales'         => ['/?p=sales', 'Продажи', 'chart'],
+    'reporting'     => ['/?p=reporting', 'Отчётность', 'chart'],
     'notifications' => ['/?p=notifications', 'Уведомления', 'bell'],
     'chats'         => ['/?p=chats', 'Чаты', 'chat'],
     'manifests'     => ['/?p=manifests', 'Ведомости', 'file'],
@@ -44,7 +45,7 @@ $nav = [
     'settings'      => ['/?p=settings', 'Настройки', 'settings'],
 ];
 $bottom = ['dashboard', 'notifications', 'chats', 'manifests'];
-$sheetKeys = ['sales', 'contacts', 'broadcast', 'catalogs', 'logs', 'settings'];
+$sheetKeys = ['sales', 'reporting', 'contacts', 'broadcast', 'catalogs', 'logs', 'settings'];
 ?><!doctype html>
 <html lang="ru">
 <head>
