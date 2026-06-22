@@ -2,7 +2,28 @@
 
 declare(strict_types=1);
 
+// iOS запускает сайт с домашнего экрана в отдельном standalone-контексте.
+// Сессионная cookie без срока исчезала после выгрузки приложения, а сервер удалял
+// сессию через 24 минуты. Держим авторизацию 30 дней с безопасными флагами.
+$sessionLifetime = 30 * 24 * 60 * 60;
+ini_set('session.gc_maxlifetime', (string) $sessionLifetime);
+session_set_cookie_params([
+    'lifetime' => $sessionLifetime,
+    'path' => '/',
+    'secure' => true,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
 session_start();
+if (!headers_sent() && session_id() !== '') {
+    setcookie(session_name(), session_id(), [
+        'expires' => time() + $sessionLifetime,
+        'path' => '/',
+        'secure' => true,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+}
 date_default_timezone_set('Europe/Moscow');
 mb_internal_encoding('UTF-8');
 
@@ -66,6 +87,7 @@ function authenticate(string $login, string $password): bool
     }
 
     if ($u && password_verify($password, $u['password_hash'])) {
+        session_regenerate_id(true);
         $_SESSION['panel_user'] = (int) $u['id'];
         $_SESSION['user_name'] = $u['name'];
         $_SESSION['user_role'] = $u['role'];
@@ -82,6 +104,7 @@ function authenticate(string $login, string $password): bool
         }
     }
     if ($u === null && $fallbackPw !== '' && $login === 'admin' && $password === $fallbackPw) {
+        session_regenerate_id(true);
         $_SESSION['panel_user'] = 'admin';
         $_SESSION['user_name'] = 'Администратор';
         $_SESSION['user_role'] = 'admin';
