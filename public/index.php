@@ -68,6 +68,11 @@ switch ($page) {
         require PANEL_ROOT . '/app/reporting_controller.php';
         break;
 
+    case 'reporting_help':
+        view('layout', ['title'=>'Инструкция по отчётности','page'=>'reporting',
+            'content'=>fn()=>view('reporting_help')]);
+        break;
+
     case 'report_trip':
         require_once PANEL_ROOT . '/app/reporting_service.php';
         $st = db()->prepare('SELECT * FROM manifests WHERE id=?');

@@ -6,7 +6,7 @@ $isFiles = $activeTab === 'files';
 ?>
 <div class="page-head report-trip-head">
     <div><a class="small muted" href="/?p=reporting">← Все рейсы</a><h1>Рейс № <?= e($manifest['trip_number']) ?></h1><div class="sub"><?= e($manifest['route']) ?></div></div>
-    <div class="head-actions"><button class="btn ghost" type="button" onclick="reportAddCash()">+ Внести наличные</button><button class="btn" type="button" onclick="reportSaveSnapshot(<?= (int)$manifest['id'] ?>)">Сохранить расчёт</button></div>
+    <div class="head-actions"><a class="btn ghost" href="/?p=reporting_help" title="Инструкция"><?= icon('doc') ?></a><button class="btn ghost" type="button" onclick="reportAddCash()">+ Внести наличные</button><button class="btn" type="button" onclick="reportSaveSnapshot(<?= (int)$manifest['id'] ?>)">Сохранить расчёт</button></div>
 </div>
 <script>window.REPORT_MANIFEST_ID=<?= (int)$manifest['id'] ?>;</script>
 
