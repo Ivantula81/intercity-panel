@@ -37,6 +37,11 @@ if ($page === 'api') {
     exit;
 }
 
+if ($page === 'chat_api') {
+    require PANEL_ROOT . '/app/chat_api.php';
+    exit;
+}
+
 switch ($page) {
     case 'dashboard':
         $links = db()->query('SELECT * FROM links ORDER BY sort, id')->fetchAll();
@@ -209,7 +214,7 @@ switch ($page) {
         break;
 
     case 'chats':
-        $startPhone = (string) ($_GET['phone'] ?? '');
+        $startPhone = (string) ($_GET['conversation_id'] ?? ($_GET['phone'] ?? ''));
         view('layout', ['title' => 'Чаты', 'page' => 'chats',
             'content' => fn() => view('chats', ['startPhone' => $startPhone])]);
         break;

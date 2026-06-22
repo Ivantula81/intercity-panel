@@ -36,5 +36,6 @@ git -C /root/panel-src pull && /root/deploy.sh
 ```
 
 ## Журнал работ (новое — сверху)
+- **2026-06-22 · Codex:** ветка `codex/chat-inbox-foundation-review` — ревью этапа 1a Claude и продолжение согласованного inbox-плана: conversations/events, backfill+dual-write, очереди, статусы, assignee, priority, notes, cursor pagination и точное разделение каналов. Детали: `docs/chat-review-2026-06-22.md`.
 - **2026-06-21 · Claude:** завершён Этап 0 UX-фиксов (мобайл, ошибки API, канал в чатах, период дашборда, цвета каналов). В работе — Этап 1 «Чаты как inbox»: макет согласован, жду старт.
 - **2026-06-21 · Codex:** проведён UX-аудит (`docs/ux-audit/`, `CODEX_RECOMMENDATIONS.md`). Рекомендуемая зона дальше — надёжность рассылок (outbox/идемпотентность) и conversations-модель.
