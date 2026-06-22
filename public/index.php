@@ -37,6 +37,11 @@ if ($page === 'api') {
     exit;
 }
 
+if ($page === 'reporting_api') {
+    require PANEL_ROOT . '/app/reporting_api.php';
+    exit;
+}
+
 switch ($page) {
     case 'dashboard':
         $links = db()->query('SELECT * FROM links ORDER BY sort, id')->fetchAll();
@@ -53,6 +58,53 @@ switch ($page) {
     case 'manifests':
         require PANEL_ROOT . '/app/manifests_controller.php';
         break;
+
+    case 'reporting':
+        require PANEL_ROOT . '/app/reporting_controller.php';
+        break;
+
+    case 'report_trip':
+        require_once PANEL_ROOT . '/app/reporting_service.php';
+        $st = db()->prepare('SELECT * FROM manifests WHERE id=?');
+        $st->execute([(int) ($_GET['id'] ?? 0)]);
+        $manifest = $st->fetch();
+        if (!$manifest) { http_response_code(404); die('Рейс не найден'); }
+        $ps = db()->prepare('SELECT * FROM passengers WHERE manifest_id=? ORDER BY sort,id');
+        $ps->execute([$manifest['id']]);
+        $passengers = $ps->fetchAll();
+        $fs = db()->prepare('SELECT * FROM manifest_files WHERE manifest_id=? ORDER BY created_at DESC,id DESC');
+        $fs->execute([$manifest['id']]);
+        $files = $fs->fetchAll();
+        $cs = db()->prepare('SELECT * FROM manifest_cash_entries WHERE manifest_id=? ORDER BY created_at DESC,id DESC');
+        $cs->execute([$manifest['id']]);
+        $cashEntries = $cs->fetchAll();
+        $vs = db()->prepare('SELECT version,created_at,actor FROM manifest_calculations WHERE manifest_id=? ORDER BY version DESC LIMIT 1');
+        $vs->execute([$manifest['id']]);
+        $lastCalculation = $vs->fetch();
+        view('layout', ['title'=>'Отчёт по рейсу №'.$manifest['trip_number'],'page'=>'reporting',
+            'content'=>fn()=>view('report_trip',['manifest'=>$manifest,'passengers'=>$passengers,
+                'contracts'=>reporting_contracts(),'files'=>$files,'cashEntries'=>$cashEntries,
+                'calculation'=>reporting_calculate_manifest((int) $manifest['id']),
+                'lastCalculation'=>$lastCalculation,'activeTab'=>$_GET['tab'] ?? 'calculation'])]);
+        break;
+
+    case 'report_file':
+        require_once PANEL_ROOT . '/app/reporting_service.php';
+        $st = db()->prepare('SELECT * FROM manifest_files WHERE id=?');
+        $st->execute([(int) ($_GET['id'] ?? 0)]);
+        $file = $st->fetch();
+        if (!$file) { http_response_code(404); die('Файл не найден'); }
+        $base = realpath(reporting_storage_dir());
+        $path = realpath(reporting_storage_dir() . '/' . $file['storage_name']);
+        if (!$base || !$path || !str_starts_with($path, $base . DIRECTORY_SEPARATOR) || !is_file($path)) {
+            http_response_code(404); die('Файл недоступен');
+        }
+        header('X-Content-Type-Options: nosniff');
+        header('Content-Type: ' . $file['mime_type']);
+        header("Content-Disposition: attachment; filename*=UTF-8''" . rawurlencode($file['original_name']));
+        header('Content-Length: ' . filesize($path));
+        readfile($path);
+        exit;
 
     case 'manifest':
         $m = db()->prepare('SELECT * FROM manifests WHERE id = ?');

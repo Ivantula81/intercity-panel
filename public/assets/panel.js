@@ -1209,8 +1209,99 @@ function chatInit() {
     }, 5000);
 }
 
+async function reportApi(action, data = {}) {
+    const r = await fetch('/?p=reporting_api&a=' + encodeURIComponent(action), {
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF': window.CSRF},
+        body: JSON.stringify(data)
+    });
+    const out = await r.json().catch(() => ({ok: false, error: 'Некорректный ответ сервера'}));
+    if (!out.ok && out.error) throw new Error(out.error);
+    return out;
+}
+
+function reportMoney(value) {
+    return new Intl.NumberFormat('ru-RU', {maximumFractionDigits: 2}).format(Number(value || 0)) + ' ₽';
+}
+
+function reportSetState(text, isError = false) {
+    const el = $id('reportSaveState');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('report-error', isError);
+}
+
+async function reportRecalculate() {
+    if (!window.REPORT_MANIFEST_ID) return;
+    try {
+        const r = await reportApi('calculate', {manifest_id: window.REPORT_MANIFEST_ID});
+        document.querySelectorAll('[data-total]').forEach(el => {
+            el.textContent = reportMoney(r.calculation.totals[el.dataset.total]);
+        });
+        const warnings = $id('reportWarnings');
+        if (warnings) warnings.innerHTML = r.calculation.warnings.length
+            ? r.calculation.warnings.slice(0, 8).map(w => `<div class="report-warning">⚠ ${esc(w)}</div>`).join('')
+            : '<div class="alert ok">Противоречий не найдено.</div>';
+    } catch (e) { reportSetState(e.message, true); }
+}
+
+function reportInit() {
+    document.querySelectorAll('.report-p-field').forEach(el => el.addEventListener('change', async () => {
+        const row = el.closest('tr[data-id]');
+        let value = el.type === 'checkbox' ? (el.checked ? 'completed' : 'none') : el.value;
+        reportSetState('Сохраняю…');
+        try {
+            await reportApi('passenger.update', {id: Number(row.dataset.id), field: el.dataset.field, value});
+            if (el.dataset.field === 'attendance') el.className = 'report-p-field attendance-' + value;
+            reportSetState('Все изменения сохранены');
+            await reportRecalculate();
+        } catch (e) { reportSetState(e.message, true); }
+    }));
+    document.querySelectorAll('.report-manifest-field').forEach(el => el.addEventListener('change', async () => {
+        try {
+            await reportApi('manifest.update', {id: Number(el.dataset.id), field: el.dataset.field, value: el.value});
+            reportSetState('Все изменения сохранены');
+        } catch (e) { reportSetState(e.message, true); }
+    }));
+}
+
+async function reportAddPassenger(manifestId) {
+    try { await reportApi('passenger.add', {manifest_id: manifestId}); location.reload(); }
+    catch (e) { alert(e.message); }
+}
+
+async function reportDeletePassenger(button) {
+    if (!confirm('Удалить пассажира из расчёта?')) return;
+    try { await reportApi('passenger.delete', {id: Number(button.closest('tr').dataset.id)}); location.reload(); }
+    catch (e) { alert(e.message); }
+}
+
+async function reportSaveSnapshot(manifestId) {
+    try {
+        const r = await reportApi('snapshot.save', {manifest_id: manifestId});
+        alert('Расчёт сохранён как версия ' + r.version + '.');
+        location.reload();
+    } catch (e) { alert(e.message); }
+}
+
+async function reportAddCash() {
+    const dialog = $id('reportCashDialog');
+    if (dialog) dialog.showModal();
+}
+
+async function reportSubmitCash(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    try {
+        await reportApi('cash.add', {manifest_id: window.REPORT_MANIFEST_ID, amount: data.get('amount'), recipient: data.get('recipient'), note: data.get('note')});
+        location.reload();
+    } catch (e) { alert(e.message); }
+    return false;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     bindCells();
     bindCatalog();
     if (document.body.dataset.page === 'chats') chatInit();
+    if (document.body.dataset.page === 'reporting') reportInit();
 });
