@@ -523,6 +523,7 @@ switch ($action) {
         }
         $hasMax = Channels::configured('max');
         $hasTg = Channels::configured('telegram');
+        $fallbackOnly = !empty($body['fallback_only']);
 
         $upIns = db()->prepare('INSERT INTO contacts (phone) VALUES (?) ON DUPLICATE KEY UPDATE phone = phone');
         $upSet = db()->prepare('UPDATE contacts SET has_whatsapp = ?, has_max = ?, has_telegram = ?, channels_checked_at = NOW() WHERE phone = ?');
@@ -530,8 +531,11 @@ switch ($action) {
         foreach ($phones as $ph) {
             $num = preg_replace('/\D+/', '', $ph);
             $wa = array_key_exists($num, $waMap) ? (bool) $waMap[$num] : null;
-            $max = $hasMax ? Channels::presence('max', $ph) : null;
-            $tg = $hasTg ? Channels::presence('telegram', $ph) : null;
+            // При автоматической подготовке запасные мессенджеры проверяем только
+            // если WhatsApp недоступен — это сильно ускоряет ведомость на 30–60 человек.
+            $needFallback = !$fallbackOnly || $wa === false;
+            $max = $hasMax && $needFallback ? Channels::presence('max', $ph) : null;
+            $tg = $hasTg && $needFallback ? Channels::presence('telegram', $ph) : null;
             $upIns->execute([$ph]);
             $upSet->execute([tri($wa), tri($max), tri($tg), $ph]);
             $out[$ph] = ['whatsapp' => $wa, 'max' => $max, 'telegram' => $tg, 'checked' => true];
@@ -704,6 +708,63 @@ switch ($action) {
         }
         json_out(['ok' => true, 'station' => $station, 'destination' => $destination, 'channels_active' => Channels::active(),
             'body' => $group['body'] ?? '', 'recipients' => $recipients]);
+
+    case 'campaign.overview':
+        // Единый монитор по текущей ведомости: одна загрузка вместо запроса на каждую группу.
+        require_once PANEL_ROOT . '/lib/Channels.php';
+        $manifest = get_manifest((int) $body['manifest_id']);
+        $groups = attach_channel_presence(build_groups($manifest));
+        $phones = [];
+        foreach ($groups as $group) {
+            foreach ($group['recipients'] as $recipient) {
+                if ($recipient['phone'] !== '') $phones[$recipient['phone']] = true;
+            }
+        }
+
+        $msgByPhone = [];
+        $replied = [];
+        if ($phones) {
+            $phoneList = array_keys($phones);
+            $in = implode(',', array_fill(0, count($phoneList), '?'));
+            $st = db()->prepare("SELECT id, recipient, channel, status, sent_at, delivered_at, read_at, error
+                FROM messages WHERE manifest_id = ? AND recipient IN ($in) ORDER BY id ASC");
+            $st->execute(array_merge([$manifest['id']], $phoneList));
+            foreach ($st->fetchAll() as $message) {
+                $msgByPhone[$message['recipient']][$message['channel']] = $message;
+            }
+            $rs = db()->prepare("SELECT DISTINCT phone FROM inbox WHERE phone IN ($in)");
+            $rs->execute($phoneList);
+            foreach ($rs->fetchAll(PDO::FETCH_COLUMN) as $phone) $replied[$phone] = true;
+        }
+
+        $recipients = [];
+        $summary = ['total' => 0, 'valid' => 0, 'not_sent' => 0, 'pending' => 0,
+            'sent' => 0, 'delivered' => 0, 'read' => 0, 'failed' => 0, 'replied' => 0];
+        foreach ($groups as $groupIndex => $group) {
+            foreach ($group['recipients'] as $recipient) {
+                $byChannel = $msgByPhone[$recipient['phone']] ?? [];
+                $aggregate = monitor_aggregate($byChannel);
+                $state = $aggregate['state'];
+                $wasSent = !empty($byChannel);
+                $hasReplied = isset($replied[$recipient['phone']]);
+                $summary['total']++;
+                if ($recipient['valid']) $summary['valid']++;
+                if (!$wasSent) $summary['not_sent']++;
+                elseif (isset($summary[$state])) $summary[$state]++;
+                if ($hasReplied) $summary['replied']++;
+                $recipients[] = [
+                    'id' => $recipient['id'], 'group_index' => $groupIndex,
+                    'station' => $group['station'], 'destination' => $group['destination'],
+                    'name' => $recipient['name'], 'phone' => $recipient['phone'], 'valid' => $recipient['valid'],
+                    'sent' => $wasSent, 'state' => $state, 'channel' => $aggregate['channel'],
+                    'sent_at' => $aggregate['sent_at'], 'delivered_at' => $aggregate['delivered_at'],
+                    'read_at' => $aggregate['read_at'], 'error' => $aggregate['error'],
+                    'replied' => $hasReplied, 'channels' => $recipient['channels'],
+                ];
+            }
+        }
+        json_out(['ok' => true, 'summary' => $summary, 'recipients' => $recipients,
+            'channels_active' => Channels::active()]);
 
     case 'recipient.resend':
         // Дослать сообщение конкретному получателю в другой канал (МАКС/SMS/Telegram).

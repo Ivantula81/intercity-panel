@@ -1,4 +1,4 @@
-<?php /** @var array $manifests @var int $selectedId @var ?array $selected @var array $journal @var string $uploadError */ ?>
+<?php /** @var array $manifests @var int $selectedId @var ?array $selected @var string $uploadError */ ?>
 <div class="page-head">
     <div>
         <h1>Уведомления</h1>
@@ -13,7 +13,7 @@
     </div>
 </div>
 
-<div class="wa-note"><?= icon('whatsapp') ?><span>Отправка уведомлений идёт по <b>WhatsApp</b> (Evolution). MAX — только для ответов в диалогах «Чаты».</span></div>
+<div class="wa-note"><?= icon('whatsapp') ?><span><b>WhatsApp</b> — основной канал. Проверка получателей и доступных каналов выполняется автоматически; проблемные доставки появятся в общей сводке.</span></div>
 
 <?php if ($uploadError !== ''): ?><div class="alert err"><?= e($uploadError) ?></div><?php endif; ?>
 
@@ -111,10 +111,12 @@
     <div class="step-row">
         <span class="step-num">3</span>
         <div style="flex:1;min-width:0">
-            <div class="step-title">Группы по точке посадки</div>
-            <div class="step-title-sub muted small">у каждой группы свой текст, время и шаблон — раскройте карточку для правки</div>
+            <div class="step-title">Подготовка рассылки</div>
+            <div class="step-title-sub muted small">сначала проверьте общую готовность; раскрывайте направление только для точечной правки</div>
         </div>
     </div>
+    <div id="notificationReadiness" class="notif-readiness mt"><p class="muted">Проверяю пассажиров, время и каналы…</p></div>
+    <div id="notificationIssues"></div>
     <div id="groupsBox" class="mt"><p class="muted">Загружаю группы…</p></div>
 </div>
 
@@ -124,63 +126,27 @@
         <span class="step-num">4</span>
         <div style="flex:1;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap">
             <div class="muted small" id="sendSummary">подсчитываю получателей…</div>
-            <button class="btn" onclick="sendAllGroups(this)"><?= icon('send') ?> Отправить все группы</button>
+            <button class="btn" id="sendAllBtn" onclick="sendAllGroups(this)"><?= icon('send') ?> Подтвердить и отправить</button>
         </div>
     </div>
     <div id="allState" class="mt"></div>
 </div>
-<?php endif; ?>
 
-<!-- Журнал доставки + ответы пассажиров -->
-<div class="mt">
-    <div>
-    <div class="card">
-        <h2>Журнал доставки</h2>
-        <?php if (empty($journal)): ?><p class="muted">Отправок ещё не было.</p>
-        <?php else: ?>
-            <div class="feed">
-            <?php foreach (array_slice($journal, 0, 25) as $j): ?>
-                <div class="feed-item">
-                    <div class="when"><?= date('d.m H:i', strtotime($j['sent_at'] ?? $j['created_at'])) ?></div>
-                    <div style="min-width:0"><b><?= e($j['passenger_name'] ?: $j['recipient']) ?></b>
-                        <span class="muted small"><?= e($j['recipient']) ?></span>
-                        <?php if ($j['status'] === 'failed'): ?>
-                            <span class="badge err" title="<?= e((string) $j['error']) ?>">ошибка</span>
-                        <?php elseif (!empty($j['read_at'])): ?>
-                            <span class="badge ok" title="прочитано <?= e($j['read_at']) ?>">✓✓ прочитано</span>
-                        <?php elseif (!empty($j['delivered_at'])): ?>
-                            <span class="badge ok" title="доставлено <?= e($j['delivered_at']) ?>">✓✓ доставлено</span>
-                        <?php elseif ($j['status'] === 'sent'): ?>
-                            <span class="badge muted">✓ отправлено</span>
-                        <?php else: ?><span class="badge muted">в очереди</span><?php endif; ?>
-                        <?php if (!empty($j['actor'])): ?><span class="muted small">· <?= e($j['actor']) ?></span><?php endif; ?>
-                    </div>
-                </div>
-            <?php endforeach; ?>
-            </div>
-        <?php endif; ?>
+<!-- Единый монитор текущей ведомости -->
+<div class="card step-card" id="campaignOverviewCard">
+    <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div>
+            <div class="step-title">Доставка по этой ведомости</div>
+            <div class="step-title-sub muted small">статусы обновляются автоматически; здесь собраны только пассажиры текущего рейса</div>
+        </div>
+        <div class="row" style="gap:8px">
+            <a class="btn ghost sm" href="/?p=chats">Открыть ответы в чатах</a>
+            <button class="btn ghost sm" onclick="loadCampaignOverview(true)">Обновить</button>
+        </div>
     </div>
-
-    <div class="card">
-        <h2>Ответы пассажиров</h2>
-        <?php if (empty($inbox)): ?><p class="muted">Входящих пока нет. Ответы на уведомления появятся здесь.</p>
-        <?php else: ?>
-            <div class="feed">
-            <?php foreach ($inbox as $in): ?>
-                <div class="feed-item">
-                    <div class="when"><?= date('d.m H:i', strtotime($in['received_at'])) ?></div>
-                    <div style="min-width:0">
-                        <b><?= e($in['name'] ?: $in['phone']) ?></b>
-                        <span class="muted small"><?= e($in['phone']) ?></span>
-                        <div class="msg-preview mt" style="background:#eef2fb;border-radius:12px 12px 4px 12px"><?= nl2br(e(mb_substr($in['body'], 0, 300))) ?></div>
-                    </div>
-                </div>
-            <?php endforeach; ?>
-            </div>
-        <?php endif; ?>
-    </div>
-    </div>
+    <div id="campaignOverview" class="mt"><p class="muted">Загружаю статусы…</p></div>
 </div>
+<?php endif; ?>
 
 <form id="hiddenUp" method="post" enctype="multipart/form-data" style="display:none">
     <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
@@ -191,6 +157,6 @@ window.HAS_MANIFEST = <?= $selected ? 'true' : 'false' ?>;
 document.addEventListener('DOMContentLoaded', () => {
     waStatus();
     bindTripFacts();
-    if (window.HAS_MANIFEST) { loadGroups(true); }
+    if (window.HAS_MANIFEST) { loadGroups(true); loadCampaignOverview(); }
 });
 </script>

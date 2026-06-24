@@ -375,6 +375,32 @@ table.cat input.cell, table.cat select.cell { font-size: 13.5px; }
 .gcard-body { display: none; padding: 2px 14px 14px; }
 .gcard.open .gcard-body { display: block; }
 .gcard-controls { gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.notif-readiness { padding: 18px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+.notif-ready-head { display: flex; align-items: center; gap: 12px; }
+.notif-ready-icon { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--ok-bg); color: var(--ok); font-size: 20px; font-weight: 800; }
+.notif-ready-icon.warn { background: var(--err-bg); color: var(--err); }
+.notif-ready-title { color: var(--ink); font-size: 17px; font-weight: 750; }
+.notif-metrics, .notif-delivery-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-top: 16px; }
+.notif-metrics > div, .notif-delivery-metrics > div { padding: 11px 13px; border-radius: 11px; background: var(--surface-2); }
+.notif-metrics > div.warn, .notif-delivery-metrics > div.warn { background: var(--warn-bg); color: var(--warn); }
+.notif-metrics b, .notif-delivery-metrics b { display: block; font-size: 22px; line-height: 1.15; }
+.notif-metrics span, .notif-delivery-metrics span { display: block; margin-top: 3px; color: var(--muted); font-size: 11.5px; }
+.notif-auto-check { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.notif-issues, .notif-attention { margin-top: 12px; overflow: hidden; border: 1px solid #f0d6a8; border-radius: var(--r); background: #fffaf1; }
+.notif-issues-head { display: flex; justify-content: space-between; gap: 12px; padding: 11px 14px; border-bottom: 1px solid #f0dfc2; }
+.notif-issue { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 11px; padding: 10px 14px; border-bottom: 1px solid #f3e6d0; }
+.notif-issue:last-child { border-bottom: 0; }
+.notif-origin { margin-top: 12px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+.notif-origin-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 13px 15px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.notif-origin-title { margin-bottom: 3px; color: var(--ink); font-size: 15.5px; font-weight: 750; }
+.notif-origin-routes .gcard { margin: 0; border-width: 0 0 1px 4px; border-radius: 0; box-shadow: none; }
+.notif-origin-routes .gcard:last-child { border-bottom: 0; }
+.notif-origin-routes .gcard-head { padding: 11px 14px; }
+.notif-origin-routes .gmeta { margin-top: 3px; }
+.notif-overview-empty { padding: 20px; border-radius: var(--r); background: var(--surface-2); text-align: center; }
+.notif-delivery-line { height: 8px; margin: 14px 0 9px; overflow: hidden; border-radius: 99px; background: var(--line-soft); }
+.notif-delivery-line span { display: block; height: 100%; border-radius: inherit; background: var(--ok); transition: width .2s; }
+.notif-attention { background: var(--surface); }
 .g-preview, .msg-preview { max-width: 460px; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; padding: 12px 14px; border-radius: 14px 14px 14px 4px; background: #e7f8ef; font-size: 13.5px; color: #14503a; }
 .feed-item { overflow-wrap: anywhere; word-break: break-word; }
 .preview-cell { min-width: 280px; max-width: 420px; color: #333; font-size: 13px; }
@@ -492,6 +518,11 @@ details summary::-webkit-details-marker { color: var(--muted); }
     .facts { grid-template-columns: 1fr; }
     /* на мобильном панель отправки не липкая — иначе перекрывает форму и нижнюю навигацию */
     .send-bar { position: static; bottom: auto; box-shadow: none; }
+    .notif-metrics, .notif-delivery-metrics { grid-template-columns: 1fr 1fr; }
+    .notif-issue { grid-template-columns: auto minmax(0,1fr); }
+    .notif-issue .btn { grid-column: 1 / -1; }
+    .notif-origin-head { display: block; }
+    .notif-origin-head > .badge { margin-top: 8px; }
 
     /* крупные тач-цели */
     .btn, .btn-link { min-height: 46px; }

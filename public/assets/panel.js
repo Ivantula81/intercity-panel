@@ -120,6 +120,7 @@ async function delService(ev, id) {
 
 /* ── Уведомления: экран-мастер ── */
 let GROUPS = [], TEMPLATES = [], BUS_PHOTO = '', GDS_LOADED = false, CHANNELS_ACTIVE = ['whatsapp'];
+let CHANNEL_CHECKING = false, OVERVIEW_TIMER = null;
 
 function manifestId() {
     const tf = document.getElementById('tripFacts');
@@ -166,6 +167,8 @@ async function loadGroups(autoGds) {
     const hint = document.getElementById('busPhotoHint');
     if (hint) hint.textContent = BUS_PHOTO ? '' : 'фото автобуса нет в справочнике';
     renderGroups();
+    renderPreparationSummary();
+    autoCheckManifestChannels();
 
     const hasTimes = GROUPS.some(g => g.time);
     if (autoGds && !hasTimes && !GDS_LOADED) gdsTimes(true);
@@ -181,13 +184,29 @@ function renderGroups() {
     if (!GROUPS.length) { box.innerHTML = '<p class="muted">В ведомости нет пассажиров.</p>'; return; }
 
     let totalValid = 0;
+    let currentOrigin = '', routeBox = null;
     GROUPS.forEach((g, gi) => {
         const validCount = g.recipients.filter(x => x.valid).length;
         totalValid += validCount;
 
+        if (currentOrigin !== g.station) {
+            currentOrigin = g.station;
+            const originGroups = GROUPS.filter(x => x.station === g.station);
+            const originPassengers = originGroups.reduce((sum, x) => sum + x.recipients.length, 0);
+            const origin = document.createElement('section');
+            origin.className = 'notif-origin';
+            origin.innerHTML = `<div class="notif-origin-head"><div><div class="notif-origin-title">${esc(g.station)}</div>
+                <div class="muted small">${originPassengers} пассажиров · ${originGroups.length} направлений · посадка ${esc((g.date ? g.date + ' ' : '') + (g.time || 'время не указано'))}${g.address ? ' · ' + esc(g.address) : ''}</div></div>
+                <span class="badge ${originGroups.some(x => !x.time || !x.in_catalog || x.time_warning == 1) ? 'warn' : 'ok'}">${originGroups.some(x => !x.time || !x.in_catalog || x.time_warning == 1) ? 'проверьте' : 'готово'}</span></div>
+                <div class="notif-origin-routes"></div>`;
+            box.appendChild(origin);
+            routeBox = origin.querySelector('.notif-origin-routes');
+        }
+
         const card = document.createElement('div');
         card.className = 'gcard';
         card.dataset.station = g.station;
+        card.dataset.gi = gi;
         const tplOptions = TEMPLATES.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
         const problem = !g.time || g.time_warning == 1;
         if (problem) card.classList.add('gcard-problem');
@@ -201,8 +220,8 @@ function renderGroups() {
         card.innerHTML = `
         <div class="gcard-head" onclick="toggleGroup(this)">
             <div style="min-width:0">
-                <div class="gtitle">📍 ${esc(g.station)} → ${esc(g.destination)} <span class="badge muted">${validCount}</span>${g.station_id ? ` <span class="badge muted" title="id станции посадки">#${g.station_id}</span>` : ''}</div>
-                <div class="gmeta">посадка ${timeLabel}${g.address ? ' · ' + esc(g.address) : ''} ${badges.join(' ')}</div>
+                <div class="gtitle">${esc(g.destination)} <span class="badge muted">${validCount}</span></div>
+                <div class="gmeta">${timeLabel} · ${channelRouteSummary(g)} ${badges.join(' ')}</div>
             </div>
             <span class="gchev">▾</span>
         </div>
@@ -226,7 +245,6 @@ function renderGroups() {
                 <div class="muted small mt">Телефон редактируется прямо здесь — исправьте корявые номера и нажмите Enter. Бейджи WA/MAX/TG — наличие мессенджера у номера.</div>
                 <div class="row mt">
                     <button class="btn ghost sm" onclick="addGroupRecipient(this, ${gi})">+ Добавить получателя</button>
-                    <button class="btn ghost sm" onclick="checkGroupChannels(this, ${gi})" title="Проверить наличие WhatsApp/MAX/Telegram у номеров группы">⟲ Проверить каналы</button>
                 </div>
             </details>
             <div class="row mt">
@@ -234,12 +252,8 @@ function renderGroups() {
                 <button class="btn ghost sm" onclick="resetGroupBody(this, ${gi})" title="Заменить текст группы актуальным шаблоном">↺ Сбросить к шаблону</button>
                 <span class="small g-state"></span>
             </div>
-            <details class="mt g-monitor-wrap" ontoggle="if(this.open)loadGroupMonitor(this, ${gi})">
-                <summary class="muted small" style="cursor:pointer">📊 Статусы доставки</summary>
-                <div class="g-monitor mt"><span class="muted small">раскройте, чтобы загрузить статусы</span></div>
-            </details>
         </div>`;
-        box.appendChild(card);
+        routeBox.appendChild(card);
 
         const ta = card.querySelector('.g-body');
         const refresh = () => { schedulePreview(card, gi); scheduleDraft(card, gi); };
@@ -260,6 +274,14 @@ function renderGroups() {
                     inp.classList.toggle('phone-bad', !ok);
                     const cb = card.querySelector(`.g-cb[value="${inp.dataset.pid}"]`);
                     if (cb) { cb.disabled = !ok; if (ok) cb.checked = true; }
+                    const passenger = GROUPS[gi].recipients.find(x => x.id === +inp.dataset.pid);
+                    if (passenger) {
+                        passenger.phone = r.value;
+                        passenger.valid = ok;
+                        passenger.channels = { whatsapp: null, max: null, telegram: null, checked: false };
+                    }
+                    renderPreparationSummary();
+                    if (ok) autoCheckManifestChannels();
                 }
             };
             inp.addEventListener('change', save);
@@ -269,7 +291,143 @@ function renderGroups() {
     });
 
     const sum = document.getElementById('sendSummary');
-    if (sum) sum.innerHTML = `К отправке: <b>${totalValid}</b> получателей в ${GROUPS.length} группах`;
+    if (sum) sum.innerHTML = `К отправке: <b>${totalValid}</b> получателей в ${GROUPS.length} направлениях`;
+}
+
+function manifestRecipients() {
+    return GROUPS.flatMap((group, groupIndex) => group.recipients.map(recipient => ({ ...recipient, groupIndex, group })));
+}
+
+function channelRouteSummary(group) {
+    const counts = { whatsapp: 0, max: 0, telegram: 0, unknown: 0 };
+    group.recipients.filter(x => x.valid).forEach(recipient => {
+        const channels = recipient.channels || {};
+        if (!channels.checked) counts.unknown++;
+        if (channels.whatsapp === true) counts.whatsapp++;
+        else if (channels.max === true) counts.max++;
+        else if (channels.telegram === true) counts.telegram++;
+    });
+    const parts = [];
+    if (counts.whatsapp) parts.push(`<span class="ch-badge on-wa">WA ${counts.whatsapp}</span>`);
+    if (counts.max) parts.push(`<span class="ch-badge on-max">MAX ${counts.max}</span>`);
+    if (counts.telegram) parts.push(`<span class="ch-badge on-tg">TG ${counts.telegram}</span>`);
+    if (counts.unknown) parts.push(`<span class="badge muted">каналы: ${CHANNEL_CHECKING ? 'проверяю' : 'не проверены'} ${counts.unknown}</span>`);
+    return parts.join(' ');
+}
+
+function preparationIssues() {
+    const issues = [];
+    const missingStations = new Set();
+    GROUPS.forEach((group, groupIndex) => {
+        if (!group.time) issues.push({ type: 'route', level: 'err', groupIndex, title: `${group.station} → ${group.destination}`, text: 'Не указано время посадки.' });
+        else if (group.time_warning == 1) issues.push({ type: 'route', level: 'err', groupIndex, title: `${group.station} → ${group.destination}`, text: 'Время совпало со стартом рейса — требуется проверка.' });
+        if (!group.in_catalog && !missingStations.has(group.station)) {
+            missingStations.add(group.station);
+            issues.push({ type: 'route', level: 'err', groupIndex, title: group.station, text: 'Нет адреса посадки в справочнике.' });
+        }
+        group.recipients.forEach(recipient => {
+            if (!recipient.valid) issues.push({ type: 'recipient', level: 'err', groupIndex, passengerId: recipient.id, title: recipient.name || 'Пассажир без имени', text: `Некорректный телефон: ${recipient.phone || 'не указан'}.` });
+            else if (recipient.channels?.checked && recipient.channels.whatsapp === false) {
+                const fallback = recipient.channels.max === true ? 'MAX' : (recipient.channels.telegram === true ? 'Telegram' : '');
+                issues.push({ type: 'channel', level: fallback ? 'warn' : 'err', groupIndex, passengerId: recipient.id,
+                    title: recipient.name || recipient.phone, text: fallback ? `WhatsApp не найден; доступен ${fallback} для досылки.` : 'WhatsApp не найден; запасной мессенджер не обнаружен.' });
+            }
+        });
+    });
+    return issues;
+}
+
+function renderPreparationSummary() {
+    const box = document.getElementById('notificationReadiness');
+    const issueBox = document.getElementById('notificationIssues');
+    if (!box || !issueBox) return;
+    const recipients = manifestRecipients();
+    const valid = recipients.filter(x => x.valid).length;
+    const checked = recipients.filter(x => x.valid && x.channels?.checked).length;
+    const wa = recipients.filter(x => x.valid && x.channels?.whatsapp === true).length;
+    const fallback = recipients.filter(x => x.valid && x.channels?.whatsapp === false && (x.channels?.max === true || x.channels?.telegram === true)).length;
+    const issues = preparationIssues();
+    const blocking = issues.filter(x => x.level === 'err' && x.type === 'route').length;
+    const unknown = Math.max(0, valid - checked);
+    const title = CHANNEL_CHECKING ? 'Проверяю получателей и каналы…' : (blocking ? `Нужно исправить: ${blocking}` : 'Рассылка готова к подтверждению');
+    const subtitle = CHANNEL_CHECKING ? `Проверено ${checked} из ${valid} корректных номеров.`
+        : (blocking ? 'Отправка будет доступна после проверки критичных данных.' : `${valid} пассажиров включены в рассылку.`);
+    box.innerHTML = `<div class="notif-ready-head"><div class="notif-ready-icon ${blocking ? 'warn' : ''}">${blocking ? '!' : '✓'}</div><div><div class="notif-ready-title">${esc(title)}</div><div class="muted small">${esc(subtitle)}</div></div></div>
+        <div class="notif-metrics"><div><b>${recipients.length}</b><span>пассажиров</span></div><div><b>${GROUPS.length}</b><span>направлений</span></div><div><b>${CHANNEL_CHECKING ? '…' : wa}</b><span>WhatsApp</span></div><div class="${issues.length ? 'warn' : ''}"><b>${issues.length}</b><span>требует внимания</span></div></div>
+        <div class="notif-auto-check"><span class="badge ${CHANNEL_CHECKING ? 'warn' : 'ok'}">${CHANNEL_CHECKING ? 'идёт автопроверка' : 'проверка завершена'}</span>
+        <span class="muted small">${fallback ? `Для ${fallback} найден запасной канал. ` : ''}${unknown && !CHANNEL_CHECKING ? `Не проверено: ${unknown}.` : ''}</span></div>`;
+
+    const visibleIssues = issues.slice(0, 12);
+    issueBox.innerHTML = issues.length ? `<div class="notif-issues"><div class="notif-issues-head"><b>Требует внимания · ${issues.length}</b><span class="muted small">все проблемы собраны в одном месте</span></div>${visibleIssues.map(issue => `
+        <div class="notif-issue"><span class="badge ${issue.level === 'err' ? 'err' : 'warn'}">${issue.level === 'err' ? 'исправить' : 'проверить'}</span><div><b>${esc(issue.title)}</b><div class="muted small">${esc(issue.text)}</div></div><button class="btn ghost sm" onclick="openNotificationGroup(${issue.groupIndex}, ${issue.passengerId || 0})">Открыть</button></div>`).join('')}${issues.length > visibleIssues.length ? `<div class="muted small" style="padding:10px 14px">И ещё ${issues.length - visibleIssues.length}…</div>` : ''}</div>` : '';
+
+    const sendBtn = document.getElementById('sendAllBtn');
+    if (sendBtn) {
+        sendBtn.disabled = blocking > 0 || CHANNEL_CHECKING;
+        sendBtn.innerHTML = `${sendBtn.querySelector('svg')?.outerHTML || ''} Отправить ${valid} пассажирам`;
+    }
+    const sendSummary = document.getElementById('sendSummary');
+    if (sendSummary) sendSummary.innerHTML = blocking
+        ? `<b style="color:var(--err)">Сначала исправьте критичные данные: ${blocking}</b>`
+        : `Готово: <b>${valid}</b> получателей · ${GROUPS.length} направлений`;
+}
+
+function openNotificationGroup(groupIndex, passengerId = 0) {
+    const card = document.querySelector(`.gcard[data-gi="${groupIndex}"]`);
+    if (!card) return;
+    card.classList.add('open');
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (passengerId) {
+        const details = card.querySelector('details');
+        if (details) details.open = true;
+        const phone = card.querySelector(`.g-phone[data-pid="${passengerId}"]`);
+        if (phone) setTimeout(() => phone.focus(), 350);
+    }
+}
+
+function updateChannelCells() {
+    GROUPS.forEach(group => group.recipients.forEach(recipient => {
+        const row = document.querySelector(`tr[data-pid="${recipient.id}"]`);
+        const cell = row?.querySelector('.ch-cell');
+        if (cell) cell.innerHTML = channelBadges(recipient.channels);
+    }));
+    document.querySelectorAll('.gcard').forEach(card => {
+        const gi = +card.dataset.gi;
+        const meta = card.querySelector('.gmeta');
+        if (meta && GROUPS[gi]) {
+            const badges = [...meta.querySelectorAll('.badge.err,.badge.warn')].map(x => x.outerHTML).join(' ');
+            const g = GROUPS[gi];
+            const time = g.time ? esc((g.date ? g.date + ' ' : '') + g.time) : '<span style="color:var(--err)">время?</span>';
+            meta.innerHTML = `${time} · ${channelRouteSummary(g)} ${badges}`;
+        }
+    });
+}
+
+async function autoCheckManifestChannels(force = false) {
+    if (CHANNEL_CHECKING) return;
+    const pending = manifestRecipients().filter(x => x.valid && (force || !x.channels?.checked));
+    const phones = [...new Set(pending.map(x => x.phone).filter(Boolean))];
+    if (!phones.length) { renderPreparationSummary(); return; }
+    CHANNEL_CHECKING = true;
+    renderPreparationSummary();
+    try {
+        for (let i = 0; i < phones.length; i += 50) {
+            const result = await api('channels.check', { phones: phones.slice(i, i + 50), fallback_only: 1 }).catch(() => null);
+            if (!result?.ok) continue;
+            GROUPS.forEach(group => group.recipients.forEach(recipient => {
+                const norm = recipient.phone.replace(/\D+/g, '');
+                const key = Object.keys(result.presence || {}).find(phone => phone.replace(/\D+/g, '') === norm);
+                if (key) recipient.channels = result.presence[key];
+            }));
+            updateChannelCells();
+            renderPreparationSummary();
+        }
+    } finally {
+        CHANNEL_CHECKING = false;
+        updateChannelCells();
+        renderPreparationSummary();
+        loadCampaignOverview();
+    }
 }
 
 function toggleGroup(head) {
@@ -407,8 +565,9 @@ async function resendOne(btn, gi, phone, channel) {
     btn.textContent = '…';
     const r = await api('recipient.resend', { manifest_id: manifestId(), phone, channel }).catch(() => null);
     if (!r || !r.ok) { btn.disabled = false; btn.textContent = old; alert((r && r.error) || 'Не удалось дослать'); return; }
-    const det = btn.closest('.gcard').querySelector('.g-monitor-wrap');
+    const det = btn.closest('.gcard')?.querySelector('.g-monitor-wrap');
     if (det) loadGroupMonitor(det, gi);
+    loadCampaignOverview(true);
 }
 
 function renderMonitor(r, gi) {
@@ -422,6 +581,48 @@ function renderMonitor(r, gi) {
         <td style="white-space:nowrap">${channelBadges(rec.channels)}</td>
         <td style="text-align:right;white-space:nowrap">${resendButtons(rec, gi)} <a class="btn ghost sm" href="/?p=chats&phone=${encodeURIComponent(rec.phone)}">чат</a></td></tr>`).join('');
     return head + `<div class="table-wrap"><table class="t"><tbody>${rows}</tbody></table></div>`;
+}
+
+function overviewRecipientRow(rec) {
+    return `<tr><td><b>${esc(rec.name) || '—'}</b><div class="muted small">${esc(rec.station)} → ${esc(rec.destination)}</div></td>
+        <td><span class="muted small">${esc(rec.phone)}</span></td><td>${monitorChip(rec)}</td>
+        <td style="white-space:nowrap">${channelBadges(rec.channels)}</td>
+        <td style="text-align:right;white-space:nowrap">${rec.sent ? resendButtons(rec, rec.group_index) : ''} <a class="btn ghost sm" href="/?p=chats&phone=${encodeURIComponent(rec.phone)}">чат</a></td></tr>`;
+}
+
+function renderCampaignOverview(result) {
+    const box = document.getElementById('campaignOverview');
+    if (!box) return;
+    const summary = result.summary || {};
+    const sentTotal = Math.max(0, (summary.total || 0) - (summary.not_sent || 0));
+    if (!sentTotal) {
+        box.innerHTML = `<div class="notif-overview-empty"><b>Рассылка ещё не запускалась</b><div class="muted small">После отправки здесь автоматически появятся итоговые статусы и пассажиры, которым нужна досылка.</div></div>`;
+        return;
+    }
+    const success = (summary.read || 0) + (summary.delivered || 0);
+    const attention = (result.recipients || []).filter(rec => rec.sent && needsResend(rec));
+    const pending = (summary.sent || 0) + (summary.pending || 0);
+    box.innerHTML = `<div class="notif-delivery-metrics"><div><b>${summary.read || 0}</b><span>прочитали</span></div><div><b>${summary.delivered || 0}</b><span>доставлено</span></div><div><b>${pending}</b><span>ожидаем статус</span></div><div class="${attention.length ? 'warn' : ''}"><b>${attention.length}</b><span>нужно действие</span></div></div>
+        <div class="notif-delivery-line"><span style="width:${sentTotal ? Math.round(success / sentTotal * 100) : 0}%"></span></div>
+        <div class="row" style="justify-content:space-between;gap:10px;flex-wrap:wrap"><span class="muted small">Отправлено ${sentTotal} · успешная доставка подтверждена для ${success} · ответили ${summary.replied || 0}</span>${summary.replied ? `<a class="btn ghost sm" href="/?p=chats">Открыть ответы · ${summary.replied}</a>` : ''}</div>
+        ${attention.length ? `<div class="notif-attention mt"><div class="notif-issues-head"><b>Нужно действие · ${attention.length}</b><span class="muted small">здесь только ошибки и недоставленные сообщения</span></div><div class="table-wrap"><table class="t"><tbody>${attention.map(overviewRecipientRow).join('')}</tbody></table></div></div>` : `<div class="alert ok mt">Критичных ошибок доставки нет. Статусы продолжат обновляться автоматически.</div>`}
+        <details class="mt"><summary class="muted small" style="cursor:pointer">Все получатели и статусы (${result.recipients.length})</summary><div class="table-wrap mt"><table class="t"><tbody>${result.recipients.map(overviewRecipientRow).join('')}</tbody></table></div></details>`;
+}
+
+async function loadCampaignOverview(manual = false) {
+    const box = document.getElementById('campaignOverview');
+    if (!box || !manifestId()) return;
+    if (manual) box.innerHTML = '<p class="muted">Обновляю статусы…</p>';
+    const result = await api('campaign.overview', { manifest_id: manifestId() }).catch(() => null);
+    if (!result?.ok) {
+        if (manual) box.innerHTML = '<div class="alert warn">Не удалось обновить статусы. Повторите позже.</div>';
+        return;
+    }
+    CHANNELS_ACTIVE = result.channels_active?.length ? result.channels_active : CHANNELS_ACTIVE;
+    renderCampaignOverview(result);
+    clearTimeout(OVERVIEW_TIMER);
+    const hasPending = (result.summary?.sent || 0) + (result.summary?.pending || 0) > 0;
+    if (hasPending) OVERVIEW_TIMER = setTimeout(() => loadCampaignOverview(), 15000);
 }
 
 async function loadGroupMonitor(el, gi) {
@@ -581,6 +782,7 @@ async function sendGroup(btn, gi, silent = false) {
             + (r.errors?.length ? `<div class="muted small">${r.errors.map(esc).join('<br>')}</div>` : '');
         const mon = card.querySelector('.g-monitor-wrap');
         if (mon && !silent) { mon.open = true; loadGroupMonitor(mon, gi); }
+        if (!silent) loadCampaignOverview(true);
         return r;
     } finally {
         btn.disabled = false;
@@ -588,7 +790,10 @@ async function sendGroup(btn, gi, silent = false) {
 }
 
 async function sendAllGroups(btn) {
-    if (!confirm('Отправить сообщения ВСЕМ группам по очереди?')) return;
+    const valid = manifestRecipients().filter(x => x.valid).length;
+    const routeProblems = preparationIssues().filter(x => x.level === 'err' && x.type === 'route').length;
+    if (routeProblems) { alert('Сначала исправьте критичные данные в блоке «Требует внимания».'); return; }
+    if (!confirm(`Отправить актуальные сообщения ${valid} пассажирам в ${GROUPS.length} направлениях?`)) return;
     btn.disabled = true;
     const all = document.getElementById('allState');
     let total = 0, failed = 0;
@@ -601,6 +806,7 @@ async function sendAllGroups(btn) {
     }
     all.innerHTML = `<div class="alert ${failed ? 'warn' : 'ok'}">Готово: отправлено ${total}, ошибок ${failed}.</div>`;
     btn.disabled = false;
+    loadCampaignOverview(true);
 }
 
 /* ── Произвольный номер ── */
