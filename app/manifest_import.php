@@ -107,9 +107,9 @@ function import_manifest_csv(array $file, ?array $parsedData = null): int
     foreach ($groupTimes as $station => $t) {
         if ($t['time'] === '') continue;
         try {
-            $pdo->prepare('INSERT INTO manifest_groups (manifest_id, station, boarding_date, boarding_time)
-                    VALUES (?,?,?,?)
-                    ON DUPLICATE KEY UPDATE boarding_date = VALUES(boarding_date), boarding_time = VALUES(boarding_time)')
+                $pdo->prepare("INSERT INTO manifest_groups (manifest_id, station, destination, boarding_date, boarding_time)
+                    VALUES (?,?, '',?,?)
+                    ON DUPLICATE KEY UPDATE boarding_date = VALUES(boarding_date), boarding_time = VALUES(boarding_time)")
                 ->execute([$manifestId, $station, $t['date'], $t['time']]);
         } catch (Exception $e) { /* не критично для импорта */ }
     }
