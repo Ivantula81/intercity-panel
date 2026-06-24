@@ -402,6 +402,15 @@ table.cat input.cell, table.cat select.cell { font-size: 13.5px; }
 .notif-delivery-line { height: 8px; margin: 14px 0 9px; overflow: hidden; border-radius: 99px; background: var(--line-soft); }
 .notif-delivery-line span { display: block; height: 100%; border-radius: inherit; background: var(--ok); transition: width .2s; }
 .notif-attention { background: var(--surface); }
+.send-channel-panel { display: grid; grid-template-columns:minmax(210px,1fr) auto; align-items:center; gap:10px 18px; padding:14px; border:1px solid var(--line); border-radius:var(--r); background:var(--surface-2); }
+.send-channel-choices { display:flex; flex-wrap:wrap; gap:7px; }
+.send-channel-choice { display:inline-flex; align-items:center; gap:7px; min-height:38px; padding:7px 10px; border:1px solid var(--line); border-radius:10px; background:var(--surface); color:var(--ink); font-weight:650; cursor:pointer; }
+.send-channel-choice input { width:17px; height:17px; margin:0; accent-color:var(--brand); }
+.send-channel-choice.disabled { opacity:.5; cursor:not-allowed; }
+.send-channel-choice small { color:var(--faint); font-size:10px; font-weight:500; }
+#sendChannelEstimate { grid-column:1 / -1; }
+.send-channel-warning { padding:9px 11px; border-radius:9px; background:var(--warn-bg); color:var(--warn); font-weight:650; }
+.channel-attempts { display:inline-flex; flex-wrap:wrap; gap:4px; }
 .g-preview, .msg-preview { max-width: 460px; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; padding: 12px 14px; border-radius: 14px 14px 14px 4px; background: #e7f8ef; font-size: 13.5px; color: #14503a; }
 .feed-item { overflow-wrap: anywhere; word-break: break-word; }
 .preview-cell { min-width: 280px; max-width: 420px; color: #333; font-size: 13px; }
@@ -526,6 +535,9 @@ details summary::-webkit-details-marker { color: var(--muted); }
     .notif-issue .btn { grid-column: 1 / -1; }
     .notif-origin-head { display: block; }
     .notif-origin-head > .badge { margin-top: 8px; }
+    .send-channel-panel { grid-template-columns:1fr; }
+    #sendChannelEstimate { grid-column:auto; }
+    .send-channel-choice { flex:1 1 46%; justify-content:center; }
 
     /* крупные тач-цели */
     .btn, .btn-link { min-height: 46px; }

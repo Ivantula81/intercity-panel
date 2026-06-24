@@ -102,6 +102,11 @@
                 <span class="small muted" id="busPhotoHint"></span>
             </div>
             <div id="gdsInfo" class="mt"></div>
+            <div class="send-channel-panel mt">
+                <div><b>Каналы отправки</b><div class="muted small">Отмеченные каналы работают параллельно. По умолчанию выбран только WhatsApp.</div></div>
+                <div id="sendChannels" class="send-channel-choices"><span class="muted small">проверяю подключения…</span></div>
+                <div id="sendChannelEstimate" class="small muted"></div>
+            </div>
         </div>
     </div>
 </div>
