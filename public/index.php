@@ -228,17 +228,11 @@ switch ($page) {
         foreach ($manifests as $mRow) {
             if ((int) $mRow['id'] === $selectedId) { $selected = $mRow; break; }
         }
-        $journal = db()->query('SELECT * FROM messages ORDER BY id DESC LIMIT 60')->fetchAll();
-        try {
-            $inbox = db()->query('SELECT * FROM inbox ORDER BY id DESC LIMIT 30')->fetchAll();
-        } catch (Exception $e) {
-            $inbox = [];
-        }
         $buses = db()->query('SELECT * FROM buses ORDER BY code, model')->fetchAll();
         $drivers = db()->query('SELECT * FROM drivers ORDER BY name')->fetchAll();
         view('layout', ['title' => 'Уведомления', 'page' => 'notifications',
             'content' => fn() => view('notifications', ['manifests' => $manifests, 'selectedId' => $selectedId,
-                'selected' => $selected, 'journal' => $journal, 'inbox' => $inbox, 'buses' => $buses, 'drivers' => $drivers,
+                'selected' => $selected, 'buses' => $buses, 'drivers' => $drivers,
                 'uploadError' => $uploadError ?? ''])]);
         break;
 
