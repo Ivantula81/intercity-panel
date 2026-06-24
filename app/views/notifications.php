@@ -126,7 +126,7 @@
         <span class="step-num">4</span>
         <div style="flex:1;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap">
             <div class="muted small" id="sendSummary">подсчитываю получателей…</div>
-            <button class="btn" id="sendAllBtn" onclick="sendAllGroups(this)"><?= icon('send') ?> Подтвердить и отправить</button>
+            <button class="btn" data-send-all onclick="sendAllGroups(this)"><?= icon('send') ?> Подтвердить и отправить</button>
         </div>
     </div>
     <div id="allState" class="mt"></div>
