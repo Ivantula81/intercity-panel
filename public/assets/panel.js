@@ -201,7 +201,7 @@ function renderGroups() {
         card.innerHTML = `
         <div class="gcard-head" onclick="toggleGroup(this)">
             <div style="min-width:0">
-                <div class="gtitle">📍 ${esc(g.station)} <span class="badge muted">${validCount}</span>${g.station_id ? ` <span class="badge muted" title="id станции">#${g.station_id}</span>` : ''}</div>
+                <div class="gtitle">📍 ${esc(g.station)} → ${esc(g.destination)} <span class="badge muted">${validCount}</span>${g.station_id ? ` <span class="badge muted" title="id станции посадки">#${g.station_id}</span>` : ''}</div>
                 <div class="gmeta">посадка ${timeLabel}${g.address ? ' · ' + esc(g.address) : ''} ${badges.join(' ')}</div>
             </div>
             <span class="gchev">▾</span>
@@ -283,6 +283,7 @@ function schedulePreview(card, gi, now = false) {
         const r = await api('group.preview', {
             manifest_id: manifestId(),
             station: GROUPS[gi].station,
+            destination: GROUPS[gi].destination,
             text: card.querySelector('.g-body').value,
             date: card.querySelector('.g-date').value,
             time: card.querySelector('.g-time').value,
@@ -357,6 +358,7 @@ function scheduleDraft(card, gi) {
         const r = await api('group.save', {
             manifest_id: manifestId(),
             station: GROUPS[gi].station,
+            destination: GROUPS[gi].destination,
             body: card.querySelector('.g-body').value,
             date: card.querySelector('.g-date').value,
             time: card.querySelector('.g-time').value,
@@ -427,7 +429,9 @@ async function loadGroupMonitor(el, gi) {
     const box = card.querySelector('.g-monitor');
     if (!box) return;
     if (!box.dataset.loaded) box.innerHTML = '<span class="muted small">загружаю статусы…</span>';
-    const r = await api('campaign.status', { manifest_id: manifestId(), station: GROUPS[gi].station }).catch(() => null);
+    const r = await api('campaign.status', {
+        manifest_id: manifestId(), station: GROUPS[gi].station, destination: GROUPS[gi].destination,
+    }).catch(() => null);
     if (!r || !r.ok) { box.innerHTML = '<span class="muted small">не удалось загрузить статусы</span>'; return; }
     box.dataset.loaded = '1';
     box.innerHTML = renderMonitor(r, gi);
@@ -531,6 +535,7 @@ async function resetGroupBody(btn, gi) {
     const r = await api('group.save', {
         manifest_id: manifestId(),
         station: GROUPS[gi].station,
+        destination: GROUPS[gi].destination,
         body: t.body,
         date: card.querySelector('.g-date').value,
         time: card.querySelector('.g-time').value,
@@ -546,7 +551,7 @@ async function addGroupRecipient(btn, gi) {
     if (!phone) return;
     await api('passenger.add', {
         manifest_id: manifestId(),
-        name, phone, from_stop: GROUPS[gi].station,
+        name, phone, from_stop: GROUPS[gi].station, to_stop: GROUPS[gi].destination,
     });
     loadGroups();
 }
@@ -556,13 +561,14 @@ async function sendGroup(btn, gi, silent = false) {
     const ids = [...card.querySelectorAll('.g-cb:checked')].map(c => +c.value);
     const state = card.querySelector('.g-state');
     if (!ids.length) { state.textContent = 'Никто не выбран'; return { sent: 0, failed: 0 }; }
-    if (!silent && !confirm(`Отправить группе «${GROUPS[gi].station}» (${ids.length} получателей)?`)) return;
+    if (!silent && !confirm(`Отправить группе «${GROUPS[gi].station} → ${GROUPS[gi].destination}» (${ids.length} получателей)?`)) return;
     btn.disabled = true;
     state.textContent = 'Отправляю… (2–4 сек на сообщение)';
     try {
         const r = await api('campaign.send', {
             manifest_id: manifestId(),
             station: GROUPS[gi].station,
+            destination: GROUPS[gi].destination,
             ids,
             text: card.querySelector('.g-body').value,
             date: card.querySelector('.g-date').value,

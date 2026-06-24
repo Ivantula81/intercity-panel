@@ -288,9 +288,10 @@ function render_group_message(string $template, array $vars, string $extra): str
     return $text;
 }
 
-// Сборка групп по точке посадки
+// Сборка групп по точной паре «точка посадки -> точка прибытия».
 function build_groups(array $manifest): array
 {
+    require_once PANEL_ROOT . '/lib/NotificationGroups.php';
     $ps = db()->prepare('SELECT * FROM passengers WHERE manifest_id = ? ORDER BY sort, id');
     $ps->execute([$manifest['id']]);
     $passengers = $ps->fetchAll();
@@ -303,33 +304,46 @@ function build_groups(array $manifest): array
     }
 
     $drafts = [];
+    $legacyDrafts = [];
     $dst = db()->prepare('SELECT * FROM manifest_groups WHERE manifest_id = ?');
     $dst->execute([$manifest['id']]);
     foreach ($dst->fetchAll() as $d) {
-        $drafts[$d['station']] = $d;
+        $destination = trim((string) ($d['destination'] ?? ''));
+        if ($destination === '') {
+            $legacyDrafts[NotificationGroups::draftKey($d['station'], '')] = $d;
+        } else {
+            $drafts[NotificationGroups::draftKey($d['station'], $destination)] = $d;
+        }
     }
 
     $groups = [];
     foreach ($passengers as $p) {
         $stationId = $p['from_id'] !== null ? (int) $p['from_id'] : null;
         $station = trim($p['from_stop']) !== '' ? trim($p['from_stop']) : '(посадка не указана)';
-        // ключ группы — id станции (надёжно), при его отсутствии — название
-        $key = $stationId !== null ? 'id' . $stationId : 'nm' . mb_strtolower($station, 'UTF-8');
+        $destinationId = $p['to_id'] !== null ? (int) $p['to_id'] : null;
+        $destination = trim($p['to_stop']) !== '' ? trim($p['to_stop']) : '(прибытие не указано)';
+        $key = NotificationGroups::key($stationId, $station, $destinationId, $destination);
 
         if (!isset($groups[$key])) {
             // справочник: сперва по id, потом по названию
             $cat = ($stationId !== null ? ($catalogById[$stationId] ?? null) : null)
                 ?? ($catalogByName[mb_strtolower($station, 'UTF-8')] ?? null);
-            $draft = $drafts[$station] ?? null;
+            $draft = $drafts[NotificationGroups::draftKey($station, $destination)] ?? null;
+            // Старые записи были общими для всей станции. Из них безопасно наследуем
+            // только время посадки, но не текст, который мог относиться к другому городу.
+            $legacyDraft = $legacyDrafts[NotificationGroups::draftKey($station, '')] ?? null;
             $groups[$key] = [
                 'station' => $station,
                 'station_id' => $stationId,
+                'destination' => $destination,
+                'destination_id' => $destinationId,
+                'route_key' => $key,
                 'address' => $cat['address'] ?? '',
                 'map_url' => $cat['map_url'] ?? '',
                 'in_catalog' => $cat !== null && trim((string) ($cat['address'] ?? '')) !== '',
-                'date' => $draft['boarding_date'] ?? '',
-                'time' => $draft['boarding_time'] ?? '',
-                'time_warning' => (int) ($draft['time_warning'] ?? 0),
+                'date' => $draft['boarding_date'] ?? $legacyDraft['boarding_date'] ?? '',
+                'time' => $draft['boarding_time'] ?? $legacyDraft['boarding_time'] ?? '',
+                'time_warning' => (int) ($draft['time_warning'] ?? $legacyDraft['time_warning'] ?? 0),
                 'body' => $draft['body'] ?? null,
                 'recipients' => [],
             ];
@@ -346,6 +360,18 @@ function build_groups(array $manifest): array
     }
 
     return array_values($groups);
+}
+
+function find_notification_group(array $manifest, array $body): ?array
+{
+    require_once PANEL_ROOT . '/lib/NotificationGroups.php';
+    $station = trim((string) ($body['station'] ?? ''));
+    $destination = trim((string) ($body['destination'] ?? ''));
+    if ($station === '' || $destination === '') return null;
+    foreach (build_groups($manifest) as $group) {
+        if (NotificationGroups::matches($group, $station, $destination)) return $group;
+    }
+    return null;
 }
 
 // null/0/1 из ?bool — для кэша наличия канала.
@@ -533,7 +559,14 @@ switch ($action) {
         $updated = 0;
         $unmatched = [];
         $kept = 0;
+        $processedStations = [];
         foreach (build_groups($manifest) as $g) {
+            $stationKey = $g['station_id'] !== null
+                ? 'id' . $g['station_id']
+                : mb_strtolower(trim($g['station']), 'UTF-8');
+            // Время посадки едино для всех направлений с этой станции.
+            if (isset($processedStations[$stationKey])) continue;
+            $processedStations[$stationKey] = true;
             // ГДС — ПЕРВИЧНЫЙ источник времени: если рейс найден в ГДС, время станции
             // ПЕРЕЗАПИСЫВАЕТСЯ значением из ГДС (даже если оно пришло из ведомости).
             // Время из файла остаётся только там, где ГДС не знает станцию или не даёт по ней времени.
@@ -554,16 +587,21 @@ switch ($action) {
                 // станция отправления — совпадение со стартом это норма; для остальных — предупреждение
                 $isStart = GdsRace::norm($g['station']) === GdsRace::norm(explode('-', $manifest['route'])[0] ?? '');
                 $warning = (int) (!$isStart && $time === $raceStartTime);
-                db()->prepare('INSERT INTO manifest_groups (manifest_id, station, station_id, boarding_date, boarding_time, time_warning)
-                    VALUES (?,?,?,?,?,?)
-                    ON DUPLICATE KEY UPDATE station_id = VALUES(station_id), boarding_date = VALUES(boarding_date), boarding_time = VALUES(boarding_time), time_warning = VALUES(time_warning)')
+                db()->prepare("INSERT INTO manifest_groups (manifest_id, station, station_id, destination, boarding_date, boarding_time, time_warning)
+                    VALUES (?,?,?, '',?,?,?)
+                    ON DUPLICATE KEY UPDATE station_id = VALUES(station_id), boarding_date = VALUES(boarding_date), boarding_time = VALUES(boarding_time), time_warning = VALUES(time_warning)")
                     ->execute([$manifest['id'], $g['station'], $g['station_id'] ?? null, $date, $time, $warning]);
+                // Уже сохранённые тексты остаются раздельными, обновляется только общее время посадки.
+                db()->prepare('UPDATE manifest_groups SET station_id = ?, boarding_date = ?, boarding_time = ?, time_warning = ?
+                    WHERE manifest_id = ? AND station = ? AND destination <> ?')
+                    ->execute([$g['station_id'] ?? null, $date, $time, $warning, $manifest['id'], $g['station'], '']);
                 $updated++;
                 continue;
             }
 
             // ГДС времени по станции не дал — оставляем то, что было в ведомости (если было)
-            $exq = db()->prepare('SELECT boarding_time FROM manifest_groups WHERE manifest_id = ? AND station = ?');
+            $exq = db()->prepare("SELECT boarding_time FROM manifest_groups
+                WHERE manifest_id = ? AND station = ? ORDER BY (destination = '') DESC LIMIT 1");
             $exq->execute([$manifest['id'], $g['station']]);
             $hasFileTime = trim((string) $exq->fetchColumn()) !== '';
             if ($stop !== null) {
@@ -583,21 +621,23 @@ switch ($action) {
 
     case 'group.save':
         $manifest = get_manifest((int) $body['manifest_id']);
-        db()->prepare('INSERT INTO manifest_groups (manifest_id, station, boarding_date, boarding_time, body)
-            VALUES (?,?,?,?,?)
+        $group = find_notification_group($manifest, $body);
+        if ($group === null) json_out(['ok' => false, 'error' => 'Группа маршрута не найдена. Обновите страницу.']);
+        db()->prepare('INSERT INTO manifest_groups (manifest_id, station, station_id, destination, destination_id, boarding_date, boarding_time, body)
+            VALUES (?,?,?,?,?,?,?,?)
             ON DUPLICATE KEY UPDATE boarding_date = VALUES(boarding_date), boarding_time = VALUES(boarding_time), body = VALUES(body)')
             ->execute([
-                $manifest['id'], (string) $body['station'],
+                $manifest['id'], $group['station'], $group['station_id'], $group['destination'], $group['destination_id'],
                 trim((string) ($body['date'] ?? '')), trim((string) ($body['time'] ?? '')),
-                $body['body'] === null ? null : (string) $body['body'],
+                ($body['body'] ?? null) === null ? null : (string) $body['body'],
             ]);
         json_out(['ok' => true]);
 
     case 'group.preview':
         $manifest = get_manifest((int) $body['manifest_id']);
         require_once PANEL_ROOT . '/lib/MessageTemplate.php';
-        foreach (build_groups($manifest) as $g) {
-            if ($g['station'] !== (string) $body['station']) continue;
+        $g = find_notification_group($manifest, $body);
+        if ($g !== null) {
             $g['date'] = trim((string) ($body['date'] ?? $g['date']));
             $g['time'] = trim((string) ($body['time'] ?? $g['time']));
             $first = $g['recipients'][0] ?? null;
@@ -621,10 +661,8 @@ switch ($action) {
         require_once PANEL_ROOT . '/lib/Channels.php';
         $manifest = get_manifest((int) $body['manifest_id']);
         $station = (string) ($body['station'] ?? '');
-        $group = null;
-        foreach (build_groups($manifest) as $g) {
-            if ($g['station'] === $station) { $group = $g; break; }
-        }
+        $destination = (string) ($body['destination'] ?? '');
+        $group = find_notification_group($manifest, $body);
         if ($group === null) json_out(['ok' => false, 'error' => 'Группа не найдена']);
 
         $phones = [];
@@ -664,7 +702,7 @@ switch ($action) {
                 'channels' => $presByPhone[$ph] ?? null,
             ];
         }
-        json_out(['ok' => true, 'station' => $station, 'channels_active' => Channels::active(),
+        json_out(['ok' => true, 'station' => $station, 'destination' => $destination, 'channels_active' => Channels::active(),
             'body' => $group['body'] ?? '', 'recipients' => $recipients]);
 
     case 'recipient.resend':
@@ -716,11 +754,7 @@ switch ($action) {
         $evo = wa_outbound(); // пассажирам по телефону = WhatsApp (Evolution)
         if (!$evo->isConfigured()) json_out(['ok' => false, 'error' => 'WhatsApp-канал не настроен']);
 
-        $station = (string) ($body['station'] ?? '');
-        $group = null;
-        foreach (build_groups($manifest) as $g) {
-            if ($g['station'] === $station) { $group = $g; break; }
-        }
+        $group = find_notification_group($manifest, $body);
         if ($group === null) json_out(['ok' => false, 'error' => 'Группа не найдена']);
         $group['date'] = trim((string) ($body['date'] ?? $group['date']));
         $group['time'] = trim((string) ($body['time'] ?? $group['time']));

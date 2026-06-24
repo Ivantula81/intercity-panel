@@ -36,6 +36,7 @@ git -C /root/panel-src pull && /root/deploy.sh
 ```
 
 ## Журнал работ (новое — сверху)
+- **2026-06-24 · Codex:** ветка `codex/notification-route-groups` — исправление критической группировки уведомлений: группы и серверная отправка изолированы по точной паре «откуда → куда», добавлена миграция `schema16.sql` и тест защиты от смешивания направлений.
 - **2026-06-22 · Codex:** ветка `codex/reporting-user-guide` — встроенная инструкция для оператора/тестировщика: справочник агентов, формулы, файлы, версии расчёта, схема данных и чек-лист.
 - **2026-06-22 · Codex:** ветка `codex/pwa-performance` — исправление запуска с иконки iPhone и первого открытия: PWA manifest/icons/offline shell, service worker, безопасная 30-дневная сессия, nginx gzip/cache.
 - **2026-06-22 · Codex:** ветка `codex/chat-inbox-foundation-review` — ревью этапа 1a Claude и продолжение согласованного inbox-плана: conversations/events, backfill+dual-write, очереди, статусы, assignee, priority, notes, cursor pagination и точное разделение каналов. Детали: `docs/chat-review-2026-06-22.md`.
