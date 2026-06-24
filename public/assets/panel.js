@@ -171,6 +171,11 @@ async function loadGroups(autoGds) {
     autoCheckManifestChannels();
 
     const hasTimes = GROUPS.some(g => g.time);
+    const gdsBadge = document.getElementById('gdsBadge');
+    if (hasTimes && !GDS_LOADED && gdsBadge) {
+        gdsBadge.className = 'badge warn';
+        gdsBadge.textContent = 'времена из ведомости';
+    }
     if (autoGds && !hasTimes && !GDS_LOADED) gdsTimes(true);
 }
 
@@ -352,7 +357,8 @@ function renderPreparationSummary() {
     const title = CHANNEL_CHECKING ? 'Проверяю получателей и каналы…' : (blocking ? `Нужно исправить: ${blocking}` : 'Рассылка готова к подтверждению');
     const subtitle = CHANNEL_CHECKING ? `Проверено ${checked} из ${valid} корректных номеров.`
         : (blocking ? 'Отправка будет доступна после проверки критичных данных.' : `${valid} пассажиров включены в рассылку.`);
-    box.innerHTML = `<div class="notif-ready-head"><div class="notif-ready-icon ${blocking ? 'warn' : ''}">${blocking ? '!' : '✓'}</div><div><div class="notif-ready-title">${esc(title)}</div><div class="muted small">${esc(subtitle)}</div></div></div>
+    box.innerHTML = `<div class="notif-ready-top"><div class="notif-ready-head"><div class="notif-ready-icon ${blocking ? 'warn' : ''}">${blocking ? '!' : '✓'}</div><div><div class="notif-ready-title">${esc(title)}</div><div class="muted small">${esc(subtitle)}</div></div></div>
+        <button class="btn" data-send-all onclick="sendAllGroups(this)">Отправить ${valid} пассажирам</button></div>
         <div class="notif-metrics"><div><b>${recipients.length}</b><span>пассажиров</span></div><div><b>${GROUPS.length}</b><span>направлений</span></div><div><b>${CHANNEL_CHECKING ? '…' : wa}</b><span>WhatsApp</span></div><div class="${issues.length ? 'warn' : ''}"><b>${issues.length}</b><span>требует внимания</span></div></div>
         <div class="notif-auto-check"><span class="badge ${CHANNEL_CHECKING ? 'warn' : 'ok'}">${CHANNEL_CHECKING ? 'идёт автопроверка' : 'проверка завершена'}</span>
         <span class="muted small">${fallback ? `Для ${fallback} найден запасной канал. ` : ''}${unknown && !CHANNEL_CHECKING ? `Не проверено: ${unknown}.` : ''}</span></div>`;
@@ -361,11 +367,10 @@ function renderPreparationSummary() {
     issueBox.innerHTML = issues.length ? `<div class="notif-issues"><div class="notif-issues-head"><b>Требует внимания · ${issues.length}</b><span class="muted small">все проблемы собраны в одном месте</span></div>${visibleIssues.map(issue => `
         <div class="notif-issue"><span class="badge ${issue.level === 'err' ? 'err' : 'warn'}">${issue.level === 'err' ? 'исправить' : 'проверить'}</span><div><b>${esc(issue.title)}</b><div class="muted small">${esc(issue.text)}</div></div><button class="btn ghost sm" onclick="openNotificationGroup(${issue.groupIndex}, ${issue.passengerId || 0})">Открыть</button></div>`).join('')}${issues.length > visibleIssues.length ? `<div class="muted small" style="padding:10px 14px">И ещё ${issues.length - visibleIssues.length}…</div>` : ''}</div>` : '';
 
-    const sendBtn = document.getElementById('sendAllBtn');
-    if (sendBtn) {
+    document.querySelectorAll('[data-send-all]').forEach(sendBtn => {
         sendBtn.disabled = blocking > 0 || CHANNEL_CHECKING;
         sendBtn.innerHTML = `${sendBtn.querySelector('svg')?.outerHTML || ''} Отправить ${valid} пассажирам`;
-    }
+    });
     const sendSummary = document.getElementById('sendSummary');
     if (sendSummary) sendSummary.innerHTML = blocking
         ? `<b style="color:var(--err)">Сначала исправьте критичные данные: ${blocking}</b>`
@@ -794,7 +799,8 @@ async function sendAllGroups(btn) {
     const routeProblems = preparationIssues().filter(x => x.level === 'err' && x.type === 'route').length;
     if (routeProblems) { alert('Сначала исправьте критичные данные в блоке «Требует внимания».'); return; }
     if (!confirm(`Отправить актуальные сообщения ${valid} пассажирам в ${GROUPS.length} направлениях?`)) return;
-    btn.disabled = true;
+    const sendButtons = [...document.querySelectorAll('[data-send-all]')];
+    sendButtons.forEach(button => button.disabled = true);
     const all = document.getElementById('allState');
     let total = 0, failed = 0;
     const cards = document.querySelectorAll('.gcard');
@@ -805,7 +811,7 @@ async function sendAllGroups(btn) {
         failed += r.failed || 0;
     }
     all.innerHTML = `<div class="alert ${failed ? 'warn' : 'ok'}">Готово: отправлено ${total}, ошибок ${failed}.</div>`;
-    btn.disabled = false;
+    sendButtons.forEach(button => button.disabled = false);
     loadCampaignOverview(true);
 }
 

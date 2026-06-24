@@ -353,7 +353,7 @@ table.cat input.cell, table.cat select.cell { font-size: 13.5px; }
 .step-num.done { background: var(--ok); }
 .step-title { font-size: 16px; font-weight: 700; }
 .step-title-sub { margin-top: 2px; }
-.send-bar { position: sticky; bottom: 16px; border: 1.5px solid var(--brand); box-shadow: var(--sh-2); }
+.send-bar { position: static; border: 1.5px solid var(--brand); box-shadow: var(--sh-2); }
 .manifest-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
 .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
 .facts > div { padding: 12px 14px; border-radius: var(--r); background: var(--surface-2); }
@@ -376,6 +376,7 @@ table.cat input.cell, table.cat select.cell { font-size: 13.5px; }
 .gcard.open .gcard-body { display: block; }
 .gcard-controls { gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
 .notif-readiness { padding: 18px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+.notif-ready-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .notif-ready-head { display: flex; align-items: center; gap: 12px; }
 .notif-ready-icon { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--ok-bg); color: var(--ok); font-size: 20px; font-weight: 800; }
 .notif-ready-icon.warn { background: var(--err-bg); color: var(--err); }
@@ -519,6 +520,8 @@ details summary::-webkit-details-marker { color: var(--muted); }
     /* на мобильном панель отправки не липкая — иначе перекрывает форму и нижнюю навигацию */
     .send-bar { position: static; bottom: auto; box-shadow: none; }
     .notif-metrics, .notif-delivery-metrics { grid-template-columns: 1fr 1fr; }
+    .notif-ready-top { display: block; }
+    .notif-ready-top > .btn { width: 100%; margin-top: 12px; justify-content: center; }
     .notif-issue { grid-template-columns: auto minmax(0,1fr); }
     .notif-issue .btn { grid-column: 1 / -1; }
     .notif-origin-head { display: block; }
