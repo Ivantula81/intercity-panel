@@ -28,4 +28,17 @@ if (NotificationGroups::matches($group, 'Москва', 'Симферополь'
     exit(1);
 }
 
+$sorted = NotificationGroups::sortByRoute([
+    ['station' => 'Тула', 'destination' => 'Ялта'],
+    ['station' => 'Москва', 'destination' => 'Симферополь'],
+    ['station' => 'Тула', 'destination' => 'Анапа'],
+    ['station' => 'Москва', 'destination' => 'Евпатория'],
+]);
+$actualOrder = array_map(fn(array $g): string => $g['station'] . ' → ' . $g['destination'], $sorted);
+$expectedOrder = ['Москва → Евпатория', 'Москва → Симферополь', 'Тула → Анапа', 'Тула → Ялта'];
+if ($actualOrder !== $expectedOrder) {
+    fwrite(STDERR, "Группы должны идти блоками по отправлению, затем по прибытию\n");
+    exit(1);
+}
+
 echo "Notification route groups: OK\n";

@@ -19,6 +19,19 @@ final class NotificationGroups
             && self::norm((string) ($group['destination'] ?? '')) === self::norm($to);
     }
 
+    /** Все направления одного места отправления стоят рядом. */
+    public static function sortByRoute(array $groups): array
+    {
+        usort($groups, static function (array $a, array $b): int {
+            $byDeparture = self::norm((string) ($a['station'] ?? ''))
+                <=> self::norm((string) ($b['station'] ?? ''));
+            if ($byDeparture !== 0) return $byDeparture;
+            return self::norm((string) ($a['destination'] ?? ''))
+                <=> self::norm((string) ($b['destination'] ?? ''));
+        });
+        return $groups;
+    }
+
     private static function stopKey(?int $id, string $name): string
     {
         return $id !== null ? 'id' . $id : 'nm' . self::norm($name);

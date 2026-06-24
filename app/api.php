@@ -359,7 +359,7 @@ function build_groups(array $manifest): array
         ];
     }
 
-    return array_values($groups);
+    return NotificationGroups::sortByRoute(array_values($groups));
 }
 
 function find_notification_group(array $manifest, array $body): ?array
