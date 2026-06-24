@@ -121,6 +121,8 @@ async function delService(ev, id) {
 /* ── Уведомления: экран-мастер ── */
 let GROUPS = [], TEMPLATES = [], BUS_PHOTO = '', GDS_LOADED = false, CHANNELS_ACTIVE = ['whatsapp'];
 let CHANNEL_CHECKING = false, OVERVIEW_TIMER = null;
+let SELECTED_CHANNELS = new Set(['whatsapp']);
+let FULL_CHANNEL_CHECK_REQUESTED = false;
 
 function manifestId() {
     const tf = document.getElementById('tripFacts');
@@ -161,6 +163,10 @@ async function loadGroups(autoGds) {
     GROUPS = r.groups;
     TEMPLATES = r.templates;
     CHANNELS_ACTIVE = (r.channels_active && r.channels_active.length) ? r.channels_active : ['whatsapp'];
+    if (![...SELECTED_CHANNELS].some(channel => CHANNELS_ACTIVE.includes(channel))) {
+        SELECTED_CHANNELS = new Set([CHANNELS_ACTIVE[0] || 'whatsapp']);
+    }
+    renderSendChannels();
     BUS_PHOTO = r.bus_photo;
     const ap = document.getElementById('attachPhoto');
     if (ap) ap.disabled = !BUS_PHOTO;
@@ -181,6 +187,50 @@ async function loadGroups(autoGds) {
 
 function defaultBody() {
     return TEMPLATES.length ? TEMPLATES[0].body : '';
+}
+
+function selectedSendChannels() {
+    return [...SELECTED_CHANNELS].filter(channel => CHANNELS_ACTIVE.includes(channel));
+}
+
+function renderSendChannels() {
+    const box = document.getElementById('sendChannels');
+    if (!box) return;
+    const labels = { whatsapp: 'WhatsApp', max: 'MAX', telegram: 'Telegram', sms: 'SMS' };
+    box.innerHTML = Object.entries(labels).map(([channel, label]) => {
+        const active = CHANNELS_ACTIVE.includes(channel);
+        const checked = active && SELECTED_CHANNELS.has(channel);
+        return `<label class="send-channel-choice ${active ? '' : 'disabled'}"><input type="checkbox" value="${channel}" ${checked ? 'checked' : ''} ${active ? '' : 'disabled'} onchange="changeSendChannels(this)"><span>${label}</span>${active ? '' : '<small>не подключён</small>'}</label>`;
+    }).join('');
+    updateChannelEstimate();
+}
+
+function changeSendChannels(input) {
+    if (input.checked) SELECTED_CHANNELS.add(input.value);
+    else SELECTED_CHANNELS.delete(input.value);
+    if (!selectedSendChannels().length) {
+        input.checked = true;
+        SELECTED_CHANNELS.add(input.value);
+        alert('Выберите хотя бы один канал отправки.');
+    }
+    updateChannelEstimate();
+    renderPreparationSummary();
+    if (input.checked && (input.value === 'max' || input.value === 'telegram')) {
+        autoCheckManifestChannels(true, true);
+    }
+}
+
+function updateChannelEstimate() {
+    const box = document.getElementById('sendChannelEstimate');
+    if (!box) return;
+    const recipients = manifestRecipients().filter(x => x.valid).length;
+    const channels = selectedSendChannels();
+    const attempts = recipients * channels.length;
+    const labels = { whatsapp: 'WhatsApp', max: 'MAX', telegram: 'Telegram', sms: 'SMS' };
+    box.className = `small ${channels.length > 1 ? 'send-channel-warning' : 'muted'}`;
+    box.textContent = channels.length > 1
+        ? `Параллельная отправка: ${recipients} пассажиров × ${channels.length} канала = до ${attempts} сообщений. Пассажиры могут получить одинаковый текст несколько раз.`
+        : `Сообщения уйдут только через ${labels[channels[0]] || channels[0]}.`;
 }
 
 function renderGroups() {
@@ -332,10 +382,19 @@ function preparationIssues() {
         }
         group.recipients.forEach(recipient => {
             if (!recipient.valid) issues.push({ type: 'recipient', level: 'err', groupIndex, passengerId: recipient.id, title: recipient.name || 'Пассажир без имени', text: `Некорректный телефон: ${recipient.phone || 'не указан'}.` });
-            else if (recipient.channels?.checked && recipient.channels.whatsapp === false) {
+            else if (recipient.channels?.checked && recipient.channels.whatsapp === false && SELECTED_CHANNELS.has('whatsapp')) {
                 const fallback = recipient.channels.max === true ? 'MAX' : (recipient.channels.telegram === true ? 'Telegram' : '');
                 issues.push({ type: 'channel', level: fallback ? 'warn' : 'err', groupIndex, passengerId: recipient.id,
-                    title: recipient.name || recipient.phone, text: fallback ? `WhatsApp не найден; доступен ${fallback} для досылки.` : 'WhatsApp не найден; запасной мессенджер не обнаружен.' });
+                    title: recipient.name || recipient.phone, text: fallback ? `WhatsApp не найден; у номера доступен ${fallback}.` : 'WhatsApp не найден; другой мессенджер не обнаружен.' });
+            }
+            if (recipient.valid && recipient.channels?.checked) {
+                const labels = { max: 'MAX', telegram: 'Telegram' };
+                Object.keys(labels).forEach(channel => {
+                    if (SELECTED_CHANNELS.has(channel) && recipient.channels[channel] === false) {
+                        issues.push({ type: 'channel', level: 'warn', groupIndex, passengerId: recipient.id,
+                            title: recipient.name || recipient.phone, text: `${labels[channel]} не найден у этого номера — сообщение в этот канал не доставится.` });
+                    }
+                });
             }
         });
     });
@@ -354,6 +413,8 @@ function renderPreparationSummary() {
     const issues = preparationIssues();
     const blocking = issues.filter(x => x.level === 'err' && x.type === 'route').length;
     const unknown = Math.max(0, valid - checked);
+    const selectedChannels = selectedSendChannels();
+    const attemptCount = valid * selectedChannels.length;
     const title = CHANNEL_CHECKING ? 'Проверяю получателей и каналы…' : (blocking ? `Нужно исправить: ${blocking}` : 'Рассылка готова к подтверждению');
     const subtitle = CHANNEL_CHECKING ? `Проверено ${checked} из ${valid} корректных номеров.`
         : (blocking ? 'Отправка будет доступна после проверки критичных данных.' : `${valid} пассажиров включены в рассылку.`);
@@ -369,12 +430,13 @@ function renderPreparationSummary() {
 
     document.querySelectorAll('[data-send-all]').forEach(sendBtn => {
         sendBtn.disabled = blocking > 0 || CHANNEL_CHECKING;
-        sendBtn.innerHTML = `${sendBtn.querySelector('svg')?.outerHTML || ''} Отправить ${valid} пассажирам`;
+        sendBtn.innerHTML = `${sendBtn.querySelector('svg')?.outerHTML || ''} Отправить ${valid} пассажирам${selectedChannels.length > 1 ? ` · ${attemptCount} сообщений` : ''}`;
     });
     const sendSummary = document.getElementById('sendSummary');
     if (sendSummary) sendSummary.innerHTML = blocking
         ? `<b style="color:var(--err)">Сначала исправьте критичные данные: ${blocking}</b>`
-        : `Готово: <b>${valid}</b> получателей · ${GROUPS.length} направлений`;
+        : `Готово: <b>${valid}</b> получателей · ${GROUPS.length} направлений · ${selectedChannels.length} ${selectedChannels.length === 1 ? 'канал' : 'канала'}`;
+    updateChannelEstimate();
 }
 
 function openNotificationGroup(groupIndex, passengerId = 0) {
@@ -408,8 +470,11 @@ function updateChannelCells() {
     });
 }
 
-async function autoCheckManifestChannels(force = false) {
-    if (CHANNEL_CHECKING) return;
+async function autoCheckManifestChannels(force = false, checkAllMessengers = false) {
+    if (CHANNEL_CHECKING) {
+        if (checkAllMessengers) FULL_CHANNEL_CHECK_REQUESTED = true;
+        return;
+    }
     const pending = manifestRecipients().filter(x => x.valid && (force || !x.channels?.checked));
     const phones = [...new Set(pending.map(x => x.phone).filter(Boolean))];
     if (!phones.length) { renderPreparationSummary(); return; }
@@ -417,7 +482,7 @@ async function autoCheckManifestChannels(force = false) {
     renderPreparationSummary();
     try {
         for (let i = 0; i < phones.length; i += 50) {
-            const result = await api('channels.check', { phones: phones.slice(i, i + 50), fallback_only: 1 }).catch(() => null);
+            const result = await api('channels.check', { phones: phones.slice(i, i + 50), fallback_only: checkAllMessengers ? 0 : 1 }).catch(() => null);
             if (!result?.ok) continue;
             GROUPS.forEach(group => group.recipients.forEach(recipient => {
                 const norm = recipient.phone.replace(/\D+/g, '');
@@ -432,6 +497,10 @@ async function autoCheckManifestChannels(force = false) {
         updateChannelCells();
         renderPreparationSummary();
         loadCampaignOverview();
+        if (FULL_CHANNEL_CHECK_REQUESTED) {
+            FULL_CHANNEL_CHECK_REQUESTED = false;
+            autoCheckManifestChannels(true, true);
+        }
     }
 }
 
@@ -591,8 +660,20 @@ function renderMonitor(r, gi) {
 function overviewRecipientRow(rec) {
     return `<tr><td><b>${esc(rec.name) || '—'}</b><div class="muted small">${esc(rec.station)} → ${esc(rec.destination)}</div></td>
         <td><span class="muted small">${esc(rec.phone)}</span></td><td>${monitorChip(rec)}</td>
-        <td style="white-space:nowrap">${channelBadges(rec.channels)}</td>
+        <td style="white-space:nowrap">${channelAttemptBadges(rec)}</td>
         <td style="text-align:right;white-space:nowrap">${rec.sent ? resendButtons(rec, rec.group_index) : ''} <a class="btn ghost sm" href="/?p=chats&phone=${encodeURIComponent(rec.phone)}">чат</a></td></tr>`;
+}
+
+function channelAttemptBadges(rec) {
+    const labels = { whatsapp: 'WA', max: 'MAX', telegram: 'TG', sms: 'SMS' };
+    const states = rec.channel_states || {};
+    const stateLabels = { read: 'прочитано', delivered: 'доставлено', sent: 'отправлено', failed: 'ошибка', pending: 'очередь' };
+    const entries = Object.entries(states);
+    if (!entries.length) return channelBadges(rec.channels);
+    return `<span class="channel-attempts">${entries.map(([channel, info]) => {
+        const cls = info.state === 'failed' ? 'err' : (info.state === 'read' || info.state === 'delivered' ? 'ok' : 'muted');
+        return `<span class="badge ${cls}" title="${esc(info.error || stateLabels[info.state] || info.state)}">${labels[channel] || channel}: ${stateLabels[info.state] || info.state}</span>`;
+    }).join('')}</span>`;
 }
 
 function renderCampaignOverview(result) {
@@ -767,7 +848,11 @@ async function sendGroup(btn, gi, silent = false) {
     const ids = [...card.querySelectorAll('.g-cb:checked')].map(c => +c.value);
     const state = card.querySelector('.g-state');
     if (!ids.length) { state.textContent = 'Никто не выбран'; return { sent: 0, failed: 0 }; }
-    if (!silent && !confirm(`Отправить группе «${GROUPS[gi].station} → ${GROUPS[gi].destination}» (${ids.length} получателей)?`)) return;
+    const channels = selectedSendChannels();
+    const channelLabels = { whatsapp: 'WhatsApp', max: 'MAX', telegram: 'Telegram', sms: 'SMS' };
+    if (!channels.length) { state.textContent = 'Не выбран канал'; return { sent: 0, failed: 0 }; }
+    const parallel = channels.length > 1 ? `\nКаждый пассажир может получить ${channels.length} одинаковых сообщения.` : '';
+    if (!silent && !confirm(`Отправить группе «${GROUPS[gi].station} → ${GROUPS[gi].destination}» (${ids.length} получателей) через ${channels.map(x => channelLabels[x] || x).join(', ')}?${parallel}`)) return;
     btn.disabled = true;
     state.textContent = 'Отправляю… (2–4 сек на сообщение)';
     try {
@@ -775,6 +860,7 @@ async function sendGroup(btn, gi, silent = false) {
             manifest_id: manifestId(),
             station: GROUPS[gi].station,
             destination: GROUPS[gi].destination,
+            channels,
             ids,
             text: card.querySelector('.g-body').value,
             date: card.querySelector('.g-date').value,
@@ -783,7 +869,7 @@ async function sendGroup(btn, gi, silent = false) {
             phone_on: document.getElementById('driverPhoneOn')?.checked ? 1 : 0,
         });
         if (!r.ok) { state.innerHTML = '<span class="badge err">' + esc(r.error) + '</span>'; return r; }
-        state.innerHTML = `<span class="badge ${r.failed ? 'warn' : 'ok'}">отправлено ${r.sent}, ошибок ${r.failed}${r.rest ? ', в очереди ' + r.rest : ''}</span>`
+        state.innerHTML = `<span class="badge ${r.failed ? 'warn' : 'ok'}">сообщений отправлено ${r.sent}, ошибок ${r.failed}${r.duplicates ? ', без дубля ' + r.duplicates : ''}${r.rest ? ', в очереди ' + r.rest : ''}</span>`
             + (r.errors?.length ? `<div class="muted small">${r.errors.map(esc).join('<br>')}</div>` : '');
         const mon = card.querySelector('.g-monitor-wrap');
         if (mon && !silent) { mon.open = true; loadGroupMonitor(mon, gi); }
@@ -798,19 +884,25 @@ async function sendAllGroups(btn) {
     const valid = manifestRecipients().filter(x => x.valid).length;
     const routeProblems = preparationIssues().filter(x => x.level === 'err' && x.type === 'route').length;
     if (routeProblems) { alert('Сначала исправьте критичные данные в блоке «Требует внимания».'); return; }
-    if (!confirm(`Отправить актуальные сообщения ${valid} пассажирам в ${GROUPS.length} направлениях?`)) return;
+    const channels = selectedSendChannels();
+    const labels = { whatsapp: 'WhatsApp', max: 'MAX', telegram: 'Telegram', sms: 'SMS' };
+    if (!channels.length) { alert('Не выбран канал отправки.'); return; }
+    const attempts = valid * channels.length;
+    const duplicateWarning = channels.length > 1 ? `\n\nВНИМАНИЕ: выбрано ${channels.length} канала. Пассажир может получить одинаковое сообщение в каждом канале.` : '';
+    if (!confirm(`Отправить актуальные сообщения ${valid} пассажирам в ${GROUPS.length} направлениях?\nКаналы: ${channels.map(x => labels[x] || x).join(', ')}. До ${attempts} сообщений.${duplicateWarning}`)) return;
     const sendButtons = [...document.querySelectorAll('[data-send-all]')];
     sendButtons.forEach(button => button.disabled = true);
     const all = document.getElementById('allState');
-    let total = 0, failed = 0;
+    let total = 0, failed = 0, duplicates = 0;
     const cards = document.querySelectorAll('.gcard');
     for (let gi = 0; gi < cards.length; gi++) {
         all.innerHTML = `<div class="alert warn">Группа ${gi + 1} из ${cards.length}: ${esc(GROUPS[gi].station)}…</div>`;
         const r = await sendGroup(cards[gi].querySelector('.g-send'), gi, true) || {};
         total += r.sent || 0;
         failed += r.failed || 0;
+        duplicates += r.duplicates || 0;
     }
-    all.innerHTML = `<div class="alert ${failed ? 'warn' : 'ok'}">Готово: отправлено ${total}, ошибок ${failed}.</div>`;
+    all.innerHTML = `<div class="alert ${failed ? 'warn' : 'ok'}">Готово: сообщений отправлено ${total}, ошибок ${failed}${duplicates ? ', повторов предотвращено ' + duplicates : ''}.</div>`;
     sendButtons.forEach(button => button.disabled = false);
     loadCampaignOverview(true);
 }

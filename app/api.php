@@ -526,7 +526,10 @@ switch ($action) {
         $fallbackOnly = !empty($body['fallback_only']);
 
         $upIns = db()->prepare('INSERT INTO contacts (phone) VALUES (?) ON DUPLICATE KEY UPDATE phone = phone');
-        $upSet = db()->prepare('UPDATE contacts SET has_whatsapp = ?, has_max = ?, has_telegram = ?, channels_checked_at = NOW() WHERE phone = ?');
+        $upSet = db()->prepare('UPDATE contacts SET
+            has_whatsapp = COALESCE(?, has_whatsapp), has_max = COALESCE(?, has_max),
+            has_telegram = COALESCE(?, has_telegram), channels_checked_at = NOW() WHERE phone = ?');
+        $readPresence = db()->prepare('SELECT has_whatsapp, has_max, has_telegram FROM contacts WHERE phone = ?');
         $out = [];
         foreach ($phones as $ph) {
             $num = preg_replace('/\D+/', '', $ph);
@@ -538,7 +541,14 @@ switch ($action) {
             $tg = $hasTg && $needFallback ? Channels::presence('telegram', $ph) : null;
             $upIns->execute([$ph]);
             $upSet->execute([tri($wa), tri($max), tri($tg), $ph]);
-            $out[$ph] = ['whatsapp' => $wa, 'max' => $max, 'telegram' => $tg, 'checked' => true];
+            $readPresence->execute([$ph]);
+            $stored = $readPresence->fetch() ?: [];
+            $out[$ph] = [
+                'whatsapp' => ($stored['has_whatsapp'] ?? null) === null ? null : (bool) $stored['has_whatsapp'],
+                'max' => ($stored['has_max'] ?? null) === null ? null : (bool) $stored['has_max'],
+                'telegram' => ($stored['has_telegram'] ?? null) === null ? null : (bool) $stored['has_telegram'],
+                'checked' => true,
+            ];
         }
         json_out(['ok' => true, 'presence' => $out]);
 
@@ -744,6 +754,15 @@ switch ($action) {
             foreach ($group['recipients'] as $recipient) {
                 $byChannel = $msgByPhone[$recipient['phone']] ?? [];
                 $aggregate = monitor_aggregate($byChannel);
+                $channelStates = [];
+                foreach ($byChannel as $channel => $message) {
+                    $channelAggregate = monitor_aggregate([$channel => $message]);
+                    $channelStates[$channel] = [
+                        'state' => $channelAggregate['state'], 'error' => $channelAggregate['error'],
+                        'sent_at' => $channelAggregate['sent_at'], 'delivered_at' => $channelAggregate['delivered_at'],
+                        'read_at' => $channelAggregate['read_at'],
+                    ];
+                }
                 $state = $aggregate['state'];
                 $wasSent = !empty($byChannel);
                 $hasReplied = isset($replied[$recipient['phone']]);
@@ -759,7 +778,7 @@ switch ($action) {
                     'sent' => $wasSent, 'state' => $state, 'channel' => $aggregate['channel'],
                     'sent_at' => $aggregate['sent_at'], 'delivered_at' => $aggregate['delivered_at'],
                     'read_at' => $aggregate['read_at'], 'error' => $aggregate['error'],
-                    'replied' => $hasReplied, 'channels' => $recipient['channels'],
+                    'replied' => $hasReplied, 'channels' => $recipient['channels'], 'channel_states' => $channelStates,
                 ];
             }
         }
@@ -769,6 +788,7 @@ switch ($action) {
     case 'recipient.resend':
         // Дослать сообщение конкретному получателю в другой канал (МАКС/SMS/Telegram).
         require_once PANEL_ROOT . '/lib/Channels.php';
+        require_once PANEL_ROOT . '/app/conversations.php';
         $manifestId = (int) ($body['manifest_id'] ?? 0);
         $phone = normalize_phone((string) ($body['phone'] ?? ''));
         $channel = (string) ($body['channel'] ?? '');
@@ -799,21 +819,34 @@ switch ($action) {
         db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (?,?,?,?,?,?)')
             ->execute([$manifestId, $channel, $phone, $pname, $text, current_user_name()]);
         $mid = (int) db()->lastInsertId();
+        try { conversation_append_legacy('messages', $mid); } catch (Throwable $e) { /* legacy-режим */ }
         $res = Channels::sendText($channel, $target, $text);
         if (!empty($res['ok'])) {
             db()->prepare("UPDATE messages SET status='sent', attempts=1, sent_at=NOW(), wa_id=? WHERE id=?")
                 ->execute([(string) ($res['data']['key']['id'] ?? ''), $mid]);
+            try { conversation_append_legacy('messages', $mid); } catch (Throwable $e) { /* legacy-режим */ }
             contact_log_message($phone, $pname, '');
             json_out(['ok' => true]);
         }
         db()->prepare("UPDATE messages SET status='failed', attempts=1, error=? WHERE id=?")->execute([$res['error'] ?? 'ошибка', $mid]);
+        try { conversation_append_legacy('messages', $mid); } catch (Throwable $e) { /* legacy-режим */ }
         json_out(['ok' => false, 'error' => $res['error'] ?? 'Ошибка отправки.']);
 
     case 'campaign.send':
         set_time_limit(0);
         $manifest = get_manifest((int) $body['manifest_id']);
-        $evo = wa_outbound(); // пассажирам по телефону = WhatsApp (Evolution)
-        if (!$evo->isConfigured()) json_out(['ok' => false, 'error' => 'WhatsApp-канал не настроен']);
+        require_once PANEL_ROOT . '/lib/Channels.php';
+        require_once PANEL_ROOT . '/app/conversations.php';
+        $requestedChannels = array_values(array_unique(array_map('strval', (array) ($body['channels'] ?? ['whatsapp']))));
+        $channels = [];
+        foreach ($requestedChannels as $channel) {
+            if (!isset(Channels::LABELS[$channel])) continue;
+            if (!Channels::configured($channel)) {
+                json_out(['ok' => false, 'error' => Channels::label($channel) . ': канал не подключён']);
+            }
+            $channels[] = $channel;
+        }
+        if (!$channels) json_out(['ok' => false, 'error' => 'Выберите хотя бы один подключённый канал']);
 
         $group = find_notification_group($manifest, $body);
         if ($group === null) json_out(['ok' => false, 'error' => 'Группа не найдена']);
@@ -834,7 +867,18 @@ switch ($action) {
         $ids = array_values(array_intersect(array_map('intval', (array) ($body['ids'] ?? [])), $groupIds));
         $tpl = (string) ($body['text'] ?? '');
         $sendOpts = send_opts($manifest, $body);
-        $sent = 0; $failed = 0; $skipped = 0; $errors = []; $seenPhones = []; $batch = 0;
+        if (!empty($body['dry_run'])) {
+            $eligible = [];
+            foreach ($group['recipients'] as $recipient) {
+                if (in_array((int) $recipient['id'], $ids, true) && $recipient['valid']) $eligible[$recipient['phone']] = true;
+            }
+            json_out(['ok' => true, 'dry_run' => true, 'recipients' => count($eligible),
+                'channels' => $channels, 'attempts' => count($eligible) * count($channels)]);
+        }
+        $sent = 0; $failed = 0; $skipped = 0; $duplicates = 0; $errors = []; $seenPhones = []; $batch = 0;
+        $duplicateQuery = db()->prepare("SELECT id FROM messages
+            WHERE manifest_id = ? AND channel = ? AND recipient = ? AND body = ? AND status IN ('pending','sent')
+            ORDER BY id DESC LIMIT 1");
 
         foreach ($ids as $pid) {
             if ($batch >= 20) break;
@@ -847,25 +891,55 @@ switch ($action) {
             $batch++;
 
             $msg = render_group_message($tpl, group_vars($manifest, $p, $group, $sendOpts), $manifest['extra_info']);
-            db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (?,?,?,?,?,?)')
-                ->execute([$manifest['id'], 'whatsapp', $p['phone'], $p['name'], $msg, current_user_name()]);
-            $mid = (int) db()->lastInsertId();
+            $passengerSent = false;
+            foreach ($channels as $channel) {
+                // Повторный клик не должен создавать второе одинаковое сообщение в том же канале.
+                $duplicateQuery->execute([$manifest['id'], $channel, $p['phone'], $msg]);
+                if ($duplicateQuery->fetchColumn()) { $duplicates++; continue; }
 
-            $res = $busPhoto !== '' ? $evo->sendImage($p['phone'], $busPhoto, $msg) : $evo->sendText($p['phone'], $msg);
-            if ($res['ok']) {
-                db()->prepare("UPDATE messages SET status='sent', attempts=1, sent_at=NOW(), wa_id=? WHERE id=?")->execute([(string) ($res['data']['key']['id'] ?? ''), $mid]);
-                contact_log_message($p['phone'], $p['name'], $manifest['route']);
-                $sent++;
-            } else {
-                db()->prepare("UPDATE messages SET status='failed', attempts=1, error=? WHERE id=?")->execute([$res['error'], $mid]);
-                $failed++;
-                $errors[] = $p['phone'] . ': ' . $res['error'];
+                db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (?,?,?,?,?,?)')
+                    ->execute([$manifest['id'], $channel, $p['phone'], $p['name'], $msg, current_user_name()]);
+                $mid = (int) db()->lastInsertId();
+                try { conversation_append_legacy('messages', $mid); } catch (Throwable $e) { /* legacy-режим */ }
+
+                $target = $p['phone'];
+                $res = null;
+                if ($channel === 'max' || $channel === 'telegram') {
+                    $check = Channels::client($channel)->checkAccount($p['phone']);
+                    if (empty($check['ok']) || empty($check['exists'])) {
+                        $res = ['ok' => false, 'error' => 'У номера нет ' . Channels::label($channel)];
+                    } else {
+                        $target = $check['chatId'] !== '' ? $check['chatId'] : $p['phone'];
+                    }
+                }
+                if ($res === null) {
+                    $client = Channels::client($channel);
+                    // Фото автобуса поддерживаем в основной WhatsApp-отправке; другие каналы получают тот же текст.
+                    $res = $channel === 'whatsapp' && $busPhoto !== ''
+                        ? $client->sendImage($target, $busPhoto, $msg)
+                        : Channels::sendText($channel, $target, $msg);
+                }
+
+                if (!empty($res['ok'])) {
+                    $providerId = (string) ($res['data']['key']['id'] ?? '');
+                    db()->prepare("UPDATE messages SET status='sent', attempts=1, sent_at=NOW(), wa_id=? WHERE id=?")
+                        ->execute([$providerId, $mid]);
+                    $sent++;
+                    $passengerSent = true;
+                } else {
+                    $error = (string) ($res['error'] ?? 'ошибка отправки');
+                    db()->prepare("UPDATE messages SET status='failed', attempts=1, error=? WHERE id=?")->execute([$error, $mid]);
+                    $failed++;
+                    $errors[] = Channels::label($channel) . ' · ' . $p['phone'] . ': ' . $error;
+                }
+                try { conversation_append_legacy('messages', $mid); } catch (Throwable $e) { /* legacy-режим */ }
             }
+            if ($passengerSent) contact_log_message($p['phone'], $p['name'], $manifest['route']);
             if ($batch < min(count($ids), 20)) sleep(rand(2, 4));
         }
         $rest = max(0, count($ids) - $batch - $skipped);
-        json_out(['ok' => true, 'sent' => $sent, 'failed' => $failed, 'skipped' => $skipped, 'rest' => $rest,
-            'errors' => array_slice($errors, 0, 5)]);
+        json_out(['ok' => true, 'sent' => $sent, 'failed' => $failed, 'skipped' => $skipped, 'duplicates' => $duplicates,
+            'rest' => $rest, 'channels' => $channels, 'errors' => array_slice($errors, 0, 8)]);
 
     case 'send.single':
         require_once PANEL_ROOT . '/lib/MessageTemplate.php';
