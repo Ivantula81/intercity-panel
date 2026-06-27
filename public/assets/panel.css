@@ -627,7 +627,7 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 .chat-ch-tabs { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 9px; }
 .chtab { padding: 3px 10px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface-2); font-size: 12px; font-weight: 600; color: var(--chc, var(--muted)); cursor: pointer; }
 .chtab.active { background: var(--chc, var(--brand)); border-color: var(--chc, var(--brand)); color: #fff; }
-.ct-ch { flex: none; font-size: 10px; font-weight: 700; }
+.ct-ch { flex: none; font-size: 10px; font-weight: 700; color: #fff; padding: 1px 6px; border-radius: 5px; }
 .chat-threads { flex: 1; overflow-y: auto; padding: 6px; }
 .chat-hint { padding: 28px 16px; text-align: center; color: var(--faint); font-size: 13px; line-height: 1.5; }
 

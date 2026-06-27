@@ -1392,7 +1392,7 @@ function chatRenderThreads() {
     box.innerHTML=chat.threads.map(t=>{
         const name=t.contact_name||t.contact_phone||t.external_chat_id; const preview=(t.last_direction==='out'?'Вы: ':'')+(t.last_message_preview||'');
         const badge=Number(t.unread_count)>0?`<span class="ct-badge">${Number(t.unread_count)}</span>`:'';const m=CHAN_META[t.channel];
-        const chTag=m?`<span class="ct-ch" style="color:${m.color}">${m.short}</span>`:'';
+        const chTag=m?`<span class="ct-ch" style="background:${m.color}">${m.short}</span>`:'';
         const priority=t.priority==='urgent'?'<span class="ct-priority urgent">!</span>':(t.priority==='high'?'<span class="ct-priority">!</span>':'');
         return `<div class="chat-thread${Number(t.id)===chat.conversationId?' active':''}${Number(t.unread_count)>0?' unread':''}" data-id="${Number(t.id)}" onclick="chatOpen(${Number(t.id)})"><span class="ct-ava">${esc(chatInitial(name,t.contact_phone))}</span><div class="ct-main"><div class="ct-top"><span class="ct-name">${priority}${esc(name)}</span><span class="ct-time">${esc(chatTime(t.last_message_at))}</span></div><div class="ct-bot"><span class="ct-last">${esc(preview)}</span>${chTag}${badge}</div><div class="ct-owner">${esc(t.assignee_name||'Без оператора')}</div></div></div>`;
     }).join('')+(chat.cursor?'<button class="chat-more" onclick="chatLoadThreads(true)">Показать ещё</button>':'');
