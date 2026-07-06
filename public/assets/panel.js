@@ -119,7 +119,7 @@ async function delService(ev, id) {
 }
 
 /* ── Уведомления: экран-мастер ── */
-let GROUPS = [], TEMPLATES = [], BUS_PHOTO = '', GDS_LOADED = false, CHANNELS_ACTIVE = ['whatsapp'];
+let GROUPS = [], TEMPLATES = [], BUS_PHOTO = '', GDS_LOADED = false, CHANNELS_ACTIVE = ['whatsapp'], CHANNELS_STATE = {};
 let CHANNEL_CHECKING = false, OVERVIEW_TIMER = null;
 let SELECTED_CHANNELS = new Set(['whatsapp']);
 let FULL_CHANNEL_CHECK_REQUESTED = false;
@@ -163,6 +163,7 @@ async function loadGroups(autoGds) {
     GROUPS = r.groups;
     TEMPLATES = r.templates;
     CHANNELS_ACTIVE = (r.channels_active && r.channels_active.length) ? r.channels_active : ['whatsapp'];
+    CHANNELS_STATE = r.channels_state || {};
     if (![...SELECTED_CHANNELS].some(channel => CHANNELS_ACTIVE.includes(channel))) {
         SELECTED_CHANNELS = new Set([CHANNELS_ACTIVE[0] || 'whatsapp']);
     }
@@ -189,8 +190,13 @@ function defaultBody() {
     return TEMPLATES.length ? TEMPLATES[0].body : '';
 }
 
+// Реально ли канал готов слать (авторизован/подключён), а не просто «ключи заданы».
+function channelReady(ch) {
+    const st = CHANNELS_STATE[ch] || (CHANNELS_ACTIVE.includes(ch) ? 'open' : 'unconfigured');
+    return st === 'open' || st === 'ready';
+}
 function selectedSendChannels() {
-    return [...SELECTED_CHANNELS].filter(channel => CHANNELS_ACTIVE.includes(channel));
+    return [...SELECTED_CHANNELS].filter(channel => channelReady(channel));
 }
 
 function renderSendChannels() {
@@ -198,9 +204,11 @@ function renderSendChannels() {
     if (!box) return;
     const labels = { whatsapp: 'WhatsApp', max: 'MAX', telegram: 'Telegram', sms: 'SMS' };
     box.innerHTML = Object.entries(labels).map(([channel, label]) => {
-        const active = CHANNELS_ACTIVE.includes(channel);
-        const checked = active && SELECTED_CHANNELS.has(channel);
-        return `<label class="send-channel-choice ${active ? '' : 'disabled'}"><input type="checkbox" value="${channel}" ${checked ? 'checked' : ''} ${active ? '' : 'disabled'} onchange="changeSendChannels(this)"><span>${label}</span>${active ? '' : '<small>не подключён</small>'}</label>`;
+        const st = CHANNELS_STATE[channel] || (CHANNELS_ACTIVE.includes(channel) ? 'open' : 'unconfigured');
+        const ready = st === 'open' || st === 'ready';
+        const note = ready ? '' : (st === 'unconfigured' ? '<small>не подключён</small>' : '<small class="chan-off">не авторизован</small>');
+        const checked = ready && SELECTED_CHANNELS.has(channel);
+        return `<label class="send-channel-choice ${ready ? '' : 'disabled'}"><input type="checkbox" value="${channel}" ${checked ? 'checked' : ''} ${ready ? '' : 'disabled'} onchange="changeSendChannels(this)"><span>${label}</span>${note}</label>`;
     }).join('');
     updateChannelEstimate();
 }

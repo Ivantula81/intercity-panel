@@ -81,6 +81,29 @@ function sms_ru()
     return new SmsRuClient(env_get('SMSRU_API_ID'), env_get('SMSRU_FROM'));
 }
 
+// Гард отправки: WhatsApp реально подключён (не просто «ключи заданы»), иначе понятная ошибка вместо 500.
+function wa_require_ready(): void
+{
+    require_once PANEL_ROOT . '/lib/Channels.php';
+    if (Channels::ready('whatsapp')) return;
+    $st = Channels::state('whatsapp');
+    json_out(['ok' => false, 'wa_state' => $st, 'error' => $st === 'unconfigured'
+        ? 'WhatsApp-канал не настроен.'
+        : 'WhatsApp не подключён — номер разлогинен. Переподключите в Настройках → Аккаунты WhatsApp.']);
+}
+
+// Реальное состояние всех каналов (кэш 20с в opt, чтобы не дёргать API на каждый экран).
+function wa_channel_states(): array
+{
+    $c = json_decode((string) opt('channel_states_cache'), true);
+    if (is_array($c) && isset($c['at'], $c['states']) && (time() - (int) $c['at'] < 20)) return $c['states'];
+    require_once PANEL_ROOT . '/lib/Channels.php';
+    $states = [];
+    foreach (['whatsapp', 'max', 'telegram', 'sms'] as $ch) $states[$ch] = Channels::state($ch);
+    opt_set('channel_states_cache', json_encode(['at' => time(), 'states' => $states]));
+    return $states;
+}
+
 function smtp_mailer()
 {
     require_once PANEL_ROOT . '/lib/SmtpMailer.php';
@@ -500,6 +523,7 @@ switch ($action) {
             'bus_photo' => $bus && $bus['photo'] !== '' ? $bus['photo'] : '',
             'groups' => attach_channel_presence(build_groups($manifest)),
             'channels_active' => Channels::active(),
+            'channels_state' => wa_channel_states(),
             'templates' => db()->query('SELECT id, name, body FROM templates ORDER BY sort, id')->fetchAll(),
         ]);
 
@@ -794,7 +818,10 @@ switch ($action) {
         $channel = (string) ($body['channel'] ?? '');
         if (!valid_phone($phone)) json_out(['ok' => false, 'error' => 'Некорректный номер.']);
         if (!isset(Channels::LABELS[$channel])) json_out(['ok' => false, 'error' => 'Неизвестный канал.']);
-        if (!Channels::configured($channel)) json_out(['ok' => false, 'error' => Channels::label($channel) . ': канал не подключён.']);
+        if (!Channels::ready($channel)) {
+            $st = Channels::state($channel);
+            json_out(['ok' => false, 'channel_state' => $st, 'error' => Channels::label($channel) . ($st === 'unconfigured' ? ': канал не подключён.' : ': не авторизован — переподключите в Настройках.')]);
+        }
 
         // текст — переданный либо последнее сообщение этому номеру по ведомости
         $text = trim((string) ($body['text'] ?? ''));
@@ -841,8 +868,12 @@ switch ($action) {
         $channels = [];
         foreach ($requestedChannels as $channel) {
             if (!isset(Channels::LABELS[$channel])) continue;
-            if (!Channels::configured($channel)) {
-                json_out(['ok' => false, 'error' => Channels::label($channel) . ': канал не подключён']);
+            if (!Channels::ready($channel)) {
+                $st = Channels::state($channel);
+                $msg = $st === 'unconfigured'
+                    ? Channels::label($channel) . ': канал не подключён'
+                    : Channels::label($channel) . ': не авторизован — переподключите в Настройках → Аккаунты';
+                json_out(['ok' => false, 'error' => $msg, 'channel_state' => $st]);
             }
             $channels[] = $channel;
         }
@@ -948,7 +979,7 @@ switch ($action) {
         if (!valid_phone($phone)) json_out(['ok' => false, 'error' => 'Укажите корректный номер телефона.']);
         if ($text === '') json_out(['ok' => false, 'error' => 'Введите текст сообщения.']);
         $evo = wa_outbound(); // по телефону = WhatsApp (Evolution)
-        if (!$evo->isConfigured()) json_out(['ok' => false, 'error' => 'WhatsApp-канал не настроен.']);
+        wa_require_ready();
 
         db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (0, ?, ?, ?, ?, ?)')
             ->execute(['whatsapp', $phone, 'Произвольный номер', $text, current_user_name()]);
@@ -966,7 +997,7 @@ switch ($action) {
         set_time_limit(0);
         require_once PANEL_ROOT . '/lib/MessageTemplate.php';
         $evo = wa_outbound(); // по телефону = WhatsApp (Evolution)
-        if (!$evo->isConfigured()) json_out(['ok' => false, 'error' => 'WhatsApp-канал не настроен']);
+        wa_require_ready();
         $text = MessageTemplate::render(trim((string) ($body['text'] ?? '')), custom_vars());
         $image = (string) ($body['image'] ?? '');
         $imagePath = $image !== '' && str_starts_with($image, '/uploads/') ? PANEL_ROOT . '/public' . $image : '';

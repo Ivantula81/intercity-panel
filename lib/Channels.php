@@ -52,6 +52,28 @@ class Channels
         return $out;
     }
 
+    // РЕАЛЬНОЕ состояние канала: 'open' | 'connecting' | 'close' | 'unconfigured' | 'ready' | 'error'.
+    // Кэш в рамках запроса, чтобы не дёргать API повторно.
+    public static function state(string $ch): string
+    {
+        static $cache = [];
+        if (isset($cache[$ch])) return $cache[$ch];
+        $c = self::client($ch);
+        if ($c === null || !$c->isConfigured()) return $cache[$ch] = 'unconfigured';
+        if ($ch === 'whatsapp' || $ch === 'max' || $ch === 'telegram') {
+            $s = $c->connectionState();
+            return $cache[$ch] = (!empty($s['ok']) ? (($s['state'] ?? '') ?: 'error') : 'error');
+        }
+        return $cache[$ch] = 'ready'; // sms/email — stateless HTTP, готовы если настроены
+    }
+
+    // Готов ли канал реально отправлять (авторизован/подключён), а не просто «ключи заданы».
+    public static function ready(string $ch): bool
+    {
+        $st = self::state($ch);
+        return $st === 'open' || $st === 'ready';
+    }
+
     // Наличие канала у номера: true / false / null (канал не настроен или проверка не удалась).
     public static function presence(string $ch, string $phone): ?bool
     {

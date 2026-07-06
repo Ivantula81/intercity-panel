@@ -408,6 +408,7 @@ table.cat input.cell, table.cat select.cell { font-size: 13.5px; }
 .send-channel-choice input { width:17px; height:17px; margin:0; accent-color:var(--brand); }
 .send-channel-choice.disabled { opacity:.5; cursor:not-allowed; }
 .send-channel-choice small { color:var(--faint); font-size:10px; font-weight:500; }
+.send-channel-choice small.chan-off { color:var(--err); }
 #sendChannelEstimate { grid-column:1 / -1; }
 .send-channel-warning { padding:9px 11px; border-radius:9px; background:var(--warn-bg); color:var(--warn); font-weight:650; }
 .channel-attempts { display:inline-flex; flex-wrap:wrap; gap:4px; }
