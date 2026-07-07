@@ -369,6 +369,9 @@ table.cat input.cell, table.cat select.cell { font-size: 13.5px; }
 .gcard-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; }
 .gcard-head:hover { background: var(--surface-2); }
 .gtitle { font-weight: 700; font-size: 14.5px; }
+.g-tpl-badge { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 20px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); white-space: nowrap; }
+.g-tpl-badge.custom { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+.group-template { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--surface-2); }
 .gmeta { margin-top: 4px; font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .gchev { color: var(--faint); transition: transform .15s; }
 .gcard.open .gchev { transform: rotate(180deg); }

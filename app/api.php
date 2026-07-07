@@ -542,6 +542,7 @@ switch ($action) {
             'channels_active' => Channels::active(),
             'channels_state' => wa_channel_states(),
             'templates' => db()->query('SELECT id, name, body FROM templates ORDER BY sort, id')->fetchAll(),
+            'group_template' => (string) opt('notif_tpl_' . (int) $manifest['id'], ''),
         ]);
 
     case 'channels.check':
@@ -708,6 +709,25 @@ switch ($action) {
             ]);
         }
         json_out(['ok' => false, 'error' => 'Группа не найдена']);
+
+    case 'groups.apply_template':
+        // Применить общий шаблон ко ВСЕМ городам группы, кроме изменённых вручную.
+        $manifest = get_manifest((int) $body['manifest_id']);
+        $tpl = (string) ($body['text'] ?? '');
+        $old = (string) opt('notif_tpl_' . (int) $manifest['id'], '');
+        opt_set('notif_tpl_' . (int) $manifest['id'], $tpl);
+        $applied = 0;
+        foreach (build_groups($manifest) as $g) {
+            $cur = $g['body'];
+            // «изменён вручную» = есть свой текст, отличный от прежнего общего шаблона — не трогаем
+            if ($cur !== null && $cur !== '' && $cur !== $old) continue;
+            db()->prepare('INSERT INTO manifest_groups (manifest_id, station, station_id, destination, destination_id, boarding_date, boarding_time, body)
+                VALUES (?,?,?,?,?,?,?,?)
+                ON DUPLICATE KEY UPDATE body = VALUES(body)')
+                ->execute([$manifest['id'], $g['station'], $g['station_id'], $g['destination'], $g['destination_id'], $g['date'], $g['time'], $tpl]);
+            $applied++;
+        }
+        json_out(['ok' => true, 'applied' => $applied]);
 
     /* ── Отправка ── */
 

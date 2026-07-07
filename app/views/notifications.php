@@ -122,6 +122,17 @@
     </div>
     <div id="notificationReadiness" class="notif-readiness mt"><p class="muted">Проверяю пассажиров, время и каналы…</p></div>
     <div id="notificationIssues"></div>
+    <div class="group-template mt" id="groupTemplateBox" style="display:none">
+        <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+            <div><b>Шаблон на всю группу</b><div class="muted small">Применяется ко всем городам сразу; переменные (<span style="font-family:monospace">{город} {время} {адрес}</span>) подставятся свои для каждого.</div></div>
+            <div class="row" style="gap:8px">
+                <select id="gtplSelect" onchange="groupTemplatePick(this)"><option value="">— вставить шаблон —</option></select>
+                <button class="btn sm" onclick="applyTemplateToAll(this)">Применить ко всем</button>
+            </div>
+        </div>
+        <textarea id="gtplText" class="template-box mt" rows="4"></textarea>
+        <div class="g-saved small" id="gtplSaved" style="min-height:16px"></div>
+    </div>
     <div id="groupsBox" class="mt"><p class="muted">Загружаю группы…</p></div>
 </div>
 

@@ -119,7 +119,7 @@ async function delService(ev, id) {
 }
 
 /* ── Уведомления: экран-мастер ── */
-let GROUPS = [], TEMPLATES = [], BUS_PHOTO = '', GDS_LOADED = false, CHANNELS_ACTIVE = ['whatsapp'], CHANNELS_STATE = {};
+let GROUPS = [], TEMPLATES = [], BUS_PHOTO = '', GDS_LOADED = false, CHANNELS_ACTIVE = ['whatsapp'], CHANNELS_STATE = {}, GROUP_TEMPLATE = '';
 let CHANNEL_CHECKING = false, OVERVIEW_TIMER = null;
 let SELECTED_CHANNELS = new Set(['whatsapp']);
 let FULL_CHANNEL_CHECK_REQUESTED = false;
@@ -162,6 +162,8 @@ async function loadGroups(autoGds) {
     if (!r.ok) { box.innerHTML = '<div class="alert err">' + esc(r.error) + '</div>'; return; }
     GROUPS = r.groups;
     TEMPLATES = r.templates;
+    GROUP_TEMPLATE = r.group_template || (TEMPLATES[0] ? TEMPLATES[0].body : '');
+    renderGroupTemplate();
     CHANNELS_ACTIVE = (r.channels_active && r.channels_active.length) ? r.channels_active : ['whatsapp'];
     CHANNELS_STATE = r.channels_state || {};
     if (![...SELECTED_CHANNELS].some(channel => CHANNELS_ACTIVE.includes(channel))) {
@@ -188,6 +190,46 @@ async function loadGroups(autoGds) {
 
 function defaultBody() {
     return TEMPLATES.length ? TEMPLATES[0].body : '';
+}
+
+// Город «изменён вручную», если у него свой текст, отличный от общего шаблона группы.
+function groupIsCustom(g) {
+    return g.body != null && g.body !== '' && g.body !== GROUP_TEMPLATE;
+}
+function updateGroupBadge(card, gi) {
+    const el = card.querySelector('.g-tpl-badge');
+    const custom = groupIsCustom(GROUPS[gi]);
+    if (el) { el.className = 'g-tpl-badge' + (custom ? ' custom' : ''); el.textContent = custom ? '✏ изменён вручную' : 'общий шаблон'; }
+    const rb = card.querySelector('.g-reset');
+    if (rb) rb.style.display = custom ? '' : 'none';
+}
+function renderGroupTemplate() {
+    const box = document.getElementById('groupTemplateBox');
+    if (!box) return;
+    const sel = document.getElementById('gtplSelect');
+    if (sel) sel.innerHTML = '<option value="">— вставить шаблон —</option>' + TEMPLATES.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+    const ta = document.getElementById('gtplText');
+    if (ta) ta.value = GROUP_TEMPLATE;
+    box.style.display = '';
+}
+function groupTemplatePick(sel) {
+    const t = TEMPLATES.find(x => x.id == sel.value);
+    if (t) document.getElementById('gtplText').value = t.body;
+    sel.value = '';
+}
+async function applyTemplateToAll(btn) {
+    const ta = document.getElementById('gtplText');
+    const text = ta ? ta.value : '';
+    if (!confirm('Применить этот текст ко всем городам группы?\nГорода, изменённые вручную, останутся как есть.')) return;
+    btn.disabled = true;
+    const saved = document.getElementById('gtplSaved');
+    if (saved) { saved.className = 'g-saved small saving'; saved.textContent = 'Применяю…'; }
+    const r = await api('groups.apply_template', { manifest_id: manifestId(), text }).catch(() => null);
+    btn.disabled = false;
+    if (!r || !r.ok) { if (saved) { saved.className = 'g-saved small error'; saved.textContent = (r && r.error) || 'Ошибка'; } return; }
+    GROUP_TEMPLATE = text;
+    if (saved) { saved.className = 'g-saved small saved'; saved.textContent = `Применено к ${r.applied} ${r.applied === 1 ? 'городу' : 'городам'}`; }
+    await loadGroups(false);
 }
 
 // Реально ли канал готов слать (авторизован/подключён), а не просто «ключи заданы».
@@ -283,7 +325,7 @@ function renderGroups() {
         card.innerHTML = `
         <div class="gcard-head" onclick="toggleGroup(this)">
             <div style="min-width:0">
-                <div class="gtitle">${esc(g.destination)} <span class="badge muted">${validCount}</span></div>
+                <div class="gtitle">${esc(g.destination)} <span class="badge muted">${validCount}</span> <span class="g-tpl-badge${groupIsCustom(g) ? ' custom' : ''}">${groupIsCustom(g) ? '✏ изменён вручную' : 'общий шаблон'}</span></div>
                 <div class="gmeta">${timeLabel} · ${channelRouteSummary(g)} ${badges.join(' ')}</div>
             </div>
             <span class="gchev">▾</span>
@@ -292,9 +334,9 @@ function renderGroups() {
             <div class="row gcard-controls">
                 <label class="f" style="margin:0">Дата<input type="text" class="g-date" value="${esc(g.date)}" placeholder="дд.мм.гггг" style="width:120px"></label>
                 <label class="f" style="margin:0">Время<input type="text" class="g-time" value="${esc(g.time)}" placeholder="чч:мм" style="width:84px"></label>
-                <label class="f" style="margin:0;flex:1">Шаблон<select class="g-tpl"><option value="">— свой текст —</option>${tplOptions}</select></label>
+                <span class="muted small" style="align-self:flex-end;padding-bottom:8px">Текст — из общего шаблона; правка здесь отвяжет город от общего</span>
             </div>
-            <textarea class="template-box g-body" rows="5">${esc(g.body ?? defaultBody())}</textarea>
+            <textarea class="template-box g-body" rows="5">${esc(g.body ?? GROUP_TEMPLATE)}</textarea>
             <div class="g-saved small" style="min-height:16px;margin:3px 0"></div>
             <div class="msg-preview g-preview mt"></div>
             <details class="mt"><summary class="muted small" style="cursor:pointer">Получатели (${g.recipients.length})</summary>
@@ -312,21 +354,17 @@ function renderGroups() {
             </details>
             <div class="row mt">
                 <button class="btn sm g-send" onclick="sendGroup(this, ${gi})">Отправить этой группе</button>
-                <button class="btn ghost sm" onclick="resetGroupBody(this, ${gi})" title="Заменить текст группы актуальным шаблоном">↺ Сбросить к шаблону</button>
+                <button class="btn ghost sm g-reset" onclick="resetToGlobal(this, ${gi})" title="Вернуть текст этого города к общему шаблону группы" style="display:${groupIsCustom(g) ? '' : 'none'}">↺ Вернуть к общему</button>
                 <span class="small g-state"></span>
             </div>
         </div>`;
         routeBox.appendChild(card);
 
         const ta = card.querySelector('.g-body');
-        const refresh = () => { schedulePreview(card, gi); scheduleDraft(card, gi); };
+        const refresh = () => { GROUPS[gi].body = ta.value; updateGroupBadge(card, gi); schedulePreview(card, gi); scheduleDraft(card, gi); };
         ta.addEventListener('input', refresh);
         card.querySelector('.g-date').addEventListener('input', refresh);
         card.querySelector('.g-time').addEventListener('input', refresh);
-        card.querySelector('.g-tpl').addEventListener('change', e => {
-            const t = TEMPLATES.find(x => x.id == e.target.value);
-            if (t) { ta.value = t.body; refresh(); }
-        });
         // редактирование телефона прямо в группе
         card.querySelectorAll('.g-phone').forEach(inp => {
             const save = async () => {
@@ -820,18 +858,17 @@ async function gdsTimes(silent) {
     }
 }
 
-async function resetGroupBody(btn, gi) {
+async function resetToGlobal(btn, gi) {
     const card = btn.closest('.gcard');
-    const sel = card.querySelector('.g-tpl');
-    const t = TEMPLATES.find(x => x.id == sel.value) || TEMPLATES[0];
-    if (!t) return;
-    card.querySelector('.g-body').value = t.body;
+    card.querySelector('.g-body').value = GROUP_TEMPLATE;
+    GROUPS[gi].body = GROUP_TEMPLATE;
+    updateGroupBadge(card, gi);
     setSaved(card, 'saving');
     const r = await api('group.save', {
         manifest_id: manifestId(),
         station: GROUPS[gi].station,
         destination: GROUPS[gi].destination,
-        body: t.body,
+        body: GROUP_TEMPLATE,
         date: card.querySelector('.g-date').value,
         time: card.querySelector('.g-time').value,
     });
