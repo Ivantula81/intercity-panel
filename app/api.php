@@ -1141,13 +1141,12 @@ switch ($action) {
         }
         $phone = normalize_phone((string) ($conversation['contact_phone'] ?? $body['phone'] ?? ''));
         $text = trim((string) ($body['text'] ?? ''));
-        if (!valid_phone($phone)) json_out(['ok' => false, 'error' => 'Некорректный номер']);
         if ($text === '') json_out(['ok' => false, 'error' => 'Пустое сообщение']);
 
         require_once PANEL_ROOT . '/lib/MessageTemplate.php';
+        require_once PANEL_ROOT . '/lib/Channels.php';
         $text = MessageTemplate::render($text, custom_vars());
         if ($conversation) {
-            require_once PANEL_ROOT . '/lib/Channels.php';
             $messenger = (string) $conversation['channel'];
             if (!in_array($messenger,['whatsapp','max','telegram'],true)) json_out(['ok'=>false,'error'=>'Ответ в этот канал пока не поддерживается']);
             $cli = $messenger === 'whatsapp' && !in_array((string)$conversation['channel_account'],['','legacy'],true)
@@ -1156,6 +1155,13 @@ switch ($action) {
                 ? (string) $conversation['external_chat_id'] : $phone;
         } else {
             [$cli, $target, $messenger] = wa_reply_target($phone); // legacy: последний входящий канал
+        }
+        // Проверяем именно то, чем реально шлём: для MAX/Telegram это chatId (у контакта может не быть
+        // телефона — тогда phone хранится как «+0»); для WhatsApp/legacy — номер.
+        if (in_array($messenger, ['max', 'telegram'], true)) {
+            if (trim((string) $target) === '') json_out(['ok' => false, 'error' => 'Нет chatId для ответа в этот диалог']);
+        } elseif (!valid_phone((string) $target)) {
+            json_out(['ok' => false, 'error' => 'Некорректный номер']);
         }
         if (!$cli->isConfigured()) json_out(['ok' => false, 'error' => 'Канал не настроен']);
         db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (0, ?, ?, ?, ?, ?)')
