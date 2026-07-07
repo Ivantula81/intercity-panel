@@ -681,9 +681,15 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 .cm.in .cm-bubble { background: var(--surface); border-bottom-left-radius: 5px; }
 .cm.out .cm-bubble { background: linear-gradient(135deg, var(--brand), #6a5fe6); color: #fff; border-bottom-right-radius: 5px; }
 .cm-text { display: block; font-size: 14px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
-.cm-media { display: block; }
+.cm-media { display: block; cursor: zoom-in; }
 .cm-media img { display: block; max-width: 240px; max-height: 280px; width: auto; border-radius: 10px; object-fit: cover; }
 .cm-media + .cm-text { margin-top: 6px; }
+/* Лайтбокс картинки из чата (закрывается крестиком / фоном / Esc — важно для PWA) */
+.img-lightbox { position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center; padding: 24px; background: rgba(0,0,0,.86); }
+.img-lightbox.open { display: flex; }
+.img-lightbox img { max-width: 96vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 10px 46px rgba(0,0,0,.6); }
+.img-lightbox-close { position: absolute; top: 14px; right: 18px; width: 46px; height: 46px; border: none; border-radius: 50%; background: rgba(255,255,255,.16); color: #fff; font-size: 30px; line-height: 1; cursor: pointer; }
+.img-lightbox-close:hover { background: rgba(255,255,255,.3); }
 .cm-file { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border-radius: 10px; background: rgba(0,0,0,.05); color: inherit; font-size: 13.5px; font-weight: 600; }
 .cm.out .cm-file { background: rgba(255,255,255,.18); }
 .cm-file svg { width: 22px; height: 22px; flex: none; opacity: .85; }

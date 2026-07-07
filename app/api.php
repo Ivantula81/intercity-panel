@@ -973,25 +973,57 @@ switch ($action) {
             'rest' => $rest, 'channels' => $channels, 'errors' => array_slice($errors, 0, 8)]);
 
     case 'send.single':
+        // Свободная отправка одному: любой канал (WhatsApp/MAX/Telegram/SMS/Email), номер или email.
         require_once PANEL_ROOT . '/lib/MessageTemplate.php';
-        $phone = normalize_phone((string) ($body['phone'] ?? ''));
+        require_once PANEL_ROOT . '/lib/Channels.php';
+        $channel = (string) ($body['channel'] ?? 'whatsapp');
         $text = MessageTemplate::render(trim((string) ($body['text'] ?? '')), custom_vars());
-        if (!valid_phone($phone)) json_out(['ok' => false, 'error' => 'Укажите корректный номер телефона.']);
         if ($text === '') json_out(['ok' => false, 'error' => 'Введите текст сообщения.']);
-        $evo = wa_outbound(); // по телефону = WhatsApp (Evolution)
-        wa_require_ready();
 
+        if ($channel === 'email') { // отправка по email-адресу
+            $to = trim((string) ($body['email'] ?? $body['phone'] ?? ''));
+            if (!filter_var($to, FILTER_VALIDATE_EMAIL)) json_out(['ok' => false, 'error' => 'Укажите корректный email.']);
+            $mailer = smtp_mailer();
+            if (!$mailer->isConfigured()) json_out(['ok' => false, 'error' => 'Email-канал не настроен.']);
+            db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (0, ?, ?, ?, ?, ?)')
+                ->execute(['email', $to, 'Произвольный email', $text, current_user_name()]);
+            $mid = (int) db()->lastInsertId();
+            $subject = trim((string) ($body['subject'] ?? '')) ?: 'Сообщение от «Интерсити Тур»';
+            $res = $mailer->send($to, $subject, nl2br(htmlspecialchars($text, ENT_QUOTES, 'UTF-8')), [], $text);
+            if (!empty($res['ok'])) {
+                db()->prepare("UPDATE messages SET status='sent', attempts=1, sent_at=NOW() WHERE id=?")->execute([$mid]);
+                json_out(['ok' => true]);
+            }
+            db()->prepare("UPDATE messages SET status='failed', attempts=1, error=? WHERE id=?")->execute([$res['error'] ?? 'ошибка', $mid]);
+            json_out(['ok' => false, 'error' => $res['error'] ?? 'Не удалось отправить email']);
+        }
+
+        if (!isset(Channels::LABELS[$channel])) json_out(['ok' => false, 'error' => 'Неизвестный канал.']);
+        $phone = normalize_phone((string) ($body['phone'] ?? ''));
+        if (!valid_phone($phone)) json_out(['ok' => false, 'error' => 'Укажите корректный номер телефона.']);
+        if (!Channels::ready($channel)) {
+            $st = Channels::state($channel);
+            json_out(['ok' => false, 'error' => $st === 'unconfigured'
+                ? Channels::label($channel) . ': канал не подключён'
+                : Channels::label($channel) . ': не авторизован — переподключите в Настройках']);
+        }
+        $target = $phone;
+        if ($channel === 'max' || $channel === 'telegram') { // мессенджеру нужен chatId — резолвим по номеру
+            $check = Channels::client($channel)->checkAccount($phone);
+            if (empty($check['ok']) || empty($check['exists'])) json_out(['ok' => false, 'error' => 'У номера нет ' . Channels::label($channel)]);
+            $target = ($check['chatId'] ?? '') !== '' ? $check['chatId'] : $phone;
+        }
         db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (0, ?, ?, ?, ?, ?)')
-            ->execute(['whatsapp', $phone, 'Произвольный номер', $text, current_user_name()]);
+            ->execute([$channel, $phone, 'Произвольный номер', $text, current_user_name()]);
         $mid = (int) db()->lastInsertId();
-        $res = $evo->sendText($phone, $text);
-        if ($res['ok']) {
+        $res = Channels::sendText($channel, $target, $text);
+        if (!empty($res['ok'])) {
             db()->prepare("UPDATE messages SET status='sent', attempts=1, sent_at=NOW(), wa_id=? WHERE id=?")->execute([(string) ($res['data']['key']['id'] ?? ''), $mid]);
             contact_log_message($phone, '', '');
             json_out(['ok' => true]);
         }
-        db()->prepare("UPDATE messages SET status='failed', attempts=1, error=? WHERE id=?")->execute([$res['error'], $mid]);
-        json_out(['ok' => false, 'error' => $res['error']]);
+        db()->prepare("UPDATE messages SET status='failed', attempts=1, error=? WHERE id=?")->execute([$res['error'] ?? 'ошибка', $mid]);
+        json_out(['ok' => false, 'error' => $res['error'] ?? 'Не удалось отправить']);
 
     case 'broadcast.send':
         set_time_limit(0);

@@ -46,4 +46,38 @@
         <div id="bResult" class="mt"></div>
     </div>
 </div>
+
+<div class="card" style="margin-top:16px">
+    <h2>Быстрая отправка одному</h2>
+    <div class="sub muted small" style="margin-bottom:10px">Позвонил пассажир и просит переслать информацию на другой номер или почту — выберите канал, укажите получателя и отправьте.</div>
+    <div class="split">
+        <div>
+            <label class="f">Канал
+                <select id="ssChannel" onchange="ssToggle()">
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="max">MAX</option>
+                    <option value="telegram">Telegram</option>
+                    <option value="sms">SMS</option>
+                    <option value="email">Email</option>
+                </select>
+            </label>
+            <label class="f" id="ssPhoneWrap">Номер телефона
+                <input id="sNum" placeholder="+79051234567">
+            </label>
+            <label class="f" id="ssEmailWrap" style="display:none">Email получателя
+                <input id="sEmail" placeholder="name@example.com">
+            </label>
+        </div>
+        <div>
+            <label class="f">Текст
+                <textarea id="sText" rows="6" placeholder="Здравствуйте! Информация по вашей поездке…"></textarea>
+            </label>
+            <div class="row">
+                <button class="btn" onclick="sendSingle()"><?= icon('send') ?> Отправить</button>
+                <span id="sState" class="small muted"></span>
+            </div>
+            <div class="muted small mt">MAX/Telegram — только если у номера есть этот мессенджер. SMS/Email — если канал настроен.</div>
+        </div>
+    </div>
+</div>
 <script>document.addEventListener('DOMContentLoaded', waStatus);</script>

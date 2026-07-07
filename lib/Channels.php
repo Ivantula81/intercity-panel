@@ -62,9 +62,25 @@ class Channels
         if ($c === null || !$c->isConfigured()) return $cache[$ch] = 'unconfigured';
         if ($ch === 'whatsapp' || $ch === 'max' || $ch === 'telegram') {
             $s = $c->connectionState();
-            return $cache[$ch] = (!empty($s['ok']) ? (($s['state'] ?? '') ?: 'error') : 'error');
+            $st = !empty($s['ok']) ? (string) ($s['state'] ?? '') : '';
+            // Живой опрос удался — доверяем ему. Если сбоит (таймаут/лимит провайдера) — НЕ врём
+            // «не авторизован», а берём последнее состояние, которое сам провайдер прислал в webhook.
+            if ($st !== '' && $st !== 'error') return $cache[$ch] = $st;
+            return $cache[$ch] = (self::lastPushedState($ch) ?: 'error');
         }
         return $cache[$ch] = 'ready'; // sms/email — stateless HTTP, готовы если настроены
+    }
+
+    // Последнее состояние канала от провайдера через webhook (stateInstanceChanged / connection.update).
+    // Единый источник правды, когда живой опрос временно недоступен. MAX/Telegram — фиксированные ключи.
+    private static function lastPushedState(string $ch): string
+    {
+        static $keys = ['max' => 'wa_conn_greenapi', 'telegram' => 'wa_conn_greenapi_tg'];
+        if (!isset($keys[$ch]) || !function_exists('opt')) return '';
+        $raw = json_decode((string) opt($keys[$ch]), true);
+        $st = is_array($raw) ? (string) ($raw['state'] ?? '') : '';
+        $map = ['authorized' => 'open', 'notAuthorized' => 'close', 'starting' => 'connecting', 'yellowCard' => 'connecting', 'blocked' => 'close'];
+        return $st !== '' ? ($map[$st] ?? $st) : '';
     }
 
     // Готов ли канал реально отправлять (авторизован/подключён), а не просто «ключи заданы».

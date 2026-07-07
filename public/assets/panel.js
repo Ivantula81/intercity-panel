@@ -916,14 +916,21 @@ async function sendAllGroups(btn) {
 }
 
 /* ── Произвольный номер ── */
+function ssToggle() {
+    const email = document.getElementById('ssChannel').value === 'email';
+    const ew = document.getElementById('ssEmailWrap'), pw = document.getElementById('ssPhoneWrap');
+    if (ew) ew.style.display = email ? '' : 'none';
+    if (pw) pw.style.display = email ? 'none' : '';
+}
 async function sendSingle() {
     const st = document.getElementById('sState');
     st.className = 'small muted';
     st.textContent = 'Отправляю…';
-    const r = await api('send.single', {
-        phone: document.getElementById('sNum').value,
-        text: document.getElementById('sText').value,
-    });
+    const channel = document.getElementById('ssChannel') ? document.getElementById('ssChannel').value : 'whatsapp';
+    const payload = { channel, text: document.getElementById('sText').value };
+    if (channel === 'email') payload.email = document.getElementById('sEmail').value;
+    else payload.phone = document.getElementById('sNum').value;
+    const r = await api('send.single', payload);
     st.className = r.ok ? 'badge ok' : 'badge err';
     st.textContent = r.ok ? 'Отправлено' : (r.error || 'Ошибка');
     if (r.ok) document.getElementById('sText').value = '';
@@ -1364,9 +1371,24 @@ function chatTicks(m) {
     if (m.status === 'failed') return '<span class="cm-tick fail">!</span>';
     return '<span class="cm-tick">·</span>';
 }
+function chatLightbox(src) {
+    if (!src) return;
+    let ov = document.getElementById('imgLightbox');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'imgLightbox'; ov.className = 'img-lightbox';
+        ov.innerHTML = '<button type="button" class="img-lightbox-close" aria-label="Закрыть">&times;</button><img alt="">';
+        document.body.appendChild(ov);
+        const close = () => ov.classList.remove('open');
+        ov.addEventListener('click', e => { if (e.target === ov || e.target.classList.contains('img-lightbox-close')) close(); });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+    }
+    ov.querySelector('img').src = src;
+    ov.classList.add('open');
+}
 function chatMedia(m) {
     if (!m.media) return '';
-    if ((m.media_type || '').startsWith('image/')) return `<a class="cm-media" href="${esc(m.media)}" target="_blank" rel="noopener"><img src="${esc(m.media)}" alt="" loading="lazy"></a>`;
+    if ((m.media_type || '').startsWith('image/')) return `<span class="cm-media" onclick="chatLightbox(this.querySelector('img').src)"><img src="${esc(m.media)}" alt="" loading="lazy"></span>`;
     const label = m.body && m.body.trim() ? m.body : 'Файл';
     return `<a class="cm-file" href="${esc(m.media)}" target="_blank" rel="noopener" download><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span>${esc(label)}</span></a>`;
 }
