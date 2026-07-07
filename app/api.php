@@ -542,7 +542,8 @@ switch ($action) {
             'channels_active' => Channels::active(),
             'channels_state' => wa_channel_states(),
             'templates' => db()->query('SELECT id, name, body FROM templates ORDER BY sort, id')->fetchAll(),
-            'group_template' => (string) opt('notif_tpl_' . (int) $manifest['id'], ''),
+            'manifest_template' => (string) opt('notif_tpl_' . (int) $manifest['id'], ''),
+            'block_templates' => (json_decode((string) opt('notif_tpl_blocks_' . (int) $manifest['id'], ''), true) ?: new stdClass()),
         ]);
 
     case 'channels.check':
@@ -679,14 +680,20 @@ switch ($action) {
         $manifest = get_manifest((int) $body['manifest_id']);
         $group = find_notification_group($manifest, $body);
         if ($group === null) json_out(['ok' => false, 'error' => 'Группа маршрута не найдена. Обновите страницу.']);
-        db()->prepare('INSERT INTO manifest_groups (manifest_id, station, station_id, destination, destination_id, boarding_date, boarding_time, body)
-            VALUES (?,?,?,?,?,?,?,?)
-            ON DUPLICATE KEY UPDATE boarding_date = VALUES(boarding_date), boarding_time = VALUES(boarding_time), body = VALUES(body)')
-            ->execute([
-                $manifest['id'], $group['station'], $group['station_id'], $group['destination'], $group['destination_id'],
-                trim((string) ($body['date'] ?? '')), trim((string) ($body['time'] ?? '')),
-                ($body['body'] ?? null) === null ? null : (string) $body['body'],
-            ]);
+        $gd = trim((string) ($body['date'] ?? ''));
+        $gt = trim((string) ($body['time'] ?? ''));
+        if (!empty($body['save_body'])) { // ручная правка текста города: пишем body (null = вернуть к общему)
+            $bodyVal = ($body['body'] ?? null) === null ? null : (string) $body['body'];
+            db()->prepare('INSERT INTO manifest_groups (manifest_id, station, station_id, destination, destination_id, boarding_date, boarding_time, body)
+                VALUES (?,?,?,?,?,?,?,?)
+                ON DUPLICATE KEY UPDATE boarding_date = VALUES(boarding_date), boarding_time = VALUES(boarding_time), body = VALUES(body)')
+                ->execute([$manifest['id'], $group['station'], $group['station_id'], $group['destination'], $group['destination_id'], $gd, $gt, $bodyVal]);
+        } else { // правка только даты/времени — текст города не трогаем
+            db()->prepare('INSERT INTO manifest_groups (manifest_id, station, station_id, destination, destination_id, boarding_date, boarding_time)
+                VALUES (?,?,?,?,?,?,?)
+                ON DUPLICATE KEY UPDATE boarding_date = VALUES(boarding_date), boarding_time = VALUES(boarding_time)')
+                ->execute([$manifest['id'], $group['station'], $group['station_id'], $group['destination'], $group['destination_id'], $gd, $gt]);
+        }
         json_out(['ok' => true]);
 
     case 'group.preview':
@@ -711,23 +718,24 @@ switch ($action) {
         json_out(['ok' => false, 'error' => 'Группа не найдена']);
 
     case 'groups.apply_template':
-        // Применить общий шаблон ко ВСЕМ городам группы, кроме изменённых вручную.
+        // Шаблон: на всю ведомость (scope=manifest) или на блок отправления (scope=block).
+        // Тексты городов тут НЕ пишем — эффективный текст считается на клиенте (ведомость → блок → город).
         $manifest = get_manifest((int) $body['manifest_id']);
-        $tpl = (string) ($body['text'] ?? '');
-        $old = (string) opt('notif_tpl_' . (int) $manifest['id'], '');
-        opt_set('notif_tpl_' . (int) $manifest['id'], $tpl);
-        $applied = 0;
-        foreach (build_groups($manifest) as $g) {
-            $cur = $g['body'];
-            // «изменён вручную» = есть свой текст, отличный от прежнего общего шаблона — не трогаем
-            if ($cur !== null && $cur !== '' && $cur !== $old) continue;
-            db()->prepare('INSERT INTO manifest_groups (manifest_id, station, station_id, destination, destination_id, boarding_date, boarding_time, body)
-                VALUES (?,?,?,?,?,?,?,?)
-                ON DUPLICATE KEY UPDATE body = VALUES(body)')
-                ->execute([$manifest['id'], $g['station'], $g['station_id'], $g['destination'], $g['destination_id'], $g['date'], $g['time'], $tpl]);
-            $applied++;
+        $mid = (int) $manifest['id'];
+        $scope = (string) ($body['scope'] ?? 'manifest');
+        $text = (string) ($body['text'] ?? '');
+        if ($scope === 'block') {
+            $station = trim((string) ($body['station'] ?? ''));
+            if ($station === '') json_out(['ok' => false, 'error' => 'Не указан блок отправления.']);
+            $map = json_decode((string) opt('notif_tpl_blocks_' . $mid, ''), true);
+            if (!is_array($map)) $map = [];
+            if (!empty($body['remove'])) unset($map[$station]);   // «вернуть блок к ведомости»
+            else $map[$station] = $text;
+            opt_set('notif_tpl_blocks_' . $mid, json_encode($map, JSON_UNESCAPED_UNICODE));
+            json_out(['ok' => true]);
         }
-        json_out(['ok' => true, 'applied' => $applied]);
+        opt_set('notif_tpl_' . $mid, $text);
+        json_out(['ok' => true]);
 
     /* ── Отправка ── */
 

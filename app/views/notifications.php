@@ -124,10 +124,10 @@
     <div id="notificationIssues"></div>
     <div class="group-template mt" id="groupTemplateBox" style="display:none">
         <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
-            <div><b>Шаблон на всю группу</b><div class="muted small">Применяется ко всем городам сразу; переменные (<span style="font-family:monospace">{город} {время} {адрес}</span>) подставятся свои для каждого.</div></div>
+            <div><b>Шаблон на всю ведомость</b><div class="muted small">Основной текст для всех городов. Ниже можно переопределить его по блоку отправления или вручную по городу; переменные (<span style="font-family:monospace">{город} {время} {адрес}</span>) подставятся свои.</div></div>
             <div class="row" style="gap:8px">
-                <select id="gtplSelect" onchange="groupTemplatePick(this)"><option value="">— вставить шаблон —</option></select>
-                <button class="btn sm" onclick="applyTemplateToAll(this)">Применить ко всем</button>
+                <select id="gtplSelect" onchange="manifestTemplatePick(this)"><option value="">— вставить шаблон —</option></select>
+                <button class="btn sm" onclick="applyManifestTemplate(this)">Применить ко всей ведомости</button>
             </div>
         </div>
         <textarea id="gtplText" class="template-box mt" rows="4"></textarea>

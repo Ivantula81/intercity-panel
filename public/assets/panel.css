@@ -372,6 +372,9 @@ table.cat input.cell, table.cat select.cell { font-size: 13.5px; }
 .g-tpl-badge { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 20px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); white-space: nowrap; }
 .g-tpl-badge.custom { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
 .group-template { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--surface-2); }
+.origin-template { padding: 9px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.origin-template .ot-select { font-size: 12px; max-width: 170px; }
+.origin-template textarea { font-size: 13px; }
 .gmeta { margin-top: 4px; font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .gchev { color: var(--faint); transition: transform .15s; }
 .gcard.open .gchev { transform: rotate(180deg); }

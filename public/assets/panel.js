@@ -119,7 +119,7 @@ async function delService(ev, id) {
 }
 
 /* ── Уведомления: экран-мастер ── */
-let GROUPS = [], TEMPLATES = [], BUS_PHOTO = '', GDS_LOADED = false, CHANNELS_ACTIVE = ['whatsapp'], CHANNELS_STATE = {}, GROUP_TEMPLATE = '';
+let GROUPS = [], TEMPLATES = [], BUS_PHOTO = '', GDS_LOADED = false, CHANNELS_ACTIVE = ['whatsapp'], CHANNELS_STATE = {}, MANIFEST_TEMPLATE = '', BLOCK_TEMPLATES = {};
 let CHANNEL_CHECKING = false, OVERVIEW_TIMER = null;
 let SELECTED_CHANNELS = new Set(['whatsapp']);
 let FULL_CHANNEL_CHECK_REQUESTED = false;
@@ -162,8 +162,9 @@ async function loadGroups(autoGds) {
     if (!r.ok) { box.innerHTML = '<div class="alert err">' + esc(r.error) + '</div>'; return; }
     GROUPS = r.groups;
     TEMPLATES = r.templates;
-    GROUP_TEMPLATE = r.group_template || (TEMPLATES[0] ? TEMPLATES[0].body : '');
-    renderGroupTemplate();
+    MANIFEST_TEMPLATE = r.manifest_template || (TEMPLATES[0] ? TEMPLATES[0].body : '');
+    BLOCK_TEMPLATES = r.block_templates || {};
+    renderManifestTemplate();
     CHANNELS_ACTIVE = (r.channels_active && r.channels_active.length) ? r.channels_active : ['whatsapp'];
     CHANNELS_STATE = r.channels_state || {};
     if (![...SELECTED_CHANNELS].some(channel => CHANNELS_ACTIVE.includes(channel))) {
@@ -192,10 +193,12 @@ function defaultBody() {
     return TEMPLATES.length ? TEMPLATES[0].body : '';
 }
 
-// Город «изменён вручную», если у него свой текст, отличный от общего шаблона группы.
-function groupIsCustom(g) {
-    return g.body != null && g.body !== '' && g.body !== GROUP_TEMPLATE;
-}
+const tplOptionsHtml = () => TEMPLATES.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+// Эффективный шаблон блока: свой у блока отправления, иначе — шаблон всей ведомости.
+function blockTemplate(station) { return (station in BLOCK_TEMPLATES) ? BLOCK_TEMPLATES[station] : MANIFEST_TEMPLATE; }
+function blockIsCustom(station) { return (station in BLOCK_TEMPLATES) && BLOCK_TEMPLATES[station] !== MANIFEST_TEMPLATE; }
+// Город «изменён вручную» — у него свой текст, отличный от эффективного шаблона его блока.
+function groupIsCustom(g) { return g.body != null && g.body !== '' && g.body !== blockTemplate(g.station); }
 function updateGroupBadge(card, gi) {
     const el = card.querySelector('.g-tpl-badge');
     const custom = groupIsCustom(GROUPS[gi]);
@@ -203,32 +206,63 @@ function updateGroupBadge(card, gi) {
     const rb = card.querySelector('.g-reset');
     if (rb) rb.style.display = custom ? '' : 'none';
 }
-function renderGroupTemplate() {
+
+/* Уровень 1 — шаблон на всю ведомость */
+function renderManifestTemplate() {
     const box = document.getElementById('groupTemplateBox');
     if (!box) return;
     const sel = document.getElementById('gtplSelect');
-    if (sel) sel.innerHTML = '<option value="">— вставить шаблон —</option>' + TEMPLATES.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+    if (sel) sel.innerHTML = '<option value="">— вставить шаблон —</option>' + tplOptionsHtml();
     const ta = document.getElementById('gtplText');
-    if (ta) ta.value = GROUP_TEMPLATE;
+    if (ta) ta.value = MANIFEST_TEMPLATE;
     box.style.display = '';
 }
-function groupTemplatePick(sel) {
+function manifestTemplatePick(sel) {
     const t = TEMPLATES.find(x => x.id == sel.value);
     if (t) document.getElementById('gtplText').value = t.body;
     sel.value = '';
 }
-async function applyTemplateToAll(btn) {
+async function applyManifestTemplate(btn) {
     const ta = document.getElementById('gtplText');
     const text = ta ? ta.value : '';
-    if (!confirm('Применить этот текст ко всем городам группы?\nГорода, изменённые вручную, останутся как есть.')) return;
+    if (!confirm('Применить шаблон ко ВСЕЙ ведомости?\nБлоки и города, изменённые отдельно, останутся как есть.')) return;
     btn.disabled = true;
     const saved = document.getElementById('gtplSaved');
     if (saved) { saved.className = 'g-saved small saving'; saved.textContent = 'Применяю…'; }
-    const r = await api('groups.apply_template', { manifest_id: manifestId(), text }).catch(() => null);
+    const r = await api('groups.apply_template', { manifest_id: manifestId(), scope: 'manifest', text }).catch(() => null);
     btn.disabled = false;
     if (!r || !r.ok) { if (saved) { saved.className = 'g-saved small error'; saved.textContent = (r && r.error) || 'Ошибка'; } return; }
-    GROUP_TEMPLATE = text;
-    if (saved) { saved.className = 'g-saved small saved'; saved.textContent = `Применено к ${r.applied} ${r.applied === 1 ? 'городу' : 'городам'}`; }
+    MANIFEST_TEMPLATE = text;
+    if (saved) { saved.className = 'g-saved small saved'; saved.textContent = 'Применено ко всей ведомости'; }
+    await loadGroups(false);
+}
+
+/* Уровень 2 — шаблон блока отправления */
+function blockTemplatePick(sel) {
+    const box = sel.closest('.origin-template');
+    const t = TEMPLATES.find(x => x.id == sel.value);
+    if (t) box.querySelector('.ot-text').value = t.body;
+    sel.value = '';
+}
+async function applyBlockTemplate(btn) {
+    const box = btn.closest('.origin-template');
+    const station = box.dataset.station;
+    const text = box.querySelector('.ot-text').value;
+    if (!confirm(`Применить шаблон к блоку «${station}»?\nГорода этого блока, изменённые вручную, останутся как есть.`)) return;
+    btn.disabled = true;
+    const r = await api('groups.apply_template', { manifest_id: manifestId(), scope: 'block', station, text }).catch(() => null);
+    btn.disabled = false;
+    if (!r || !r.ok) { alert((r && r.error) || 'Ошибка'); return; }
+    BLOCK_TEMPLATES[station] = text;
+    await loadGroups(false);
+}
+async function resetBlockToManifest(btn) {
+    const box = btn.closest('.origin-template');
+    const station = box.dataset.station;
+    if (!confirm(`Вернуть блок «${station}» к общему шаблону ведомости?`)) return;
+    const r = await api('groups.apply_template', { manifest_id: manifestId(), scope: 'block', station, remove: 1 }).catch(() => null);
+    if (!r || !r.ok) { alert((r && r.error) || 'Ошибка'); return; }
+    delete BLOCK_TEMPLATES[station];
     await loadGroups(false);
 }
 
@@ -303,6 +337,19 @@ function renderGroups() {
             origin.innerHTML = `<div class="notif-origin-head"><div><div class="notif-origin-title">${esc(g.station)}</div>
                 <div class="muted small">${originPassengers} пассажиров · ${originGroups.length} направлений · посадка ${esc((g.date ? g.date + ' ' : '') + (g.time || 'время не указано'))}${g.address ? ' · ' + esc(g.address) : ''}</div></div>
                 <span class="badge ${originGroups.some(x => !x.time || !x.in_catalog || x.time_warning == 1) ? 'warn' : 'ok'}">${originGroups.some(x => !x.time || !x.in_catalog || x.time_warning == 1) ? 'проверьте' : 'готово'}</span></div>
+                <div class="origin-template" data-station="${esc(g.station)}">
+                    <div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
+                        <span class="small">Шаблон блока <span class="g-tpl-badge${blockIsCustom(g.station) ? ' custom' : ''}">${blockIsCustom(g.station) ? '✏ свой шаблон' : 'как у ведомости'}</span></span>
+                        <div class="row" style="gap:6px">
+                            <select class="ot-select" onchange="blockTemplatePick(this)"><option value="">— вставить шаблон —</option>${tplOptionsHtml()}</select>
+                            <button class="btn ghost sm" onclick="applyBlockTemplate(this)">Применить к блоку</button>
+                            <button class="btn ghost sm ot-reset" onclick="resetBlockToManifest(this)" style="display:${blockIsCustom(g.station) ? '' : 'none'}" title="Вернуть блок к общему шаблону ведомости">↺ к ведомости</button>
+                        </div>
+                    </div>
+                    <details class="mt"><summary class="muted small" style="cursor:pointer">Показать / править текст блока</summary>
+                        <textarea class="template-box ot-text mt" rows="3">${esc(blockTemplate(g.station))}</textarea>
+                    </details>
+                </div>
                 <div class="notif-origin-routes"></div>`;
             box.appendChild(origin);
             routeBox = origin.querySelector('.notif-origin-routes');
@@ -336,7 +383,7 @@ function renderGroups() {
                 <label class="f" style="margin:0">Время<input type="text" class="g-time" value="${esc(g.time)}" placeholder="чч:мм" style="width:84px"></label>
                 <span class="muted small" style="align-self:flex-end;padding-bottom:8px">Текст — из общего шаблона; правка здесь отвяжет город от общего</span>
             </div>
-            <textarea class="template-box g-body" rows="5">${esc(g.body ?? GROUP_TEMPLATE)}</textarea>
+            <textarea class="template-box g-body" rows="5">${esc(g.body ?? blockTemplate(g.station))}</textarea>
             <div class="g-saved small" style="min-height:16px;margin:3px 0"></div>
             <div class="msg-preview g-preview mt"></div>
             <details class="mt"><summary class="muted small" style="cursor:pointer">Получатели (${g.recipients.length})</summary>
@@ -361,10 +408,11 @@ function renderGroups() {
         routeBox.appendChild(card);
 
         const ta = card.querySelector('.g-body');
-        const refresh = () => { GROUPS[gi].body = ta.value; updateGroupBadge(card, gi); schedulePreview(card, gi); scheduleDraft(card, gi); };
-        ta.addEventListener('input', refresh);
-        card.querySelector('.g-date').addEventListener('input', refresh);
-        card.querySelector('.g-time').addEventListener('input', refresh);
+        const refreshBody = () => { GROUPS[gi].body = ta.value; updateGroupBadge(card, gi); schedulePreview(card, gi); scheduleDraft(card, gi, true); };
+        const refreshMeta = () => { schedulePreview(card, gi); scheduleDraft(card, gi, false); };
+        ta.addEventListener('input', refreshBody);
+        card.querySelector('.g-date').addEventListener('input', refreshMeta);
+        card.querySelector('.g-time').addEventListener('input', refreshMeta);
         // редактирование телефона прямо в группе
         card.querySelectorAll('.g-phone').forEach(inp => {
             const save = async () => {
@@ -628,19 +676,20 @@ function setSaved(card, state) {
 }
 
 let draftTimers = {};
-function scheduleDraft(card, gi) {
+function scheduleDraft(card, gi, saveBody) {
     clearTimeout(draftTimers[gi]);
     setSaved(card, 'dirty');
     draftTimers[gi] = setTimeout(async () => {
         setSaved(card, 'saving');
-        const r = await api('group.save', {
+        const payload = {
             manifest_id: manifestId(),
             station: GROUPS[gi].station,
             destination: GROUPS[gi].destination,
-            body: card.querySelector('.g-body').value,
             date: card.querySelector('.g-date').value,
             time: card.querySelector('.g-time').value,
-        });
+        };
+        if (saveBody) { payload.body = card.querySelector('.g-body').value; payload.save_body = 1; }
+        const r = await api('group.save', payload);
         setSaved(card, r && r.ok ? 'saved' : 'error');
     }, 900);
 }
@@ -860,15 +909,17 @@ async function gdsTimes(silent) {
 
 async function resetToGlobal(btn, gi) {
     const card = btn.closest('.gcard');
-    card.querySelector('.g-body').value = GROUP_TEMPLATE;
-    GROUPS[gi].body = GROUP_TEMPLATE;
+    const st = GROUPS[gi].station;
+    card.querySelector('.g-body').value = blockTemplate(st);
+    GROUPS[gi].body = null;
     updateGroupBadge(card, gi);
     setSaved(card, 'saving');
     const r = await api('group.save', {
         manifest_id: manifestId(),
-        station: GROUPS[gi].station,
+        station: st,
         destination: GROUPS[gi].destination,
-        body: GROUP_TEMPLATE,
+        body: null,
+        save_body: 1,
         date: card.querySelector('.g-date').value,
         time: card.querySelector('.g-time').value,
     });
