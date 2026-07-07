@@ -118,6 +118,23 @@ function smtp_mailer()
     ]);
 }
 
+// Привязать исходящее сообщение к диалогу. Для MAX/Telegram — по chatId и аккаунту инстанса
+// (как входящие), иначе входящее и исходящее к одному человеку попадают в РАЗНЫЕ диалоги.
+// $chatId — уже разрезолвленный адресат (для MAX/TG это chatId; для WhatsApp/SMS не используется).
+function link_outgoing_conv(int $mid, string $channel, string $phone, string $chatId = '', string $name = ''): void
+{
+    try {
+        require_once PANEL_ROOT . '/app/conversations.php';
+        if (($channel === 'max' || $channel === 'telegram') && $chatId !== '' && !str_contains($chatId, '@')) {
+            $account = $channel === 'telegram' ? 'greenapi_tg' : 'greenapi';
+            $cid = conversation_ensure(['channel' => $channel, 'account' => $account, 'external_chat_id' => $chatId, 'phone' => $phone, 'name' => $name]);
+            conversation_append_legacy('messages', $mid, $cid);
+        } else {
+            conversation_append_legacy('messages', $mid);
+        }
+    } catch (Throwable $e) { /* до миграции conversations */ }
+}
+
 // Провайдер активного аккаунта рассылки
 function active_wa_provider(): string
 {
@@ -846,17 +863,17 @@ switch ($action) {
         db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (?,?,?,?,?,?)')
             ->execute([$manifestId, $channel, $phone, $pname, $text, current_user_name()]);
         $mid = (int) db()->lastInsertId();
-        try { conversation_append_legacy('messages', $mid); } catch (Throwable $e) { /* legacy-режим */ }
+        link_outgoing_conv($mid, $channel, $phone, $target, $pname);
         $res = Channels::sendText($channel, $target, $text);
         if (!empty($res['ok'])) {
             db()->prepare("UPDATE messages SET status='sent', attempts=1, sent_at=NOW(), wa_id=? WHERE id=?")
                 ->execute([(string) ($res['data']['key']['id'] ?? ''), $mid]);
-            try { conversation_append_legacy('messages', $mid); } catch (Throwable $e) { /* legacy-режим */ }
+            link_outgoing_conv($mid, $channel, $phone, $target, $pname);
             contact_log_message($phone, $pname, '');
             json_out(['ok' => true]);
         }
         db()->prepare("UPDATE messages SET status='failed', attempts=1, error=? WHERE id=?")->execute([$res['error'] ?? 'ошибка', $mid]);
-        try { conversation_append_legacy('messages', $mid); } catch (Throwable $e) { /* legacy-режим */ }
+        link_outgoing_conv($mid, $channel, $phone, $target, $pname);
         json_out(['ok' => false, 'error' => $res['error'] ?? 'Ошибка отправки.']);
 
     case 'campaign.send':
@@ -931,7 +948,6 @@ switch ($action) {
                 db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (?,?,?,?,?,?)')
                     ->execute([$manifest['id'], $channel, $p['phone'], $p['name'], $msg, current_user_name()]);
                 $mid = (int) db()->lastInsertId();
-                try { conversation_append_legacy('messages', $mid); } catch (Throwable $e) { /* legacy-режим */ }
 
                 $target = $p['phone'];
                 $res = null;
@@ -963,7 +979,7 @@ switch ($action) {
                     $failed++;
                     $errors[] = Channels::label($channel) . ' · ' . $p['phone'] . ': ' . $error;
                 }
-                try { conversation_append_legacy('messages', $mid); } catch (Throwable $e) { /* legacy-режим */ }
+                link_outgoing_conv($mid, $channel, $p['phone'], $target, $p['name']);
             }
             if ($passengerSent) contact_log_message($p['phone'], $p['name'], $manifest['route']);
             if ($batch < min(count($ids), 20)) sleep(rand(2, 4));
@@ -1083,7 +1099,7 @@ switch ($action) {
                 if (!empty($res['ok'])) {
                     db()->prepare("UPDATE messages SET status='sent', attempts=1, sent_at=NOW(), wa_id=? WHERE id=?")->execute([(string) ($res['data']['key']['id'] ?? ''), $mid]);
                     contact_log_message($phone, '', '');
-                    try { conversation_append_legacy('messages', $mid); } catch (Throwable $e) { /* до миграции conversations */ }
+                    link_outgoing_conv($mid, $channel, $phone, $target);
                     $sent++;
                 } else {
                     db()->prepare("UPDATE messages SET status='failed', attempts=1, error=? WHERE id=?")->execute([$res['error'] ?? 'ошибка', $mid]);
