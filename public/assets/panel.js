@@ -1389,7 +1389,8 @@ function chatRenderTabs() {
     const box=$id('chatChannelTabs'); if(!box) return; const c=chat.channelCounts||{};
     const total=Object.values(c).reduce((a,b)=>a+Number(b||0),0);
     let html=`<button class="cq channel${chat.channelFilter==='all'?' active':''}" onclick="chatSetChannel('all')"><span>Все каналы</span><b>${total}</b></button>`;
-    ['whatsapp','max','telegram','sms','email'].forEach(ch=>{const n=Number(c[ch]||0);if(!n)return;const m=CHAN_META[ch];html+=`<button class="cq channel${chat.channelFilter===ch?' active':''}" style="--chc:${m.color}" onclick="chatSetChannel('${ch}')"><span><i></i>${m.name}</span><b>${n}</b></button>`;});
+    const alwaysCh=['whatsapp','max','telegram']; // мессенджеры показываем всегда, даже при 0 диалогов
+    ['whatsapp','max','telegram','sms','email'].forEach(ch=>{const n=Number(c[ch]||0);if(!n && !alwaysCh.includes(ch))return;const m=CHAN_META[ch];html+=`<button class="cq channel${chat.channelFilter===ch?' active':''}" style="--chc:${m.color}" onclick="chatSetChannel('${ch}')"><span><i></i>${m.name}</span><b>${n}</b></button>`;});
     box.innerHTML=html;
 }
 function chatSetQueue(queue) { chat.queue=queue; chat.cursor=null; chatLoadThreads(); }
