@@ -55,9 +55,12 @@ switch ($type) {
         $sd = $p['senderData'] ?? [];
         $chatId = (string) ($sd['chatId'] ?? '');
         if ($chatId === '' || str_contains($chatId, '@g.us')) break;
-        // реальный номер — в senderPhoneNumber (для MAX chatId это короткий id), иначе из chatId
+        // реальный номер — в senderPhoneNumber (для MAX chatId это короткий id), иначе из chatId.
+        // senderPhoneNumber у MAX часто приходит как 0/пусто — тогда ключ берём из chatId, иначе все
+        // такие контакты сваливаются в общий «+0» (теряется история/контакты). Настоящий телефон — 10+ цифр.
         $realPhone = preg_replace('/\D+/', '', (string) ($sd['senderPhoneNumber'] ?? ''));
-        $phone = '+' . ($realPhone !== '' ? $realPhone : preg_replace('/\D+/', '', explode('@', $chatId)[0]));
+        $fromChat = preg_replace('/\D+/', '', explode('@', $chatId)[0]);
+        $phone = '+' . (strlen($realPhone) >= 10 ? $realPhone : $fromChat);
         $name = (string) ($sd['senderName'] ?? ($sd['chatName'] ?? ''));
         $md = $p['messageData'] ?? [];
         $mediaUrl = ''; $mediaType = '';

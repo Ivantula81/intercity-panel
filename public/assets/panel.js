@@ -1434,7 +1434,7 @@ async function chatLoadMessages(force=false,before=false) {
 async function chatLoadOlder(){if(chat.beforeCursor)await chatLoadMessages(false,true);}
 function chatRenderHeader(){
     const c=chat.conversation;if(!c)return;const name=c.contact_name||c.contact_phone||c.external_chat_id;
-    $id('chatAva').textContent=chatInitial(name,c.contact_phone);$id('chatName').textContent=name;$id('chatPhone').textContent=c.contact_phone||'';
+    $id('chatAva').textContent=chatInitial(name,c.contact_phone);$id('chatName').textContent=name;$id('chatPhone').textContent=/^\+\d{10,15}$/.test(c.contact_phone||'')?c.contact_phone:'';
     $id('chatCard').href='/?p=contacts&q='+encodeURIComponent(c.contact_phone||'');$id('chatStatus').value=c.status;$id('chatPriority').value=c.priority;
     const trip=$id('chatTripLink');if(c.manifest_id){trip.hidden=false;trip.href='/?p=manifest&id='+Number(c.manifest_id);trip.textContent='Рейс №'+(c.trip_number||c.manifest_id)+' · '+(c.route||'');}else{trip.hidden=true;}
     const m=CHAN_META[c.channel];$id('chatHeadChannel').innerHTML=m?`<span style="color:${m.color}">${m.name}</span>`:'';
