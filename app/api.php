@@ -718,34 +718,27 @@ switch ($action) {
         json_out(['ok' => false, 'error' => 'Группа не найдена']);
 
     case 'groups.apply_template':
-        // Шаблон: на всю ведомость (scope=manifest) или на блок отправления (scope=block).
+        // Шаблон на всю ведомость (scope=manifest) или на блок отправления (scope=block).
+        // «Применить» = сбросить нижние уровни к этому тексту (предсказуемо, без застрявших body).
         $manifest = get_manifest((int) $body['manifest_id']);
         $mid = (int) $manifest['id'];
         $scope = (string) ($body['scope'] ?? 'manifest');
         $text = (string) ($body['text'] ?? '');
-        $oldManifest = (string) opt('notif_tpl_' . $mid, '');
-        $oldBlocks = json_decode((string) opt('notif_tpl_blocks_' . $mid, ''), true);
-        if (!is_array($oldBlocks)) $oldBlocks = [];
         $station = trim((string) ($body['station'] ?? ''));
 
         if ($scope === 'block') {
             if ($station === '') json_out(['ok' => false, 'error' => 'Не указан блок отправления.']);
-            $map = $oldBlocks;
+            $map = json_decode((string) opt('notif_tpl_blocks_' . $mid, ''), true);
+            if (!is_array($map)) $map = [];
             if (!empty($body['remove'])) unset($map[$station]);   // «вернуть блок к ведомости»
             else $map[$station] = $text;
             opt_set('notif_tpl_blocks_' . $mid, json_encode($map, JSON_UNESCAPED_UNICODE));
+            // города этого блока снова следуют шаблону блока
+            db()->prepare('UPDATE manifest_groups SET body = NULL WHERE manifest_id = ? AND station = ?')->execute([$mid, $station]);
         } else {
             opt_set('notif_tpl_' . $mid, $text);
-        }
-
-        // Очистить body у городов-«последователей» (их текст == прежний эффективный шаблон
-        // блока или ведомости), чтобы они приняли новый. Реально-ручные правки сохраняются.
-        $upd = db()->prepare("UPDATE manifest_groups SET body = NULL
-            WHERE manifest_id = ? AND station = ? AND destination = ? AND (body = ? OR body = ?)");
-        foreach (build_groups($manifest) as $g) {
-            if ($scope === 'block' && $g['station'] !== $station) continue;
-            $oldEff = array_key_exists($g['station'], $oldBlocks) ? (string) $oldBlocks[$g['station']] : $oldManifest;
-            $upd->execute([$mid, $g['station'], $g['destination'], $oldEff, $oldManifest]);
+            opt_set('notif_tpl_blocks_' . $mid, '');  // сброс переопределений блоков
+            db()->prepare('UPDATE manifest_groups SET body = NULL WHERE manifest_id = ?')->execute([$mid]);
         }
         json_out(['ok' => true]);
 

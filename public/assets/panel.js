@@ -225,7 +225,7 @@ function manifestTemplatePick(sel) {
 async function applyManifestTemplate(btn) {
     const ta = document.getElementById('gtplText');
     const text = ta ? ta.value : '';
-    if (!confirm('Применить шаблон ко ВСЕЙ ведомости?\nБлоки и города, изменённые отдельно, останутся как есть.')) return;
+    if (!confirm('Применить шаблон ко ВСЕЙ ведомости?\nТексты всех блоков и городов сбросятся к этому шаблону.')) return;
     btn.disabled = true;
     const saved = document.getElementById('gtplSaved');
     if (saved) { saved.className = 'g-saved small saving'; saved.textContent = 'Применяю…'; }
@@ -248,7 +248,7 @@ async function applyBlockTemplate(btn) {
     const box = btn.closest('.origin-template');
     const station = box.dataset.station;
     const text = box.querySelector('.ot-text').value;
-    if (!confirm(`Применить шаблон к блоку «${station}»?\nГорода этого блока, изменённые вручную, останутся как есть.`)) return;
+    if (!confirm(`Применить шаблон к блоку «${station}»?\nТексты городов этого блока сбросятся к этому шаблону.`)) return;
     btn.disabled = true;
     const r = await api('groups.apply_template', { manifest_id: manifestId(), scope: 'block', station, text }).catch(() => null);
     btn.disabled = false;
