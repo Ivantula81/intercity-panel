@@ -1025,15 +1025,31 @@ switch ($action) {
         db()->prepare("UPDATE messages SET status='failed', attempts=1, error=? WHERE id=?")->execute([$res['error'] ?? 'ошибка', $mid]);
         json_out(['ok' => false, 'error' => $res['error'] ?? 'Не удалось отправить']);
 
+    case 'channels.states': // единый статус каналов для UI (свободная рассылка и др.)
+        json_out(['ok' => true, 'states' => wa_channel_states()]);
+
     case 'broadcast.send':
         set_time_limit(0);
         require_once PANEL_ROOT . '/lib/MessageTemplate.php';
-        $evo = wa_outbound(); // по телефону = WhatsApp (Evolution)
-        wa_require_ready();
+        require_once PANEL_ROOT . '/lib/Channels.php';
+        require_once PANEL_ROOT . '/app/conversations.php';
         $text = MessageTemplate::render(trim((string) ($body['text'] ?? '')), custom_vars());
         $image = (string) ($body['image'] ?? '');
         $imagePath = $image !== '' && str_starts_with($image, '/uploads/') ? PANEL_ROOT . '/public' . $image : '';
         if ($text === '' && $imagePath === '') json_out(['ok' => false, 'error' => 'Введите текст или приложите картинку.']);
+
+        // каналы: только реально готовые (единый источник Channels::ready)
+        $requested = array_values(array_unique(array_map('strval', (array) ($body['channels'] ?? ['whatsapp']))));
+        $channels = [];
+        foreach ($requested as $ch) {
+            if (!isset(Channels::LABELS[$ch])) continue;
+            if (!Channels::ready($ch)) {
+                $st = Channels::state($ch);
+                json_out(['ok' => false, 'error' => Channels::label($ch) . ($st === 'unconfigured' ? ': канал не подключён' : ': не авторизован — переподключите в Настройках')]);
+            }
+            $channels[] = $ch;
+        }
+        if (!$channels) json_out(['ok' => false, 'error' => 'Выберите хотя бы один подключённый канал.']);
 
         $phones = [];
         foreach (preg_split('/[\s,;]+/', (string) ($body['phones'] ?? '')) as $raw) {
@@ -1043,27 +1059,42 @@ switch ($action) {
         $phones = array_keys($phones);
         if (!$phones) json_out(['ok' => false, 'error' => 'Нет корректных номеров.']);
 
-        $sent = 0; $failed = 0; $errors = []; $batch = 0;
+        $sent = 0; $failed = 0; $errors = []; $batch = 0; $limit = 20;
         foreach ($phones as $phone) {
-            if ($batch >= 20) break;
+            if ($batch >= $limit) break;
             $batch++;
-            db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (0, ?, ?, ?, ?, ?)')
-                ->execute(['whatsapp', $phone, 'Свободная рассылка', $text, current_user_name()]);
-            $mid = (int) db()->lastInsertId();
-            $res = $imagePath !== '' && is_file($imagePath) ? $evo->sendImage($phone, $imagePath, $text) : $evo->sendText($phone, $text);
-            if ($res['ok']) {
-                db()->prepare("UPDATE messages SET status='sent', attempts=1, sent_at=NOW(), wa_id=? WHERE id=?")->execute([(string) ($res['data']['key']['id'] ?? ''), $mid]);
-                contact_log_message($phone, '', '');
-                $sent++;
-            } else {
-                db()->prepare("UPDATE messages SET status='failed', attempts=1, error=? WHERE id=?")->execute([$res['error'], $mid]);
-                $failed++;
-                $errors[] = $phone . ': ' . $res['error'];
+            foreach ($channels as $channel) {
+                $target = $phone; // для MAX/Telegram нужен chatId — резолвим по номеру
+                if ($channel === 'max' || $channel === 'telegram') {
+                    $check = Channels::client($channel)->checkAccount($phone);
+                    if (empty($check['ok']) || empty($check['exists'])) {
+                        $failed++; $errors[] = Channels::label($channel) . ' · ' . $phone . ': нет мессенджера у номера';
+                        continue;
+                    }
+                    $target = ($check['chatId'] ?? '') !== '' ? $check['chatId'] : $phone;
+                }
+                db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (0, ?, ?, ?, ?, ?)')
+                    ->execute([$channel, $phone, 'Свободная рассылка', $text, current_user_name()]);
+                $mid = (int) db()->lastInsertId();
+                $client = Channels::client($channel);
+                $res = ($channel === 'whatsapp' && $imagePath !== '' && is_file($imagePath)) // картинка — только WhatsApp
+                    ? $client->sendImage($target, $imagePath, $text)
+                    : Channels::sendText($channel, $target, $text);
+                if (!empty($res['ok'])) {
+                    db()->prepare("UPDATE messages SET status='sent', attempts=1, sent_at=NOW(), wa_id=? WHERE id=?")->execute([(string) ($res['data']['key']['id'] ?? ''), $mid]);
+                    contact_log_message($phone, '', '');
+                    try { conversation_append_legacy('messages', $mid); } catch (Throwable $e) { /* до миграции conversations */ }
+                    $sent++;
+                } else {
+                    db()->prepare("UPDATE messages SET status='failed', attempts=1, error=? WHERE id=?")->execute([$res['error'] ?? 'ошибка', $mid]);
+                    $failed++;
+                    $errors[] = Channels::label($channel) . ' · ' . $phone . ': ' . ($res['error'] ?? 'ошибка');
+                }
             }
-            if ($batch < min(count($phones), 20)) sleep(rand(2, 4));
+            if ($batch < min(count($phones), $limit)) sleep(rand(2, 4));
         }
         json_out(['ok' => true, 'sent' => $sent, 'failed' => $failed, 'rest' => max(0, count($phones) - $batch),
-            'errors' => array_slice($errors, 0, 5)]);
+            'errors' => array_slice($errors, 0, 6)]);
 
     case 'manifest.phones':
         $manifest = get_manifest((int) $body['manifest_id']);

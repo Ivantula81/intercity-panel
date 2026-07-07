@@ -915,29 +915,32 @@ async function sendAllGroups(btn) {
     loadCampaignOverview(true);
 }
 
-/* ── Произвольный номер ── */
-function ssToggle() {
-    const email = document.getElementById('ssChannel').value === 'email';
-    const ew = document.getElementById('ssEmailWrap'), pw = document.getElementById('ssPhoneWrap');
-    if (ew) ew.style.display = email ? '' : 'none';
-    if (pw) pw.style.display = email ? 'none' : '';
-}
-async function sendSingle() {
-    const st = document.getElementById('sState');
-    st.className = 'small muted';
-    st.textContent = 'Отправляю…';
-    const channel = document.getElementById('ssChannel') ? document.getElementById('ssChannel').value : 'whatsapp';
-    const payload = { channel, text: document.getElementById('sText').value };
-    if (channel === 'email') payload.email = document.getElementById('sEmail').value;
-    else payload.phone = document.getElementById('sNum').value;
-    const r = await api('send.single', payload);
-    st.className = r.ok ? 'badge ok' : 'badge err';
-    st.textContent = r.ok ? 'Отправлено' : (r.error || 'Ошибка');
-    if (r.ok) document.getElementById('sText').value = '';
-}
-
 /* ── Свободная рассылка ── */
 let BIMG = '';
+let BCHAN = new Set(['whatsapp']);
+let BSTATES = {};
+async function broadcastLoadChannels() {
+    if (!document.getElementById('bChannels')) return;
+    const r = await api('channels.states', {}).catch(() => null);
+    BSTATES = (r && r.ok && r.states) ? r.states : {};
+    renderBroadcastChannels();
+}
+function renderBroadcastChannels() {
+    const box = document.getElementById('bChannels');
+    if (!box) return;
+    const labels = { whatsapp: 'WhatsApp', max: 'MAX', telegram: 'Telegram', sms: 'SMS' };
+    box.innerHTML = Object.entries(labels).map(([ch, label]) => {
+        const st = BSTATES[ch] || 'unconfigured';
+        const ready = st === 'open' || st === 'ready';
+        const note = ready ? '' : (st === 'unconfigured' ? '<small>не подключён</small>' : '<small class="chan-off">не авторизован</small>');
+        if (!ready) BCHAN.delete(ch);
+        const checked = ready && BCHAN.has(ch);
+        return `<label class="send-channel-choice ${ready ? '' : 'disabled'}"><input type="checkbox" value="${ch}" ${checked ? 'checked' : ''} ${ready ? '' : 'disabled'} onchange="broadcastToggleChannel(this)"><span>${label}</span>${note}</label>`;
+    }).join('');
+}
+function broadcastToggleChannel(input) {
+    if (input.checked) BCHAN.add(input.value); else BCHAN.delete(input.value);
+}
 async function pullPhones() {
     const id = +document.getElementById('bMan').value;
     if (!id) return;
@@ -976,17 +979,20 @@ async function sendBroadcast() {
     const phones = document.getElementById('bPhones').value;
     const text = document.getElementById('bText').value;
     const out = document.getElementById('bResult');
+    const labels = { whatsapp: 'WhatsApp', max: 'MAX', telegram: 'Telegram', sms: 'SMS' };
+    const channels = [...BCHAN].filter(ch => { const st = BSTATES[ch]; return st === 'open' || st === 'ready'; });
     const n = phones.split(/[\s,;]+/).filter(x => x.replace(/\D/g, '').length >= 10).length;
     if (!n) { out.innerHTML = '<div class="alert warn">Добавьте хотя бы один номер.</div>'; return; }
-    if (!confirm('Отправить рассылку на ' + n + ' номеров?')) return;
+    if (!channels.length) { out.innerHTML = '<div class="alert warn">Отметьте хотя бы один канал.</div>'; return; }
+    if (!confirm('Отправить на ' + n + ' номеров через ' + channels.map(c => labels[c] || c).join(', ') + '?')) return;
     const btn = document.getElementById('bSend');
     btn.disabled = true;
     out.innerHTML = '<div class="alert warn">Отправляю… не закрывайте страницу</div>';
     try {
-        const r = await api('broadcast.send', { phones, text, image: BIMG });
+        const r = await api('broadcast.send', { phones, text, image: BIMG, channels });
         if (!r.ok) { out.innerHTML = '<div class="alert err">' + esc(r.error) + '</div>'; return; }
-        out.innerHTML = `<div class="alert ${r.failed ? 'warn' : 'ok'}">Отправлено: ${r.sent}, ошибок: ${r.failed}`
-            + (r.rest ? `. В очереди ещё ${r.rest} — нажмите «Отправить» снова (уже отправленным повторно не уйдёт только при ручном контроле списка).` : '.') + '</div>'
+        out.innerHTML = `<div class="alert ${r.failed ? 'warn' : 'ok'}">Отправлено сообщений: ${r.sent}, ошибок: ${r.failed}`
+            + (r.rest ? `. В очереди ещё ${r.rest} номеров — нажмите «Отправить» снова.` : '.') + '</div>'
             + (r.errors?.length ? `<div class="muted small">${r.errors.map(esc).join('<br>')}</div>` : '');
     } finally {
         btn.disabled = false;

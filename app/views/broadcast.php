@@ -2,12 +2,10 @@
 <div class="page-head">
     <div>
         <h1>Свободная рассылка</h1>
-        <div class="sub">любые номера · произвольный текст · вложение-картинка</div>
+        <div class="sub">любые номера (один или несколько) · выбор каналов · текст · картинка</div>
     </div>
     <div class="head-actions"><span id="waStatus" class="badge muted">проверяю канал…</span></div>
 </div>
-
-<div class="wa-note"><?= icon('whatsapp') ?><span>Рассылка уходит по <b>WhatsApp</b> (Evolution). MAX — только для ответов в диалогах «Чаты».</span></div>
 
 <div class="split">
     <div class="card">
@@ -21,7 +19,7 @@
             </select>
             <button class="btn ghost sm" onclick="pullPhones()">Подставить</button>
         </div>
-        <label class="f">Номера — по одному на строку (или через запятую)
+        <label class="f">Номера — по одному на строку (или через запятую). Можно один или несколько.
             <textarea id="bPhones" rows="9" placeholder="+79051234567&#10;+381628246799"></textarea>
         </label>
         <div class="muted small" id="bCount"></div>
@@ -29,12 +27,16 @@
 
     <div class="card">
         <h2>Сообщение</h2>
+        <div class="send-channel-panel" style="margin-bottom:12px">
+            <div><b>Каналы отправки</b><div class="muted small">Отмеченные каналы работают параллельно. Статус берётся от провайдера.</div></div>
+            <div id="bChannels" class="send-channel-choices"><span class="muted small">проверяю подключения…</span></div>
+        </div>
         <label class="f">Текст (эмодзи поддерживаются 🚍)
-            <textarea id="bText" rows="7" placeholder="Напоминаем о вашей поездке завтра…"></textarea>
+            <textarea id="bText" rows="6" placeholder="Напоминаем о вашей поездке завтра…"></textarea>
         </label>
         <div class="row" style="margin-bottom:12px">
             <label class="btn ghost sm" style="cursor:pointer">
-                📎 Приложить картинку<input type="file" id="bFile" accept="image/*" style="display:none" onchange="uploadBroadcastImage(this)">
+                📎 Приложить картинку (WhatsApp)<input type="file" id="bFile" accept="image/*" style="display:none" onchange="uploadBroadcastImage(this)">
             </label>
             <span class="small muted" id="bImgState"></span>
         </div>
@@ -46,38 +48,4 @@
         <div id="bResult" class="mt"></div>
     </div>
 </div>
-
-<div class="card" style="margin-top:16px">
-    <h2>Быстрая отправка одному</h2>
-    <div class="sub muted small" style="margin-bottom:10px">Позвонил пассажир и просит переслать информацию на другой номер или почту — выберите канал, укажите получателя и отправьте.</div>
-    <div class="split">
-        <div>
-            <label class="f">Канал
-                <select id="ssChannel" onchange="ssToggle()">
-                    <option value="whatsapp">WhatsApp</option>
-                    <option value="max">MAX</option>
-                    <option value="telegram">Telegram</option>
-                    <option value="sms">SMS</option>
-                    <option value="email">Email</option>
-                </select>
-            </label>
-            <label class="f" id="ssPhoneWrap">Номер телефона
-                <input id="sNum" placeholder="+79051234567">
-            </label>
-            <label class="f" id="ssEmailWrap" style="display:none">Email получателя
-                <input id="sEmail" placeholder="name@example.com">
-            </label>
-        </div>
-        <div>
-            <label class="f">Текст
-                <textarea id="sText" rows="6" placeholder="Здравствуйте! Информация по вашей поездке…"></textarea>
-            </label>
-            <div class="row">
-                <button class="btn" onclick="sendSingle()"><?= icon('send') ?> Отправить</button>
-                <span id="sState" class="small muted"></span>
-            </div>
-            <div class="muted small mt">MAX/Telegram — только если у номера есть этот мессенджер. SMS/Email — если канал настроен.</div>
-        </div>
-    </div>
-</div>
-<script>document.addEventListener('DOMContentLoaded', waStatus);</script>
+<script>document.addEventListener('DOMContentLoaded', () => { waStatus(); broadcastLoadChannels(); });</script>
