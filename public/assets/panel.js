@@ -336,7 +336,7 @@ function renderGroups() {
             origin.className = 'notif-origin';
             origin.innerHTML = `<div class="notif-origin-head"><div><div class="notif-origin-title">${esc(g.station)}</div>
                 <div class="muted small">${originPassengers} пассажиров · ${originGroups.length} направлений · посадка ${esc((g.date ? g.date + ' ' : '') + (g.time || 'время не указано'))}${g.address ? ' · ' + esc(g.address) : ''}</div></div>
-                <span class="badge ${originGroups.some(x => !x.time || !x.in_catalog || x.time_warning == 1) ? 'warn' : 'ok'}">${originGroups.some(x => !x.time || !x.in_catalog || x.time_warning == 1) ? 'проверьте' : 'готово'}</span></div>
+                <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap"><span class="badge ${originGroups.some(x => !x.time || !x.in_catalog || x.time_warning == 1) ? 'warn' : 'ok'}">${originGroups.some(x => !x.time || !x.in_catalog || x.time_warning == 1) ? 'проверьте' : 'готово'}</span><button class="btn sm" onclick="sendBlock(this)">Отправить блоку</button></div></div>
                 <div class="origin-template" data-station="${esc(g.station)}">
                     <div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
                         <span class="small">Шаблон блока <span class="g-tpl-badge${blockIsCustom(g.station) ? ' custom' : ''}">${blockIsCustom(g.station) ? '✏ свой шаблон' : 'как у ведомости'}</span></span>
@@ -1001,6 +1001,34 @@ async function sendAllGroups(btn) {
     all.innerHTML = `<div class="alert ${failed ? 'warn' : 'ok'}">Готово: сообщений отправлено ${total}, ошибок ${failed}${duplicates ? ', повторов предотвращено ' + duplicates : ''}.</div>`;
     sendButtons.forEach(button => button.disabled = false);
     loadCampaignOverview(true);
+}
+
+// Отправить всему блоку отправления (все города одного пункта, напр. «из Москвы»).
+async function sendBlock(btn) {
+    const section = btn.closest('.notif-origin');
+    if (!section) return;
+    const cards = [...section.querySelectorAll('.gcard')];
+    if (!cards.length) return;
+    const gis = cards.map(c => +c.dataset.gi);
+    const station = section.querySelector('.notif-origin-title')?.textContent || 'этот блок';
+    const routeProblems = preparationIssues().filter(x => x.level === 'err' && x.type === 'route' && gis.includes(x.groupIndex)).length;
+    if (routeProblems) { alert('Сначала исправьте критичные данные в этом блоке.'); return; }
+    const channels = selectedSendChannels();
+    const labels = { whatsapp: 'WhatsApp', max: 'MAX', telegram: 'Telegram', sms: 'SMS' };
+    if (!channels.length) { alert('Не выбран канал отправки.'); return; }
+    const valid = gis.reduce((n, gi) => n + GROUPS[gi].recipients.filter(x => x.valid).length, 0);
+    const dup = channels.length > 1 ? `\n\nВыбрано ${channels.length} канала — пассажир может получить сообщение в каждом.` : '';
+    if (!confirm(`Отправить блоку «${station}» — ${valid} пассажирам в ${gis.length} направлениях?\nКаналы: ${channels.map(x => labels[x] || x).join(', ')}.${dup}`)) return;
+    btn.disabled = true;
+    let total = 0, failed = 0, duplicates = 0;
+    for (const card of cards) {
+        const gi = +card.dataset.gi;
+        const r = await sendGroup(card.querySelector('.g-send'), gi, true) || {};
+        total += r.sent || 0; failed += r.failed || 0; duplicates += r.duplicates || 0;
+    }
+    btn.disabled = false;
+    loadCampaignOverview(true);
+    alert(`Блок «${station}»: отправлено ${total}, ошибок ${failed}${duplicates ? ', без дублей ' + duplicates : ''}.`);
 }
 
 /* ── Свободная рассылка ── */
