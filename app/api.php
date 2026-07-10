@@ -962,7 +962,6 @@ switch ($action) {
             ORDER BY id DESC LIMIT 1");
 
         foreach ($ids as $pid) {
-            if ($batch >= 20) break;
             $pst = db()->prepare('SELECT * FROM passengers WHERE id = ? AND manifest_id = ?');
             $pst->execute([$pid, $manifest['id']]);
             $p = $pst->fetch();
@@ -1015,7 +1014,6 @@ switch ($action) {
                 link_outgoing_conv($mid, $channel, $p['phone'], $target, $p['name']);
             }
             if ($passengerSent) contact_log_message($p['phone'], $p['name'], $manifest['route']);
-            if ($batch < min(count($ids), 20)) sleep(rand(2, 4));
         }
         $rest = max(0, count($ids) - $batch - $skipped);
         json_out(['ok' => true, 'sent' => $sent, 'failed' => $failed, 'skipped' => $skipped, 'duplicates' => $duplicates,
@@ -1108,9 +1106,8 @@ switch ($action) {
         $phones = array_keys($phones);
         if (!$phones) json_out(['ok' => false, 'error' => 'Нет корректных номеров.']);
 
-        $sent = 0; $failed = 0; $errors = []; $batch = 0; $limit = 20;
+        $sent = 0; $failed = 0; $errors = []; $batch = 0;
         foreach ($phones as $phone) {
-            if ($batch >= $limit) break;
             $batch++;
             foreach ($channels as $channel) {
                 $target = $phone; // для MAX/Telegram нужен chatId — резолвим по номеру
@@ -1140,7 +1137,6 @@ switch ($action) {
                     $errors[] = Channels::label($channel) . ' · ' . $phone . ': ' . ($res['error'] ?? 'ошибка');
                 }
             }
-            if ($batch < min(count($phones), $limit)) sleep(rand(2, 4));
         }
         json_out(['ok' => true, 'sent' => $sent, 'failed' => $failed, 'rest' => max(0, count($phones) - $batch),
             'errors' => array_slice($errors, 0, 6)]);

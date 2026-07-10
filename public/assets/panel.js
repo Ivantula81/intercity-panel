@@ -950,7 +950,7 @@ async function sendGroup(btn, gi, silent = false) {
     const parallel = channels.length > 1 ? `\nКаждый пассажир может получить ${channels.length} одинаковых сообщения.` : '';
     if (!silent && !confirm(`Отправить группе «${GROUPS[gi].station} → ${GROUPS[gi].destination}» (${ids.length} получателей) через ${channels.map(x => channelLabels[x] || x).join(', ')}?${parallel}`)) return;
     btn.disabled = true;
-    state.textContent = 'Отправляю… (2–4 сек на сообщение)';
+    state.textContent = 'Отправляю…';
     try {
         const r = await api('campaign.send', {
             manifest_id: manifestId(),

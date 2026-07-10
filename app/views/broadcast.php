@@ -43,7 +43,7 @@
         <div id="bImgPreview" style="display:none;margin-bottom:12px"><img style="max-width:220px;border-radius:10px" alt="вложение"></div>
         <div class="row">
             <button class="btn" id="bSend" onclick="sendBroadcast()"><?= icon('send') ?> Отправить рассылку</button>
-            <span class="muted small">партиями по 20, пауза 2–4 сек</span>
+            <span class="muted small">уходит сразу всем выбранным, без пауз — скоростью управляете сами</span>
         </div>
         <div id="bResult" class="mt"></div>
     </div>
