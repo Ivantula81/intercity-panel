@@ -15,8 +15,9 @@ function gw_env(string $key): string
 }
 
 $messenger = (string) ($_GET['messenger'] ?? 'max');
-if (!in_array($messenger, ['max','telegram'], true)) { http_response_code(400); die('bad messenger'); }
-$token = gw_env($messenger === 'telegram' ? 'GREENAPI_TG_WEBHOOK_TOKEN' : 'GREENAPI_WEBHOOK_TOKEN');
+if (!in_array($messenger, ['max','telegram','whatsapp'], true)) { http_response_code(400); die('bad messenger'); }
+$tokenKeys = ['max' => 'GREENAPI_WEBHOOK_TOKEN', 'telegram' => 'GREENAPI_TG_WEBHOOK_TOKEN', 'whatsapp' => 'GREENAPI_WA_WEBHOOK_TOKEN'];
+$token = gw_env($tokenKeys[$messenger]);
 $given = (string) ($_GET['token'] ?? ($_SERVER['HTTP_AUTHORIZATION'] ?? ''));
 if ($token === '' || (!hash_equals($token, $given) && !hash_equals('Bearer ' . $token, $given))) {
     http_response_code(403);
@@ -79,7 +80,7 @@ switch ($type) {
         }
         if (trim((string) $body) !== '' || $mediaUrl !== '') {
             // chat_id MAX/Telegram — чтобы отвечать в тот же канал, а не угадывать его по телефону.
-            $instanceKey = $messenger === 'telegram' ? 'greenapi_tg' : 'greenapi';
+            $instanceKey = ['max' => 'greenapi', 'telegram' => 'greenapi_tg', 'whatsapp' => 'greenapi_wa'][$messenger];
             db()->prepare('INSERT INTO inbox (instance, phone, name, body, media_url, media_type, chat_id) VALUES (?,?,?,?,?,?,?)')
                 ->execute([$instanceKey, $phone, $name, mb_substr((string) $body, 0, 2000), $mediaUrl, $mediaType, $chatId]);
             $inboxId = (int) db()->lastInsertId();
@@ -92,7 +93,7 @@ switch ($type) {
 
     case 'stateInstanceChanged':
         $state = (string) ($p['stateInstance'] ?? '');
-        if ($state !== '') opt_set('wa_conn_' . ($messenger === 'telegram' ? 'greenapi_tg' : 'greenapi'), json_encode(['state' => $state, 'at' => date('Y-m-d H:i:s')]));
+        if ($state !== '') opt_set('wa_conn_' . (['max' => 'greenapi', 'telegram' => 'greenapi_tg', 'whatsapp' => 'greenapi_wa'][$messenger]), json_encode(['state' => $state, 'at' => date('Y-m-d H:i:s')]));
         break;
 }
 

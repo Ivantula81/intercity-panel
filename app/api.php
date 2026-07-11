@@ -159,9 +159,19 @@ function wa_messenger(string $provider): string
 
 // Клиент для мессенджера: max → Green API; whatsapp/прочее → Evolution на РЕАЛЬНЫЙ
 // evolution-инстанс из wa_accounts (а не «активный», которым может быть greenapi).
+// WhatsApp через Green API (инстанс на ИХ серверах/IP — наш выжженный IP не участвует).
+// Ключи GREENAPI_WA_*. Если заданы — WhatsApp идёт через Green API, иначе фолбэк на Evolution.
+function green_api_wa()
+{
+    require_once PANEL_ROOT . '/lib/GreenApiClient.php';
+    return new GreenApiClient(env_get('GREENAPI_WA_URL') ?: env_get('GREENAPI_URL'), env_get('GREENAPI_WA_ID'), env_get('GREENAPI_WA_TOKEN'), 'whatsapp');
+}
+
 function wa_client_for(string $messenger)
 {
     if ($messenger === 'max') return green_api();
+    $ga = green_api_wa();
+    if ($ga->isConfigured()) return $ga; // приоритет: Green API WhatsApp
     try {
         $inst = db()->query("SELECT instance FROM wa_accounts WHERE provider = 'evolution' ORDER BY is_active DESC, id LIMIT 1")->fetchColumn();
     } catch (Exception $e) { $inst = ''; }

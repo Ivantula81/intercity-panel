@@ -114,16 +114,32 @@ class GreenApiClient
         ]);
     }
 
-    // Проверка наличия аккаунта в мессенджере (MAX/Telegram). ['ok'=>bool, 'exists'=>bool, 'chatId'=>string]
+    // Проверка наличия аккаунта у номера. Для WhatsApp-инстансов метод называется checkWhatsapp,
+    // для MAX/Telegram — checkAccount. ['ok'=>bool, 'exists'=>bool, 'chatId'=>string]
     public function checkAccount($phone)
     {
         $number = preg_replace('/\D+/', '', (string) $phone);
         if ($number === '') return ['ok' => false, 'error' => 'Пустой номер.'];
-        $r = $this->post('checkAccount', ['phoneNumber' => (int) $number]);
+        $method = $this->messenger === 'whatsapp' ? 'checkWhatsapp' : 'checkAccount';
+        $r = $this->post($method, ['phoneNumber' => (int) $number]);
         if (!$r['ok']) return ['ok' => false, 'error' => 'Green API: HTTP ' . ($r['code'] ?? '?')];
         $d = is_array($r['data'] ?? null) ? $r['data'] : [];
         $exists = $d['exist'] ?? ($d['existsWhatsapp'] ?? null);
         return ['ok' => true, 'exists' => (bool) $exists, 'chatId' => (string) ($d['chatId'] ?? '')];
+    }
+
+    // Батч-проверка WhatsApp-номеров — интерфейс EvolutionApiClient::checkNumbers.
+    // Green API батча не имеет, проверяем по одному. ['ok'=>bool, 'exists'=>[цифры=>bool]]
+    public function checkNumbers(array $phones)
+    {
+        $exists = [];
+        foreach ($phones as $phone) {
+            $digits = preg_replace('/\D+/', '', (string) $phone);
+            if ($digits === '') continue;
+            $r = $this->checkAccount($phone);
+            if (!empty($r['ok'])) $exists[$digits] = (bool) $r['exists'];
+        }
+        return ['ok' => true, 'exists' => $exists];
     }
 
     private function mapSend($r)

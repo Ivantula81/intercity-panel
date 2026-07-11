@@ -75,7 +75,7 @@ class Channels
     // Единый источник правды, когда живой опрос временно недоступен. MAX/Telegram — фиксированные ключи.
     private static function lastPushedState(string $ch): string
     {
-        static $keys = ['max' => 'wa_conn_greenapi', 'telegram' => 'wa_conn_greenapi_tg'];
+        static $keys = ['max' => 'wa_conn_greenapi', 'telegram' => 'wa_conn_greenapi_tg', 'whatsapp' => 'wa_conn_greenapi_wa'];
         if (!isset($keys[$ch]) || !function_exists('opt')) return '';
         $raw = json_decode((string) opt($keys[$ch]), true);
         $st = is_array($raw) ? (string) ($raw['state'] ?? '') : '';
