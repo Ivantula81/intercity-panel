@@ -1085,6 +1085,26 @@ switch ($action) {
     case 'channels.states': // единый статус каналов для UI (свободная рассылка и др.)
         json_out(['ok' => true, 'states' => wa_channel_states()]);
 
+    case 'channels.delays': // серверная пауза Green API по каналам (мс). null = канал не через Green API.
+        require_once PANEL_ROOT . '/lib/Channels.php';
+        $delays = [];
+        foreach (['whatsapp', 'max', 'telegram'] as $ch) {
+            $c = Channels::client($ch);
+            $delays[$ch] = ($c instanceof GreenApiClient && $c->isConfigured()) ? $c->getSendDelay() : null;
+        }
+        json_out(['ok' => true, 'delays' => $delays]);
+
+    case 'channel.delay.save':
+        require_once PANEL_ROOT . '/lib/Channels.php';
+        $ch = (string) ($body['channel'] ?? '');
+        $ms = (int) ($body['ms'] ?? 0);
+        if ($ms < 500) $ms = 500; // минимум Green API
+        if (!in_array($ch, ['whatsapp', 'max', 'telegram'], true)) json_out(['ok' => false, 'error' => 'Неизвестный канал.']);
+        $c = Channels::client($ch);
+        if (!($c instanceof GreenApiClient) || !$c->isConfigured()) json_out(['ok' => false, 'error' => Channels::label($ch) . ' не через Green API.']);
+        $r = $c->setSendDelay($ms);
+        json_out(['ok' => !empty($r['ok']), 'ms' => $ms, 'error' => empty($r['ok']) ? 'Green API не принял настройку' : null]);
+
     case 'broadcast.send':
         set_time_limit(0);
         require_once PANEL_ROOT . '/lib/MessageTemplate.php';

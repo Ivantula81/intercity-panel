@@ -1421,6 +1421,35 @@ async function saveNotif() {
     s.textContent = 'Сохранено ✓';
     setTimeout(() => s.textContent = '', 2000);
 }
+
+const DELAY_FIELDS = { whatsapp: 'delWhatsapp', max: 'delMax', telegram: 'delTelegram' };
+async function loadChannelDelays() {
+    if (!document.getElementById('delWhatsapp')) return;
+    const st = document.getElementById('delState');
+    const r = await api('channels.delays', {}).catch(() => null);
+    if (!r || !r.ok) { if (st) st.textContent = 'не удалось загрузить'; return; }
+    for (const [ch, id] of Object.entries(DELAY_FIELDS)) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        const ms = r.delays[ch];
+        if (ms === null || ms === undefined) { el.value = ''; el.disabled = true; el.placeholder = 'не Green API'; }
+        else el.value = ms / 1000;
+    }
+    if (st) st.textContent = '';
+}
+async function saveChannelDelays() {
+    const st = document.getElementById('delState');
+    if (st) st.textContent = 'Сохраняю…';
+    let ok = 0, fail = 0;
+    for (const [ch, id] of Object.entries(DELAY_FIELDS)) {
+        const el = document.getElementById(id);
+        if (!el || el.disabled || el.value === '') continue;
+        const ms = Math.max(500, Math.round(parseFloat(el.value) * 1000));
+        const r = await api('channel.delay.save', { channel: ch, ms }).catch(() => null);
+        if (r && r.ok) ok++; else fail++;
+    }
+    if (st) { st.textContent = fail ? `сохранено ${ok}, ошибок ${fail}` : 'Сохранено ✓'; setTimeout(() => { if (st.textContent[0] === 'С') st.textContent = ''; }, 2500); }
+}
 async function uploadReq(inp, kind) {
     if (!inp.files.length) return;
     const fd = new FormData();

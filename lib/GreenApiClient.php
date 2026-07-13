@@ -110,8 +110,20 @@ class GreenApiClient
             'outgoingMessageWebhook' => 'yes',
             'outgoingAPIMessageWebhook' => 'yes',
             'stateWebhook' => 'yes',
-            'delaySendMessagesMilliseconds' => 2000,
+            'delaySendMessagesMilliseconds' => 15000,
         ]);
+    }
+
+    // Серверная пауза очереди Green API между сообщениями (мс) — защита от бана.
+    // Панель шлёт «по факту», Green API сам растягивает по этому интервалу.
+    public function getSendDelay()
+    {
+        $r = $this->get('getSettings');
+        return $r['ok'] ? (int) ($r['data']['delaySendMessagesMilliseconds'] ?? 0) : null;
+    }
+    public function setSendDelay($ms)
+    {
+        return $this->post('setSettings', ['delaySendMessagesMilliseconds' => (int) $ms]);
     }
 
     // Проверка наличия аккаунта у номера. Для WhatsApp-инстансов метод называется checkWhatsapp,

@@ -78,6 +78,21 @@
 </div>
 
 <div class="card">
+    <h2><?= icon('send') ?> Темп рассылки (защита от бана)</h2>
+    <p class="muted small">Пауза между сообщениями держится на стороне Green API (очередь). Панель шлёт сразу — сервер сам растягивает. <b>15–20 сек — новый номер, 5–8 — прогретый.</b> Минимум 0.5 сек.</p>
+    <div class="grid grid-3">
+        <label class="f">WhatsApp, сек<input type="number" id="delWhatsapp" min="0.5" step="0.5" placeholder="—"></label>
+        <label class="f">MAX, сек<input type="number" id="delMax" min="0.5" step="0.5" placeholder="—"></label>
+        <label class="f">Telegram, сек<input type="number" id="delTelegram" min="0.5" step="0.5" placeholder="—"></label>
+    </div>
+    <div class="row">
+        <button class="btn sm" onclick="saveChannelDelays()">Сохранить темп</button>
+        <span class="muted small" id="delState">загружаю…</span>
+    </div>
+    <script>document.addEventListener('DOMContentLoaded', loadChannelDelays);</script>
+</div>
+
+<div class="card">
     <h2><?= icon('bell') ?> Сообщения пассажирам</h2>
     <p class="muted small">Если при отправке снять галочку «указать телефон водителя», в переменную <code>{тел_водителя}</code> подставится эта фраза.</p>
     <div class="grid grid-3">
