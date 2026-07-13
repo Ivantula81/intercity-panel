@@ -119,7 +119,7 @@ async function delService(ev, id) {
 }
 
 /* ── Уведомления: экран-мастер ── */
-let GROUPS = [], TEMPLATES = [], BUS_PHOTO = '', GDS_LOADED = false, CHANNELS_ACTIVE = ['whatsapp'], CHANNELS_STATE = {}, MANIFEST_TEMPLATE = '', BLOCK_TEMPLATES = {};
+let GROUPS = [], TEMPLATES = [], BUS_PHOTO = '', GDS_LOADED = false, CHANNELS_ACTIVE = ['whatsapp'], CHANNELS_STATE = {}, MANIFEST_TEMPLATE = '', BLOCK_TEMPLATES = {}, TODAY_COUNTS = {}, DAILY_CAP = 200;
 let CHANNEL_CHECKING = false, OVERVIEW_TIMER = null;
 let SELECTED_CHANNELS = new Set(['whatsapp']);
 let FULL_CHANNEL_CHECK_REQUESTED = false;
@@ -164,6 +164,8 @@ async function loadGroups(autoGds) {
     TEMPLATES = r.templates;
     MANIFEST_TEMPLATE = r.manifest_template || (TEMPLATES[0] ? TEMPLATES[0].body : '');
     BLOCK_TEMPLATES = r.block_templates || {};
+    TODAY_COUNTS = r.today || {};
+    DAILY_CAP = r.daily_cap || 200;
     renderManifestTemplate();
     CHANNELS_ACTIVE = (r.channels_active && r.channels_active.length) ? r.channels_active : ['whatsapp'];
     CHANNELS_STATE = r.channels_state || {};
@@ -285,8 +287,18 @@ function renderSendChannels() {
         const note = ready ? '' : (st === 'unconfigured' ? '<small>не подключён</small>' : '<small class="chan-off">не авторизован</small>');
         const checked = ready && SELECTED_CHANNELS.has(channel);
         return `<label class="send-channel-choice ${ready ? '' : 'disabled'}"><input type="checkbox" value="${channel}" ${checked ? 'checked' : ''} ${ready ? '' : 'disabled'} onchange="changeSendChannels(this)"><span>${label}</span>${note}</label>`;
-    }).join('');
+    }).join('') + dailyCountsLine();
     updateChannelEstimate();
+}
+// Мягкий счётчик дневного лимита по каналам (предупреждение, не блокирует).
+function dailyCountsLine() {
+    const labels = { whatsapp: 'WA', max: 'MAX', telegram: 'TG', sms: 'SMS' };
+    const parts = Object.entries(labels).map(([ch, l]) => {
+        const n = Number(TODAY_COUNTS[ch] || 0);
+        const cls = DAILY_CAP && n >= DAILY_CAP ? 'daily-over' : (DAILY_CAP && n >= DAILY_CAP * 0.8 ? 'daily-near' : '');
+        return `<span class="${cls}">${l} ${n}</span>`;
+    }).join(' · ');
+    return `<div class="daily-counts small">Сегодня отправлено: ${parts} <span class="muted">(мягкий лимит ${DAILY_CAP}/канал)</span></div>`;
 }
 
 function changeSendChannels(input) {
@@ -1039,6 +1051,7 @@ async function broadcastLoadChannels() {
     if (!document.getElementById('bChannels')) return;
     const r = await api('channels.states', {}).catch(() => null);
     BSTATES = (r && r.ok && r.states) ? r.states : {};
+    if (r && r.ok) { TODAY_COUNTS = r.today || {}; DAILY_CAP = r.daily_cap || 200; }
     renderBroadcastChannels();
 }
 function renderBroadcastChannels() {
@@ -1052,7 +1065,7 @@ function renderBroadcastChannels() {
         if (!ready) BCHAN.delete(ch);
         const checked = ready && BCHAN.has(ch);
         return `<label class="send-channel-choice ${ready ? '' : 'disabled'}"><input type="checkbox" value="${ch}" ${checked ? 'checked' : ''} ${ready ? '' : 'disabled'} onchange="broadcastToggleChannel(this)"><span>${label}</span>${note}</label>`;
-    }).join('');
+    }).join('') + dailyCountsLine();
 }
 function broadcastToggleChannel(input) {
     if (input.checked) BCHAN.add(input.value); else BCHAN.delete(input.value);
@@ -1416,7 +1429,11 @@ async function fixWebhook(btn) {
     btn.disabled = false;
 }
 async function saveNotif() {
-    await api('notif.save', { driver_phone_fallback: document.getElementById('msgDriverFallback').value });
+    await api('notif.save', {
+        driver_phone_fallback: document.getElementById('msgDriverFallback').value,
+        unsub_line: document.getElementById('msgUnsubLine') ? document.getElementById('msgUnsubLine').value : undefined,
+        daily_cap: document.getElementById('msgDailyCap') ? document.getElementById('msgDailyCap').value : undefined,
+    });
     const s = document.getElementById('notifState');
     s.textContent = 'Сохранено ✓';
     setTimeout(() => s.textContent = '', 2000);

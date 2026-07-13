@@ -97,7 +97,8 @@
     <p class="muted small">Если при отправке снять галочку «указать телефон водителя», в переменную <code>{тел_водителя}</code> подставится эта фраза.</p>
     <div class="grid grid-3">
         <label class="f">Фраза вместо телефона водителя<input type="text" id="msgDriverFallback" value="<?= e(opt('driver_phone_fallback', 'сообщим позднее')) ?>" placeholder="сообщим позднее"></label>
-        <div></div><div></div>
+        <label class="f">Строка отписки (в конце уведомлений; пусто = не добавлять)<input type="text" id="msgUnsubLine" value="<?= e(opt('unsub_line', 'Чтобы отписаться — напишите СТОП')) ?>" placeholder="Чтобы отписаться — напишите СТОП"></label>
+        <label class="f">Дневной лимит на канал (предупреждение)<input type="number" id="msgDailyCap" min="0" step="10" value="<?= e(opt('daily_soft_cap', '200')) ?>" placeholder="200"></label>
     </div>
     <div class="row">
         <button class="btn sm" onclick="saveNotif()">Сохранить</button>

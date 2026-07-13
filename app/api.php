@@ -104,6 +104,18 @@ function wa_channel_states(): array
     return $states;
 }
 
+// Сколько сообщений отправлено сегодня по каждому каналу — для мягкого счётчика дневного лимита.
+function channel_today_counts(): array
+{
+    $out = ['whatsapp' => 0, 'max' => 0, 'telegram' => 0, 'sms' => 0, 'email' => 0];
+    try {
+        foreach (db()->query("SELECT channel, COUNT(*) c FROM messages WHERE sent_at >= CURDATE() GROUP BY channel")->fetchAll() as $r) {
+            if (isset($out[$r['channel']])) $out[$r['channel']] = (int) $r['c'];
+        }
+    } catch (Throwable $e) { /* ignore */ }
+    return $out;
+}
+
 function smtp_mailer()
 {
     require_once PANEL_ROOT . '/lib/SmtpMailer.php';
@@ -560,6 +572,8 @@ switch ($action) {
             'templates' => db()->query('SELECT id, name, body FROM templates ORDER BY sort, id')->fetchAll(),
             'manifest_template' => (string) opt('notif_tpl_' . (int) $manifest['id'], ''),
             'block_templates' => (json_decode((string) opt('notif_tpl_blocks_' . (int) $manifest['id'], ''), true) ?: new stdClass()),
+            'today' => channel_today_counts(),
+            'daily_cap' => (int) opt('daily_soft_cap', '200'),
         ]);
 
     case 'channels.check':
@@ -973,6 +987,7 @@ switch ($action) {
                 'channels' => $channels, 'attempts' => count($eligible) * count($channels)]);
         }
         $sent = 0; $failed = 0; $skipped = 0; $duplicates = 0; $unsub = 0; $errors = []; $seenPhones = []; $batch = 0;
+        $unsubLine = trim((string) opt('unsub_line', 'Чтобы отписаться — напишите СТОП'));
         $duplicateQuery = db()->prepare("SELECT id FROM messages
             WHERE manifest_id = ? AND channel = ? AND recipient = ? AND body = ? AND status IN ('pending','sent')
             ORDER BY id DESC LIMIT 1");
@@ -988,6 +1003,7 @@ switch ($action) {
             $batch++;
 
             $msg = render_group_message($tpl, group_vars($manifest, $p, $group, $sendOpts), $manifest['extra_info']);
+            if ($unsubLine !== '') $msg .= "\n\n" . $unsubLine; // строка отписки (настраивается в Настройках)
             $passengerSent = false;
             foreach ($channels as $channel) {
                 // Повторный клик не должен создавать второе одинаковое сообщение в том же канале.
@@ -1090,7 +1106,7 @@ switch ($action) {
         json_out(['ok' => false, 'error' => $res['error'] ?? 'Не удалось отправить']);
 
     case 'channels.states': // единый статус каналов для UI (свободная рассылка и др.)
-        json_out(['ok' => true, 'states' => wa_channel_states()]);
+        json_out(['ok' => true, 'states' => wa_channel_states(), 'today' => channel_today_counts(), 'daily_cap' => (int) opt('daily_soft_cap', '200')]);
 
     case 'channels.delays': // серверная пауза Green API по каналам (мс). null = канал не через Green API.
         require_once PANEL_ROOT . '/lib/Channels.php';
@@ -1368,6 +1384,8 @@ switch ($action) {
         // фраза вместо телефона водителя, когда галочка «указать телефон» снята
         $fb = trim((string) ($body['driver_phone_fallback'] ?? ''));
         opt_set('driver_phone_fallback', $fb !== '' ? $fb : 'сообщим позднее');
+        if (array_key_exists('unsub_line', $body)) opt_set('unsub_line', trim((string) $body['unsub_line']));
+        if (array_key_exists('daily_cap', $body)) opt_set('daily_soft_cap', (string) max(0, (int) $body['daily_cap']));
         json_out(['ok' => true]);
 
     case 'upload':
