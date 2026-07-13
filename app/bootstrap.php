@@ -63,6 +63,38 @@ function opt_set(string $name, string $value): void
         ->execute([$name, $value]);
 }
 
+// ── Отписка от рассылок (пассажир написал «стоп») ──
+// Команда отписки: ровно «стоп»/«stop» (регистронезависимо, без учёта пробелов).
+function is_stop_word(string $body): bool
+{
+    $b = mb_strtolower(trim($body), 'UTF-8');
+    return $b === 'стоп' || $b === 'stop';
+}
+function is_start_word(string $body): bool
+{
+    $b = mb_strtolower(trim($body), 'UTF-8');
+    return $b === 'старт' || $b === 'start';
+}
+function is_unsubscribed(string $phone): bool
+{
+    $phone = trim($phone);
+    if ($phone === '') return false;
+    try {
+        $st = db()->prepare('SELECT unsubscribed_at FROM contacts WHERE phone = ? LIMIT 1');
+        $st->execute([$phone]);
+        return (bool) $st->fetchColumn();
+    } catch (Throwable $e) { return false; } // колонки может не быть до миграции
+}
+function set_unsubscribed(string $phone, bool $on): void
+{
+    $phone = trim($phone);
+    if ($phone === '') return;
+    try {
+        db()->prepare('INSERT INTO contacts (phone) VALUES (?) ON DUPLICATE KEY UPDATE phone = phone')->execute([$phone]);
+        db()->prepare('UPDATE contacts SET unsubscribed_at = ' . ($on ? 'NOW()' : 'NULL') . ' WHERE phone = ?')->execute([$phone]);
+    } catch (Throwable $e) { /* до миграции */ }
+}
+
 function logged_in(): bool
 {
     return !empty($_SESSION['panel_user']);

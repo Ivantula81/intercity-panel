@@ -390,7 +390,7 @@ function renderGroups() {
                 <div class="table-wrap mt"><table class="t"><tbody>
                 ${g.recipients.map(p => `
                     <tr data-pid="${p.id}"><td style="width:30px"><input type="checkbox" class="g-cb" value="${p.id}" ${p.valid ? 'checked' : ''}></td>
-                    <td><b>${esc(p.name) || '—'}</b> <span class="muted small">→ ${esc(p.to)}</span></td>
+                    <td><b>${esc(p.name) || '—'}</b> <span class="muted small">→ ${esc(p.to)}</span>${p.unsubscribed ? ' <span class="badge err">отписан</span>' : ''}</td>
                     <td style="width:170px"><input class="cell g-phone ${p.valid ? '' : 'phone-bad'}" data-pid="${p.id}" value="${esc(p.phone)}" placeholder="+7…"></td>
                     <td class="ch-cell" style="white-space:nowrap">${channelBadges(p.channels)}</td></tr>`).join('')}
                 </tbody></table></div>

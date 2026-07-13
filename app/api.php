@@ -366,6 +366,11 @@ function build_groups(array $manifest): array
         }
     }
 
+    $unsubSet = [];
+    try {
+        foreach (db()->query("SELECT phone FROM contacts WHERE unsubscribed_at IS NOT NULL")->fetchAll() as $u) $unsubSet[$u['phone']] = true;
+    } catch (Throwable $e) { /* колонки может не быть до миграции */ }
+
     $groups = [];
     foreach ($passengers as $p) {
         $stationId = $p['from_id'] !== null ? (int) $p['from_id'] : null;
@@ -403,7 +408,8 @@ function build_groups(array $manifest): array
             'id' => (int) $p['id'],
             'name' => $p['name'],
             'phone' => $phone,
-            'valid' => valid_phone($phone),
+            'valid' => valid_phone($phone) && !isset($unsubSet[$phone]),
+            'unsubscribed' => isset($unsubSet[$phone]),
             'to' => $p['to_stop'],
             'note' => $p['note'],
         ];
@@ -966,7 +972,7 @@ switch ($action) {
             json_out(['ok' => true, 'dry_run' => true, 'recipients' => count($eligible),
                 'channels' => $channels, 'attempts' => count($eligible) * count($channels)]);
         }
-        $sent = 0; $failed = 0; $skipped = 0; $duplicates = 0; $errors = []; $seenPhones = []; $batch = 0;
+        $sent = 0; $failed = 0; $skipped = 0; $duplicates = 0; $unsub = 0; $errors = []; $seenPhones = []; $batch = 0;
         $duplicateQuery = db()->prepare("SELECT id FROM messages
             WHERE manifest_id = ? AND channel = ? AND recipient = ? AND body = ? AND status IN ('pending','sent')
             ORDER BY id DESC LIMIT 1");
@@ -977,6 +983,7 @@ switch ($action) {
             $p = $pst->fetch();
             if (!$p || !valid_phone($p['phone'])) { $skipped++; continue; }
             if (isset($seenPhones[$p['phone']])) { $skipped++; continue; }
+            if (is_unsubscribed($p['phone'])) { $unsub++; continue; } // пассажир отписался («стоп»)
             $seenPhones[$p['phone']] = true;
             $batch++;
 
@@ -1025,9 +1032,9 @@ switch ($action) {
             }
             if ($passengerSent) contact_log_message($p['phone'], $p['name'], $manifest['route']);
         }
-        $rest = max(0, count($ids) - $batch - $skipped);
+        $rest = max(0, count($ids) - $batch - $skipped - $unsub);
         json_out(['ok' => true, 'sent' => $sent, 'failed' => $failed, 'skipped' => $skipped, 'duplicates' => $duplicates,
-            'rest' => $rest, 'channels' => $channels, 'errors' => array_slice($errors, 0, 8)]);
+            'unsubscribed' => $unsub, 'rest' => $rest, 'channels' => $channels, 'errors' => array_slice($errors, 0, 8)]);
 
     case 'send.single':
         // Свободная отправка одному: любой канал (WhatsApp/MAX/Telegram/SMS/Email), номер или email.
@@ -1135,6 +1142,8 @@ switch ($action) {
         }
         $phones = array_keys($phones);
         if (!$phones) json_out(['ok' => false, 'error' => 'Нет корректных номеров.']);
+        $unsub = 0; // исключаем отписавшихся («стоп»)
+        $phones = array_values(array_filter($phones, function ($p) use (&$unsub) { if (is_unsubscribed($p)) { $unsub++; return false; } return true; }));
 
         $sent = 0; $failed = 0; $errors = []; $batch = 0;
         foreach ($phones as $phone) {
@@ -1168,7 +1177,7 @@ switch ($action) {
                 }
             }
         }
-        json_out(['ok' => true, 'sent' => $sent, 'failed' => $failed, 'rest' => max(0, count($phones) - $batch),
+        json_out(['ok' => true, 'sent' => $sent, 'failed' => $failed, 'unsubscribed' => $unsub, 'rest' => max(0, count($phones) - $batch),
             'errors' => array_slice($errors, 0, 6)]);
 
     case 'manifest.phones':

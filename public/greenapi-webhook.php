@@ -89,6 +89,21 @@ switch ($type) {
                 conversation_append_legacy('inbox',$inboxId);
             } catch (Throwable $e) { /* legacy inbox остаётся рабочим до миграции */ }
         }
+        // Отписка/подписка по команде «стоп» / «старт» + автоответ.
+        if (is_stop_word((string) $body) || is_start_word((string) $body)) {
+            $off = is_stop_word((string) $body);
+            set_unsubscribed($phone, $off);
+            require_once PANEL_ROOT . '/lib/GreenApiClient.php';
+            $ek = [
+                'max'      => ['GREENAPI_URL', 'GREENAPI_ID', 'GREENAPI_TOKEN'],
+                'telegram' => ['GREENAPI_TG_URL', 'GREENAPI_TG_ID', 'GREENAPI_TG_TOKEN'],
+                'whatsapp' => ['GREENAPI_WA_URL', 'GREENAPI_WA_ID', 'GREENAPI_WA_TOKEN'],
+            ][$messenger];
+            $cli = new GreenApiClient(gw_env($ek[0]) ?: gw_env('GREENAPI_URL'), gw_env($ek[1]), gw_env($ek[2]), $messenger);
+            $cli->sendText($chatId, $off
+                ? 'Вы отписаны от рассылки уведомлений. Чтобы снова получать сообщения о рейсах — напишите СТАРТ.'
+                : 'Вы снова подписаны на уведомления о рейсах. Чтобы отписаться — напишите СТОП.');
+        }
         break;
 
     case 'stateInstanceChanged':
