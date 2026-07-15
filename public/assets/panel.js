@@ -319,14 +319,24 @@ function changeSendChannels(input) {
 function updateChannelEstimate() {
     const box = document.getElementById('sendChannelEstimate');
     if (!box) return;
-    const recipients = manifestRecipients().filter(x => x.valid).length;
+    const all = manifestRecipients().filter(x => x.valid);
+    const recipients = all.length;
     const channels = selectedSendChannels();
     const attempts = recipients * channels.length;
     const labels = { whatsapp: 'WhatsApp', max: 'MAX', telegram: 'Telegram', sms: 'SMS' };
-    box.className = `small ${channels.length > 1 ? 'send-channel-warning' : 'muted'}`;
-    box.textContent = channels.length > 1
+    // Покрытие: у скольких получателей реально есть выбранный мессенджер (по проверке).
+    const cover = {};
+    ['whatsapp', 'max', 'telegram'].forEach(ch => { cover[ch] = all.filter(x => x.channels && x.channels[ch] === true).length; });
+    const zero = channels.filter(ch => cover[ch] !== undefined && cover[ch] === 0 && recipients > 0);
+    let html = channels.length > 1
         ? `Параллельная отправка: ${recipients} пассажиров × ${channels.length} канала = до ${attempts} сообщений. Пассажиры могут получить одинаковый текст несколько раз.`
         : `Сообщения уйдут только через ${labels[channels[0]] || channels[0]}.`;
+    const coverParts = channels.filter(ch => cover[ch] !== undefined).map(ch => `${labels[ch]}: у ${cover[ch]} из ${recipients}`);
+    if (coverParts.length) html += ` · ${coverParts.join(' · ')}`;
+    box.className = `small ${zero.length || channels.length > 1 ? 'send-channel-warning' : 'muted'}`;
+    box.innerHTML = html + (zero.length
+        ? `<br><b style="color:var(--err)">⚠️ ${zero.map(c => labels[c]).join(', ')} — нет ни у кого из получателей. Отправка в этот канал уйдёт впустую (все попытки провалятся).</b>`
+        : '');
 }
 
 function renderGroups() {
@@ -527,7 +537,8 @@ function renderPreparationSummary() {
     box.innerHTML = `<div class="notif-ready-top"><div class="notif-ready-head"><div class="notif-ready-icon ${blocking ? 'warn' : ''}">${blocking ? '!' : '✓'}</div><div><div class="notif-ready-title">${esc(title)}</div><div class="muted small">${esc(subtitle)}</div></div></div>
         <button class="btn" data-send-all onclick="sendAllGroups(this)">Отправить ${valid} пассажирам</button></div>
         <div class="notif-metrics"><div><b>${recipients.length}</b><span>пассажиров</span></div><div><b>${GROUPS.length}</b><span>направлений</span></div><div><b>${CHANNEL_CHECKING ? '…' : wa}</b><span>WhatsApp</span></div><div class="${issues.length ? 'warn' : ''}"><b>${issues.length}</b><span>требует внимания</span></div></div>
-        <div class="notif-auto-check"><span class="badge ${CHANNEL_CHECKING ? 'warn' : 'ok'}">${CHANNEL_CHECKING ? 'идёт автопроверка' : 'проверка завершена'}</span>
+        <div class="notif-auto-check"><span class="badge ${CHANNEL_CHECKING ? 'warn' : 'ok'}">${CHANNEL_CHECKING ? 'идёт проверка' : 'проверка завершена'}</span>
+        <button class="btn ghost sm" onclick="autoCheckManifestChannels(true, true)" ${CHANNEL_CHECKING ? 'disabled' : ''} title="Заново проверить у всех номеров наличие WhatsApp / MAX / Telegram">🔄 Проверить мессенджеры</button>
         <span class="muted small">${fallback ? `Для ${fallback} найден запасной канал. ` : ''}${unknown && !CHANNEL_CHECKING ? `Не проверено: ${unknown}.` : ''}</span></div>`;
 
     const visibleIssues = issues.slice(0, 12);
