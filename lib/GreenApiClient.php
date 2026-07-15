@@ -134,7 +134,18 @@ class GreenApiClient
         if ($number === '') return ['ok' => false, 'error' => 'Пустой номер.'];
         $method = $this->messenger === 'whatsapp' ? 'checkWhatsapp' : 'checkAccount';
         $r = $this->post($method, ['phoneNumber' => (int) $number]);
-        if (!$r['ok']) return ['ok' => false, 'error' => 'Green API: HTTP ' . ($r['code'] ?? '?')];
+        if (!$r['ok']) {
+            // HTTP 469 = {"reason":"User get contact info limit reached"} — антискрапинговый лимит
+            // мессенджера на просмотр незнакомых контактов (номера из кэша провайдера его не тратят).
+            // Это НЕ «у номера нет мессенджера»: ответ неизвестен, и выдавать его за отсутствие нельзя.
+            $code = (int) ($r['code'] ?? 0);
+            $reason = is_array($r['data'] ?? null) ? trim((string) ($r['data']['reason'] ?? '')) : '';
+            return [
+                'ok'      => false,
+                'limited' => $code === 469 || $code === 429,
+                'error'   => 'Green API: HTTP ' . ($code ?: '?') . ($reason !== '' ? ' — ' . $reason : ''),
+            ];
+        }
         $d = is_array($r['data'] ?? null) ? $r['data'] : [];
         $exists = $d['exist'] ?? ($d['existsWhatsapp'] ?? null);
         return ['ok' => true, 'exists' => (bool) $exists, 'chatId' => (string) ($d['chatId'] ?? '')];
@@ -145,13 +156,22 @@ class GreenApiClient
     public function checkNumbers(array $phones)
     {
         $exists = [];
+        $chats = [];
+        $limited = false;
         foreach ($phones as $phone) {
             $digits = preg_replace('/\D+/', '', (string) $phone);
             if ($digits === '') continue;
             $r = $this->checkAccount($phone);
-            if (!empty($r['ok'])) $exists[$digits] = (bool) $r['exists'];
+            if (!empty($r['ok'])) {
+                $exists[$digits] = (bool) $r['exists'];
+                if (($r['chatId'] ?? '') !== '') $chats[$digits] = (string) $r['chatId'];
+            } elseif (!empty($r['limited'])) {
+                $limited = true; // упёрлись в лимит — остальные проверять бессмысленно, только жечь квоту
+                break;
+            }
         }
-        return ['ok' => true, 'exists' => $exists];
+        // Номера, которых нет в $exists — «неизвестно», а не «нет мессенджера».
+        return ['ok' => true, 'exists' => $exists, 'chats' => $chats, 'limited' => $limited];
     }
 
     private function mapSend($r)

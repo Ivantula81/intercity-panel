@@ -147,6 +147,41 @@ function link_outgoing_conv(int $mid, string $channel, string $phone, string $ch
     } catch (Throwable $e) { /* до миграции conversations */ }
 }
 
+// Куда слать: MAX/Telegram адресуются по chatId, WhatsApp/SMS — по номеру.
+// chatId берём из contacts (сохранён при проверке каналов). Раньше его спрашивали у провайдера
+// ПЕРЕД каждой отправкой — и упирались в лимит мессенджера на просмотр контактов (HTTP 469),
+// после чего каждый номер помечался «У номера нет MAX», хотя MAX у него был.
+// ['ok'=>bool, 'target'=>string, 'error'=>string]
+function resolve_send_target(string $channel, string $phone): array
+{
+    require_once PANEL_ROOT . '/lib/Channels.php';
+    if ($channel !== 'max' && $channel !== 'telegram') return ['ok' => true, 'target' => $phone, 'error' => ''];
+
+    $st = db()->prepare("SELECT has_{$channel} AS has, {$channel}_chat_id AS chat FROM contacts WHERE phone = ?");
+    $st->execute([$phone]);
+    $row = $st->fetch() ?: [];
+
+    if (!empty($row['chat'])) return ['ok' => true, 'target' => (string) $row['chat'], 'error' => ''];
+    // Точно знаем, что канала нет — не тратим лимит на повторную проверку.
+    if (($row['has'] ?? null) !== null && !(int) $row['has']) {
+        return ['ok' => false, 'error' => 'У номера нет ' . Channels::label($channel)];
+    }
+
+    // chatId неизвестен — придётся спросить провайдера (тратит лимит просмотра контактов).
+    $info = Channels::presenceInfo($channel, $phone);
+    if (!empty($info['limited'])) {
+        return ['ok' => false, 'error' => Channels::label($channel) . ': лимит проверки контактов исчерпан — наличие канала не проверено'];
+    }
+    if (empty($info['known'])) {
+        return ['ok' => false, 'error' => Channels::label($channel) . ': проверка не удалась (' . $info['error'] . ') — наличие канала неизвестно'];
+    }
+    db()->prepare('INSERT INTO contacts (phone) VALUES (?) ON DUPLICATE KEY UPDATE phone = phone')->execute([$phone]);
+    db()->prepare("UPDATE contacts SET has_{$channel} = ?, {$channel}_chat_id = COALESCE(?, {$channel}_chat_id), channels_checked_at = NOW() WHERE phone = ?")
+        ->execute([$info['exists'] ? 1 : 0, $info['chat_id'] !== '' ? $info['chat_id'] : null, $phone]);
+    if (empty($info['exists'])) return ['ok' => false, 'error' => 'У номера нет ' . Channels::label($channel)];
+    return ['ok' => true, 'target' => $info['chat_id'] !== '' ? $info['chat_id'] : $phone, 'error' => ''];
+}
+
 // Провайдер активного аккаунта рассылки
 function active_wa_provider(): string
 {
@@ -569,6 +604,7 @@ switch ($action) {
             'groups' => attach_channel_presence(build_groups($manifest)),
             'channels_active' => Channels::active(),
             'channels_state' => wa_channel_states(),
+            'primary_channel' => Channels::primary(),
             'templates' => db()->query('SELECT id, name, body FROM templates ORDER BY sort, id')->fetchAll(),
             'manifest_template' => (string) opt('notif_tpl_' . (int) $manifest['id'], ''),
             'block_templates' => (json_decode((string) opt('notif_tpl_blocks_' . (int) $manifest['id'], ''), true) ?: new stdClass()),
@@ -588,42 +624,59 @@ switch ($action) {
         $phones = array_slice(array_keys($phones), 0, 60);
         if (!$phones) json_out(['ok' => true, 'presence' => []]);
 
-        // WhatsApp — одним батч-запросом; MAX/Telegram — по одному (CheckAccount не батчится).
-        $waMap = [];
-        if (Channels::configured('whatsapp')) {
-            $r = Channels::client('whatsapp')->checkNumbers($phones);
-            if (!empty($r['ok'])) $waMap = $r['exists'];
-        }
-        $hasMax = Channels::configured('max');
-        $hasTg = Channels::configured('telegram');
-        $fallbackOnly = !empty($body['fallback_only']);
+        // Проверяем каждый мессенджер честно и по одному. Раньше запасные каналы пропускались
+        // при живом WhatsApp — из-за этого MAX не проверялся никогда, а рассылка падала на
+        // проверке при отправке. Экономим не пропуском каналов, а кэшем: свежий результат
+        // (TTL ниже) не перепроверяем, а при лимите провайдера (469) останавливаемся.
+        $ttlDays = 30;
+        $force = !empty($body['force']);
+        $limited = [];   // каналы, упёршиеся в лимит — дальше по ним не ходим
+        $checked = 0;
 
         $upIns = db()->prepare('INSERT INTO contacts (phone) VALUES (?) ON DUPLICATE KEY UPDATE phone = phone');
         $upSet = db()->prepare('UPDATE contacts SET
             has_whatsapp = COALESCE(?, has_whatsapp), has_max = COALESCE(?, has_max),
-            has_telegram = COALESCE(?, has_telegram), channels_checked_at = NOW() WHERE phone = ?');
-        $readPresence = db()->prepare('SELECT has_whatsapp, has_max, has_telegram FROM contacts WHERE phone = ?');
+            has_telegram = COALESCE(?, has_telegram),
+            max_chat_id = COALESCE(?, max_chat_id), telegram_chat_id = COALESCE(?, telegram_chat_id),
+            channels_checked_at = NOW() WHERE phone = ?');
+        $readRow = db()->prepare('SELECT has_whatsapp, has_max, has_telegram, max_chat_id, telegram_chat_id,
+            channels_checked_at, channels_checked_at > NOW() - INTERVAL ' . $ttlDays . ' DAY AS fresh
+            FROM contacts WHERE phone = ?');
+
         $out = [];
         foreach ($phones as $ph) {
-            $num = preg_replace('/\D+/', '', $ph);
-            $wa = array_key_exists($num, $waMap) ? (bool) $waMap[$num] : null;
-            // При автоматической подготовке запасные мессенджеры проверяем только
-            // если WhatsApp недоступен — это сильно ускоряет ведомость на 30–60 человек.
-            $needFallback = !$fallbackOnly || $wa === false;
-            $max = $hasMax && $needFallback ? Channels::presence('max', $ph) : null;
-            $tg = $hasTg && $needFallback ? Channels::presence('telegram', $ph) : null;
             $upIns->execute([$ph]);
-            $upSet->execute([tri($wa), tri($max), tri($tg), $ph]);
-            $readPresence->execute([$ph]);
-            $stored = $readPresence->fetch() ?: [];
+            $readRow->execute([$ph]);
+            $row = $readRow->fetch() ?: [];
+
+            $res = ['whatsapp' => null, 'max' => null, 'telegram' => null];
+            $chat = ['max' => null, 'telegram' => null];
+            foreach (Channels::byPriority() as $ch) {
+                if (!Channels::configured($ch) || isset($limited[$ch])) continue;
+                $col = 'has_' . $ch;
+                $known = ($row[$col] ?? null) !== null;
+                // Свежий известный результат не перепроверяем — бережём лимит мессенджера.
+                if (!$force && $known && !empty($row['fresh'])) continue;
+                $info = Channels::presenceInfo($ch, $ph);
+                $checked++;
+                if (!empty($info['limited'])) { $limited[$ch] = true; continue; }
+                if (empty($info['known'])) continue; // проверка не удалась — не трогаем сохранённое
+                $res[$ch] = (bool) $info['exists'];
+                if ($info['chat_id'] !== '' && array_key_exists($ch, $chat)) $chat[$ch] = $info['chat_id'];
+            }
+
+            $upSet->execute([tri($res['whatsapp']), tri($res['max']), tri($res['telegram']), $chat['max'], $chat['telegram'], $ph]);
+            $readRow->execute([$ph]);
+            $stored = $readRow->fetch() ?: [];
             $out[$ph] = [
                 'whatsapp' => ($stored['has_whatsapp'] ?? null) === null ? null : (bool) $stored['has_whatsapp'],
                 'max' => ($stored['has_max'] ?? null) === null ? null : (bool) $stored['has_max'],
                 'telegram' => ($stored['has_telegram'] ?? null) === null ? null : (bool) $stored['has_telegram'],
-                'checked' => true,
+                'checked' => ($stored['channels_checked_at'] ?? null) !== null,
             ];
         }
-        json_out(['ok' => true, 'presence' => $out]);
+        // limited → фронт скажет «лимит MAX исчерпан, проверено X из N», а не «канала нет».
+        json_out(['ok' => true, 'presence' => $out, 'limited' => array_keys($limited), 'checked' => $checked]);
 
     case 'gds.times':
         require_once PANEL_ROOT . '/lib/GdsRace.php';
@@ -913,15 +966,10 @@ switch ($action) {
         }
         if ($text === '') json_out(['ok' => false, 'error' => 'Нет текста для пересылки.']);
 
-        // адресат: для MAX/Telegram нужен chatId (через CheckAccount); для WhatsApp/SMS — номер
-        $target = $phone;
-        if ($channel === 'max' || $channel === 'telegram') {
-            $chk = Channels::client($channel)->checkAccount($phone);
-            if (empty($chk['ok']) || empty($chk['exists'])) {
-                json_out(['ok' => false, 'error' => 'У номера нет ' . Channels::label($channel) . '.']);
-            }
-            $target = $chk['chatId'] !== '' ? $chk['chatId'] : $phone;
-        }
+        // адресат: для MAX/Telegram — chatId из справочника контактов; для WhatsApp/SMS — номер
+        $resolved = resolve_send_target($channel, $phone);
+        if (empty($resolved['ok'])) json_out(['ok' => false, 'error' => $resolved['error']]);
+        $target = $resolved['target'];
 
         db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (?,?,?,?,?,?)')
             ->execute([$manifestId, $channel, $phone, $pname, $text, current_user_name()]);
@@ -1012,16 +1060,9 @@ switch ($action) {
                     ->execute([$manifest['id'], $channel, $p['phone'], $p['name'], $msg, current_user_name()]);
                 $mid = (int) db()->lastInsertId();
 
-                $target = $p['phone'];
-                $res = null;
-                if ($channel === 'max' || $channel === 'telegram') {
-                    $check = Channels::client($channel)->checkAccount($p['phone']);
-                    if (empty($check['ok']) || empty($check['exists'])) {
-                        $res = ['ok' => false, 'error' => 'У номера нет ' . Channels::label($channel)];
-                    } else {
-                        $target = $check['chatId'] !== '' ? $check['chatId'] : $p['phone'];
-                    }
-                }
+                $resolved = resolve_send_target($channel, $p['phone']);
+                $target = $resolved['target'] ?? $p['phone'];
+                $res = empty($resolved['ok']) ? ['ok' => false, 'error' => $resolved['error']] : null;
                 if ($res === null) {
                     $client = Channels::client($channel);
                     // Фото автобуса поддерживаем в основной WhatsApp-отправке; другие каналы получают тот же текст.
@@ -1087,12 +1128,9 @@ switch ($action) {
                 ? Channels::label($channel) . ': канал не подключён'
                 : Channels::label($channel) . ': не авторизован — переподключите в Настройках']);
         }
-        $target = $phone;
-        if ($channel === 'max' || $channel === 'telegram') { // мессенджеру нужен chatId — резолвим по номеру
-            $check = Channels::client($channel)->checkAccount($phone);
-            if (empty($check['ok']) || empty($check['exists'])) json_out(['ok' => false, 'error' => 'У номера нет ' . Channels::label($channel)]);
-            $target = ($check['chatId'] ?? '') !== '' ? $check['chatId'] : $phone;
-        }
+        $resolved = resolve_send_target($channel, $phone); // MAX/Telegram — chatId из справочника контактов
+        if (empty($resolved['ok'])) json_out(['ok' => false, 'error' => $resolved['error']]);
+        $target = $resolved['target'];
         db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (0, ?, ?, ?, ?, ?)')
             ->execute([$channel, $phone, 'Произвольный номер', $text, current_user_name()]);
         $mid = (int) db()->lastInsertId();
@@ -1106,7 +1144,9 @@ switch ($action) {
         json_out(['ok' => false, 'error' => $res['error'] ?? 'Не удалось отправить']);
 
     case 'channels.states': // единый статус каналов для UI (свободная рассылка и др.)
-        json_out(['ok' => true, 'states' => wa_channel_states(), 'today' => channel_today_counts(), 'daily_cap' => (int) opt('daily_soft_cap', '200')]);
+        require_once PANEL_ROOT . '/lib/Channels.php';
+        json_out(['ok' => true, 'states' => wa_channel_states(), 'today' => channel_today_counts(),
+            'daily_cap' => (int) opt('daily_soft_cap', '200'), 'primary' => Channels::primary()]);
 
     case 'channels.delays': // серверная пауза Green API по каналам (мс). null = канал не через Green API.
         require_once PANEL_ROOT . '/lib/Channels.php';
@@ -1165,15 +1205,12 @@ switch ($action) {
         foreach ($phones as $phone) {
             $batch++;
             foreach ($channels as $channel) {
-                $target = $phone; // для MAX/Telegram нужен chatId — резолвим по номеру
-                if ($channel === 'max' || $channel === 'telegram') {
-                    $check = Channels::client($channel)->checkAccount($phone);
-                    if (empty($check['ok']) || empty($check['exists'])) {
-                        $failed++; $errors[] = Channels::label($channel) . ' · ' . $phone . ': нет мессенджера у номера';
-                        continue;
-                    }
-                    $target = ($check['chatId'] ?? '') !== '' ? $check['chatId'] : $phone;
+                $resolved = resolve_send_target($channel, $phone); // MAX/Telegram — chatId из справочника контактов
+                if (empty($resolved['ok'])) {
+                    $failed++; $errors[] = Channels::label($channel) . ' · ' . $phone . ': ' . $resolved['error'];
+                    continue;
                 }
+                $target = $resolved['target'];
                 db()->prepare('INSERT INTO messages (manifest_id, channel, recipient, passenger_name, body, actor) VALUES (0, ?, ?, ?, ?, ?)')
                     ->execute([$channel, $phone, 'Свободная рассылка', $text, current_user_name()]);
                 $mid = (int) db()->lastInsertId();
@@ -1386,6 +1423,12 @@ switch ($action) {
         opt_set('driver_phone_fallback', $fb !== '' ? $fb : 'сообщим позднее');
         if (array_key_exists('unsub_line', $body)) opt_set('unsub_line', trim((string) $body['unsub_line']));
         if (array_key_exists('daily_cap', $body)) opt_set('daily_soft_cap', (string) max(0, (int) $body['daily_cap']));
+        // Основной канал: от него считается галочка по умолчанию, порядок каналов и «запасные».
+        if (array_key_exists('primary_channel', $body)) {
+            require_once PANEL_ROOT . '/lib/Channels.php';
+            $pc = (string) $body['primary_channel'];
+            if (in_array($pc, Channels::MESSENGERS, true)) opt_set('primary_channel', $pc);
+        }
         json_out(['ok' => true]);
 
     case 'upload':

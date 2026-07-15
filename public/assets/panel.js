@@ -119,9 +119,12 @@ async function delService(ev, id) {
 }
 
 /* ── Уведомления: экран-мастер ── */
-let GROUPS = [], TEMPLATES = [], BUS_PHOTO = '', GDS_LOADED = false, CHANNELS_ACTIVE = ['whatsapp'], CHANNELS_STATE = {}, MANIFEST_TEMPLATE = '', BLOCK_TEMPLATES = {}, TODAY_COUNTS = {}, DAILY_CAP = 200;
+let GROUPS = [], TEMPLATES = [], BUS_PHOTO = '', GDS_LOADED = false, CHANNELS_ACTIVE = ['max'], CHANNELS_STATE = {}, MANIFEST_TEMPLATE = '', BLOCK_TEMPLATES = {}, TODAY_COUNTS = {}, DAILY_CAP = 200;
+// Основной канал рассылки — из «Настроек». От него считаются галочка по умолчанию и «запасные» каналы.
+let PRIMARY_CHANNEL = 'max', CHANNEL_LIMITED = [];
+const CHANNEL_LABELS = { max: 'MAX', telegram: 'Telegram', whatsapp: 'WhatsApp', sms: 'SMS' };
 let CHANNEL_CHECKING = false, OVERVIEW_TIMER = null;
-let SELECTED_CHANNELS = new Set(['whatsapp']);
+let SELECTED_CHANNELS = new Set([PRIMARY_CHANNEL]);
 let FULL_CHANNEL_CHECK_REQUESTED = false;
 
 function manifestId() {
@@ -167,10 +170,12 @@ async function loadGroups(autoGds) {
     TODAY_COUNTS = r.today || {};
     DAILY_CAP = r.daily_cap || 200;
     renderManifestTemplate();
-    CHANNELS_ACTIVE = (r.channels_active && r.channels_active.length) ? r.channels_active : ['whatsapp'];
+    PRIMARY_CHANNEL = r.primary_channel || 'max';
+    CHANNELS_ACTIVE = (r.channels_active && r.channels_active.length) ? r.channels_active : [PRIMARY_CHANNEL];
     CHANNELS_STATE = r.channels_state || {};
     if (![...SELECTED_CHANNELS].some(channel => CHANNELS_ACTIVE.includes(channel))) {
-        SELECTED_CHANNELS = new Set([CHANNELS_ACTIVE[0] || 'whatsapp']);
+        // По умолчанию — основной канал, если он настроен; иначе первый настроенный.
+        SELECTED_CHANNELS = new Set([CHANNELS_ACTIVE.includes(PRIMARY_CHANNEL) ? PRIMARY_CHANNEL : (CHANNELS_ACTIVE[0] || PRIMARY_CHANNEL)]);
     }
     renderSendChannels();
     BUS_PHOTO = r.bus_photo;
@@ -280,8 +285,7 @@ function selectedSendChannels() {
 function renderSendChannels() {
     const box = document.getElementById('sendChannels');
     if (!box) return;
-    const labels = { whatsapp: 'WhatsApp', max: 'MAX', telegram: 'Telegram', sms: 'SMS' };
-    box.innerHTML = Object.entries(labels).map(([channel, label]) => {
+    box.innerHTML = Object.entries(CHANNEL_LABELS).map(([channel, label]) => {
         const st = CHANNELS_STATE[channel] || (CHANNELS_ACTIVE.includes(channel) ? 'open' : 'unconfigured');
         const ready = st === 'open' || st === 'ready';
         const note = ready ? '' : (st === 'unconfigured' ? '<small>не подключён</small>' : '<small class="chan-off">не авторизован</small>');
@@ -323,19 +327,18 @@ function updateChannelEstimate() {
     const recipients = all.length;
     const channels = selectedSendChannels();
     const attempts = recipients * channels.length;
-    const labels = { whatsapp: 'WhatsApp', max: 'MAX', telegram: 'Telegram', sms: 'SMS' };
     // Покрытие: у скольких получателей реально есть выбранный мессенджер (по проверке).
     const cover = {};
     ['whatsapp', 'max', 'telegram'].forEach(ch => { cover[ch] = all.filter(x => x.channels && x.channels[ch] === true).length; });
     const zero = channels.filter(ch => cover[ch] !== undefined && cover[ch] === 0 && recipients > 0);
     let html = channels.length > 1
         ? `Параллельная отправка: ${recipients} пассажиров × ${channels.length} канала = до ${attempts} сообщений. Пассажиры могут получить одинаковый текст несколько раз.`
-        : `Сообщения уйдут только через ${labels[channels[0]] || channels[0]}.`;
-    const coverParts = channels.filter(ch => cover[ch] !== undefined).map(ch => `${labels[ch]}: у ${cover[ch]} из ${recipients}`);
+        : `Сообщения уйдут только через ${CHANNEL_LABELS[channels[0]] || channels[0]}.`;
+    const coverParts = channels.filter(ch => cover[ch] !== undefined).map(ch => `${CHANNEL_LABELS[ch]}: у ${cover[ch]} из ${recipients}`);
     if (coverParts.length) html += ` · ${coverParts.join(' · ')}`;
     box.className = `small ${zero.length || channels.length > 1 ? 'send-channel-warning' : 'muted'}`;
     box.innerHTML = html + (zero.length
-        ? `<br><b style="color:var(--err)">⚠️ ${zero.map(c => labels[c]).join(', ')} — нет ни у кого из получателей. Отправка в этот канал уйдёт впустую (все попытки провалятся).</b>`
+        ? `<br><b style="color:var(--err)">⚠️ ${zero.map(c => CHANNEL_LABELS[c]).join(', ')} — нет ни у кого из получателей. Отправка в этот канал уйдёт впустую (все попытки провалятся).</b>`
         : '');
 }
 
@@ -497,21 +500,26 @@ function preparationIssues() {
             issues.push({ type: 'route', level: 'err', groupIndex, title: group.station, text: 'Нет адреса посадки в справочнике.' });
         }
         group.recipients.forEach(recipient => {
-            if (!recipient.valid) issues.push({ type: 'recipient', level: 'err', groupIndex, passengerId: recipient.id, title: recipient.name || 'Пассажир без имени', text: `Некорректный телефон: ${recipient.phone || 'не указан'}.` });
-            else if (recipient.channels?.checked && recipient.channels.whatsapp === false && SELECTED_CHANNELS.has('whatsapp')) {
-                const fallback = recipient.channels.max === true ? 'MAX' : (recipient.channels.telegram === true ? 'Telegram' : '');
-                issues.push({ type: 'channel', level: fallback ? 'warn' : 'err', groupIndex, passengerId: recipient.id,
-                    title: recipient.name || recipient.phone, text: fallback ? `WhatsApp не найден; у номера доступен ${fallback}.` : 'WhatsApp не найден; другой мессенджер не обнаружен.' });
+            if (!recipient.valid) {
+                issues.push({ type: 'recipient', level: 'err', groupIndex, passengerId: recipient.id, title: recipient.name || 'Пассажир без имени', text: `Некорректный телефон: ${recipient.phone || 'не указан'}.` });
+                return;
             }
-            if (recipient.valid && recipient.channels?.checked) {
-                const labels = { max: 'MAX', telegram: 'Telegram' };
-                Object.keys(labels).forEach(channel => {
-                    if (SELECTED_CHANNELS.has(channel) && recipient.channels[channel] === false) {
-                        issues.push({ type: 'channel', level: 'warn', groupIndex, passengerId: recipient.id,
-                            title: recipient.name || recipient.phone, text: `${labels[channel]} не найден у этого номера — сообщение в этот канал не доставится.` });
-                    }
-                });
-            }
+            if (!recipient.channels?.checked) return;
+            [...SELECTED_CHANNELS].forEach(channel => {
+                if (!CHANNEL_LABELS[channel]) return; // SMS — наличие у номера не проверяется
+                const has = recipient.channels[channel];
+                if (has === false) {
+                    const spare = Object.keys(labels).find(c => c !== channel && recipient.channels[c] === true);
+                    issues.push({ type: 'channel', level: spare ? 'warn' : 'err', groupIndex, passengerId: recipient.id,
+                        title: recipient.name || recipient.phone,
+                        text: spare ? `${CHANNEL_LABELS[channel]} не найден; у номера доступен ${CHANNEL_LABELS[spare]}.` : `${CHANNEL_LABELS[channel]} не найден; другой мессенджер не обнаружен.` });
+                } else if (has === null || has === undefined) {
+                    // Не «канала нет», а «не смогли проверить» — обычно упёрлись в лимит мессенджера.
+                    issues.push({ type: 'channel', level: 'warn', groupIndex, passengerId: recipient.id,
+                        title: recipient.name || recipient.phone,
+                        text: `${CHANNEL_LABELS[channel]}: наличие не проверено — сообщение может не уйти.` });
+                }
+            });
         });
     });
     return issues;
@@ -524,8 +532,10 @@ function renderPreparationSummary() {
     const recipients = manifestRecipients();
     const valid = recipients.filter(x => x.valid).length;
     const checked = recipients.filter(x => x.valid && x.channels?.checked).length;
-    const wa = recipients.filter(x => x.valid && x.channels?.whatsapp === true).length;
-    const fallback = recipients.filter(x => x.valid && x.channels?.whatsapp === false && (x.channels?.max === true || x.channels?.telegram === true)).length;
+    // Метрика по ОСНОВНОМУ каналу (задаётся в Настройках), а не по захардкоженному WhatsApp.
+    const others = ['max', 'telegram', 'whatsapp'].filter(c => c !== PRIMARY_CHANNEL);
+    const primaryHave = recipients.filter(x => x.valid && x.channels?.[PRIMARY_CHANNEL] === true).length;
+    const fallback = recipients.filter(x => x.valid && x.channels?.[PRIMARY_CHANNEL] === false && others.some(c => x.channels?.[c] === true)).length;
     const issues = preparationIssues();
     const blocking = issues.filter(x => x.level === 'err' && x.type === 'route').length;
     const unknown = Math.max(0, valid - checked);
@@ -536,10 +546,11 @@ function renderPreparationSummary() {
         : (blocking ? 'Отправка будет доступна после проверки критичных данных.' : `${valid} пассажиров включены в рассылку.`);
     box.innerHTML = `<div class="notif-ready-top"><div class="notif-ready-head"><div class="notif-ready-icon ${blocking ? 'warn' : ''}">${blocking ? '!' : '✓'}</div><div><div class="notif-ready-title">${esc(title)}</div><div class="muted small">${esc(subtitle)}</div></div></div>
         <button class="btn" data-send-all onclick="sendAllGroups(this)">Отправить ${valid} пассажирам</button></div>
-        <div class="notif-metrics"><div><b>${recipients.length}</b><span>пассажиров</span></div><div><b>${GROUPS.length}</b><span>направлений</span></div><div><b>${CHANNEL_CHECKING ? '…' : wa}</b><span>WhatsApp</span></div><div class="${issues.length ? 'warn' : ''}"><b>${issues.length}</b><span>требует внимания</span></div></div>
+        <div class="notif-metrics"><div><b>${recipients.length}</b><span>пассажиров</span></div><div><b>${GROUPS.length}</b><span>направлений</span></div><div><b>${CHANNEL_CHECKING ? '…' : primaryHave}</b><span>${esc(CHANNEL_LABELS[PRIMARY_CHANNEL] || PRIMARY_CHANNEL)}</span></div><div class="${issues.length ? 'warn' : ''}"><b>${issues.length}</b><span>требует внимания</span></div></div>
         <div class="notif-auto-check"><span class="badge ${CHANNEL_CHECKING ? 'warn' : 'ok'}">${CHANNEL_CHECKING ? 'идёт проверка' : 'проверка завершена'}</span>
-        <button class="btn ghost sm" onclick="autoCheckManifestChannels(true, true)" ${CHANNEL_CHECKING ? 'disabled' : ''} title="Заново проверить у всех номеров наличие WhatsApp / MAX / Telegram">🔄 Проверить мессенджеры</button>
-        <span class="muted small">${fallback ? `Для ${fallback} найден запасной канал. ` : ''}${unknown && !CHANNEL_CHECKING ? `Не проверено: ${unknown}.` : ''}</span></div>`;
+        <button class="btn ghost sm" onclick="autoCheckManifestChannels(true, true)" ${CHANNEL_CHECKING ? 'disabled' : ''} title="Заново проверить у всех номеров наличие MAX / Telegram / WhatsApp">🔄 Проверить мессенджеры</button>
+        <span class="muted small">${fallback ? `Для ${fallback} найден запасной канал. ` : ''}${unknown && !CHANNEL_CHECKING ? `Не проверено: ${unknown}.` : ''}</span>
+        ${CHANNEL_LIMITED.length ? `<div class="small" style="color:var(--err);margin-top:6px">⚠️ ${CHANNEL_LIMITED.map(c => CHANNEL_LABELS[c] || c).join(', ')}: мессенджер исчерпал лимит на проверку контактов. Часть номеров осталась непроверенной — это <b>не</b> значит, что канала у них нет. Лимит восстанавливается со временем.</div>` : ''}</div>`;
 
     const visibleIssues = issues.slice(0, 12);
     issueBox.innerHTML = issues.length ? `<div class="notif-issues"><div class="notif-issues-head"><b>Требует внимания · ${issues.length}</b><span class="muted small">все проблемы собраны в одном месте</span></div>${visibleIssues.map(issue => `
@@ -596,11 +607,15 @@ async function autoCheckManifestChannels(force = false, checkAllMessengers = fal
     const phones = [...new Set(pending.map(x => x.phone).filter(Boolean))];
     if (!phones.length) { renderPreparationSummary(); return; }
     CHANNEL_CHECKING = true;
+    CHANNEL_LIMITED = [];
     renderPreparationSummary();
     try {
         for (let i = 0; i < phones.length; i += 50) {
-            const result = await api('channels.check', { phones: phones.slice(i, i + 50), fallback_only: checkAllMessengers ? 0 : 1 }).catch(() => null);
+            // force — перепроверить даже свежие результаты (кнопка «Проверить мессенджеры»).
+            // Без force сервер не трогает известные свежие ответы и бережёт лимит мессенджера.
+            const result = await api('channels.check', { phones: phones.slice(i, i + 50), force: checkAllMessengers ? 1 : 0 }).catch(() => null);
             if (!result?.ok) continue;
+            if (result.limited?.length) CHANNEL_LIMITED = [...new Set([...CHANNEL_LIMITED, ...result.limited])];
             GROUPS.forEach(group => group.recipients.forEach(recipient => {
                 const norm = recipient.phone.replace(/\D+/g, '');
                 const key = Object.keys(result.presence || {}).find(phone => phone.replace(/\D+/g, '') === norm);
@@ -739,10 +754,11 @@ function needsResend(rec) {
 }
 
 function resendButtons(rec, gi) {
-    const fallbacks = CHANNELS_ACTIVE.filter(c => c !== 'whatsapp');
+    // Запасные каналы — все настроенные, кроме основного (он и так использован при рассылке).
+    const fallbacks = CHANNELS_ACTIVE.filter(c => c !== PRIMARY_CHANNEL);
     if (!fallbacks.length) return '';
     const urgent = needsResend(rec);
-    const labels = { max: 'МАКС', sms: 'SMS', telegram: 'TG' };
+    const labels = { max: 'МАКС', sms: 'SMS', telegram: 'TG', whatsapp: 'WA' };
     return fallbacks.map(c => {
         const has = rec.channels ? rec.channels[c] : null;
         if (has === false && c !== 'sms') return '';
@@ -1004,11 +1020,10 @@ async function sendAllGroups(btn) {
     const routeProblems = preparationIssues().filter(x => x.level === 'err' && x.type === 'route').length;
     if (routeProblems) { alert('Сначала исправьте критичные данные в блоке «Требует внимания».'); return; }
     const channels = selectedSendChannels();
-    const labels = { whatsapp: 'WhatsApp', max: 'MAX', telegram: 'Telegram', sms: 'SMS' };
     if (!channels.length) { alert('Не выбран канал отправки.'); return; }
     const attempts = valid * channels.length;
     const duplicateWarning = channels.length > 1 ? `\n\nВНИМАНИЕ: выбрано ${channels.length} канала. Пассажир может получить одинаковое сообщение в каждом канале.` : '';
-    if (!confirm(`Отправить актуальные сообщения ${valid} пассажирам в ${GROUPS.length} направлениях?\nКаналы: ${channels.map(x => labels[x] || x).join(', ')}. До ${attempts} сообщений.${duplicateWarning}`)) return;
+    if (!confirm(`Отправить актуальные сообщения ${valid} пассажирам в ${GROUPS.length} направлениях?\nКаналы: ${channels.map(x => CHANNEL_LABELS[x] || x).join(', ')}. До ${attempts} сообщений.${duplicateWarning}`)) return;
     const sendButtons = [...document.querySelectorAll('[data-send-all]')];
     sendButtons.forEach(button => button.disabled = true);
     const all = document.getElementById('allState');
@@ -1037,11 +1052,10 @@ async function sendBlock(btn) {
     const routeProblems = preparationIssues().filter(x => x.level === 'err' && x.type === 'route' && gis.includes(x.groupIndex)).length;
     if (routeProblems) { alert('Сначала исправьте критичные данные в этом блоке.'); return; }
     const channels = selectedSendChannels();
-    const labels = { whatsapp: 'WhatsApp', max: 'MAX', telegram: 'Telegram', sms: 'SMS' };
     if (!channels.length) { alert('Не выбран канал отправки.'); return; }
     const valid = gis.reduce((n, gi) => n + GROUPS[gi].recipients.filter(x => x.valid).length, 0);
     const dup = channels.length > 1 ? `\n\nВыбрано ${channels.length} канала — пассажир может получить сообщение в каждом.` : '';
-    if (!confirm(`Отправить блоку «${station}» — ${valid} пассажирам в ${gis.length} направлениях?\nКаналы: ${channels.map(x => labels[x] || x).join(', ')}.${dup}`)) return;
+    if (!confirm(`Отправить блоку «${station}» — ${valid} пассажирам в ${gis.length} направлениях?\nКаналы: ${channels.map(x => CHANNEL_LABELS[x] || x).join(', ')}.${dup}`)) return;
     btn.disabled = true;
     let total = 0, failed = 0, duplicates = 0;
     for (const card of cards) {
@@ -1056,20 +1070,22 @@ async function sendBlock(btn) {
 
 /* ── Свободная рассылка ── */
 let BIMG = '';
-let BCHAN = new Set(['whatsapp']);
+let BCHAN = new Set([PRIMARY_CHANNEL]);
 let BSTATES = {};
 async function broadcastLoadChannels() {
     if (!document.getElementById('bChannels')) return;
     const r = await api('channels.states', {}).catch(() => null);
     BSTATES = (r && r.ok && r.states) ? r.states : {};
-    if (r && r.ok) { TODAY_COUNTS = r.today || {}; DAILY_CAP = r.daily_cap || 200; }
+    if (r && r.ok) {
+        TODAY_COUNTS = r.today || {}; DAILY_CAP = r.daily_cap || 200;
+        if (r.primary && r.primary !== PRIMARY_CHANNEL) { PRIMARY_CHANNEL = r.primary; BCHAN = new Set([PRIMARY_CHANNEL]); }
+    }
     renderBroadcastChannels();
 }
 function renderBroadcastChannels() {
     const box = document.getElementById('bChannels');
     if (!box) return;
-    const labels = { whatsapp: 'WhatsApp', max: 'MAX', telegram: 'Telegram', sms: 'SMS' };
-    box.innerHTML = Object.entries(labels).map(([ch, label]) => {
+    box.innerHTML = Object.entries(CHANNEL_LABELS).map(([ch, label]) => {
         const st = BSTATES[ch] || 'unconfigured';
         const ready = st === 'open' || st === 'ready';
         const note = ready ? '' : (st === 'unconfigured' ? '<small>не подключён</small>' : '<small class="chan-off">не авторизован</small>');
@@ -1119,12 +1135,11 @@ async function sendBroadcast() {
     const phones = document.getElementById('bPhones').value;
     const text = document.getElementById('bText').value;
     const out = document.getElementById('bResult');
-    const labels = { whatsapp: 'WhatsApp', max: 'MAX', telegram: 'Telegram', sms: 'SMS' };
     const channels = [...BCHAN].filter(ch => { const st = BSTATES[ch]; return st === 'open' || st === 'ready'; });
     const n = phones.split(/[\s,;]+/).filter(x => x.replace(/\D/g, '').length >= 10).length;
     if (!n) { out.innerHTML = '<div class="alert warn">Добавьте хотя бы один номер.</div>'; return; }
     if (!channels.length) { out.innerHTML = '<div class="alert warn">Отметьте хотя бы один канал.</div>'; return; }
-    if (!confirm('Отправить на ' + n + ' номеров через ' + channels.map(c => labels[c] || c).join(', ') + '?')) return;
+    if (!confirm('Отправить на ' + n + ' номеров через ' + channels.map(c => CHANNEL_LABELS[c] || c).join(', ') + '?')) return;
     const btn = document.getElementById('bSend');
     btn.disabled = true;
     out.innerHTML = '<div class="alert warn">Отправляю… не закрывайте страницу</div>';
@@ -1444,6 +1459,7 @@ async function saveNotif() {
         driver_phone_fallback: document.getElementById('msgDriverFallback').value,
         unsub_line: document.getElementById('msgUnsubLine') ? document.getElementById('msgUnsubLine').value : undefined,
         daily_cap: document.getElementById('msgDailyCap') ? document.getElementById('msgDailyCap').value : undefined,
+        primary_channel: document.getElementById('msgPrimaryChannel') ? document.getElementById('msgPrimaryChannel').value : undefined,
     });
     const s = document.getElementById('notifState');
     s.textContent = 'Сохранено ✓';

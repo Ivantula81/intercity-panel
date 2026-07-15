@@ -100,6 +100,17 @@
         <label class="f">Строка отписки (в конце уведомлений; пусто = не добавлять)<input type="text" id="msgUnsubLine" value="<?= e(opt('unsub_line', 'Чтобы отписаться — напишите СТОП')) ?>" placeholder="Чтобы отписаться — напишите СТОП"></label>
         <label class="f">Дневной лимит на канал (предупреждение)<input type="number" id="msgDailyCap" min="0" step="10" value="<?= e(opt('daily_soft_cap', '200')) ?>" placeholder="200"></label>
     </div>
+    <?php require_once PANEL_ROOT . '/lib/Channels.php'; $primary = Channels::primary(); ?>
+    <div class="grid grid-3">
+        <label class="f">Основной канал рассылки
+            <select id="msgPrimaryChannel">
+                <?php foreach (Channels::MESSENGERS as $ch): ?>
+                    <option value="<?= e($ch) ?>" <?= $ch === $primary ? 'selected' : '' ?>><?= e(Channels::label($ch)) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </label>
+    </div>
+    <p class="muted small">Основной канал выбран галочкой по умолчанию в уведомлениях и в свободной рассылке, идёт первым в списке каналов, а остальные считаются запасными (кнопки «дослать»). Сейчас в России основной мессенджер — MAX.</p>
     <div class="row">
         <button class="btn sm" onclick="saveNotif()">Сохранить</button>
         <span class="muted small" id="notifState"></span>

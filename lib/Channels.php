@@ -16,11 +16,29 @@ class Channels
     ];
 
     // Мессенджеры, у которых можно проверять наличие у номера (SMS — по номеру всегда).
-    const MESSENGERS = ['whatsapp', 'max', 'telegram'];
+    const MESSENGERS = ['max', 'telegram', 'whatsapp'];
+
+    // Канал по умолчанию, если настройка не задана. В России основной мессенджер — MAX.
+    const PRIMARY_DEFAULT = 'max';
 
     public static function label(string $ch): string
     {
         return self::LABELS[$ch] ?? $ch;
+    }
+
+    // Основной канал рассылки — задаётся в «Настройках». От него считаются:
+    // галочка по умолчанию, порядок каналов и то, какие каналы считаются запасными.
+    public static function primary(): string
+    {
+        $ch = function_exists('opt') ? (string) opt('primary_channel', self::PRIMARY_DEFAULT) : self::PRIMARY_DEFAULT;
+        return in_array($ch, self::MESSENGERS, true) ? $ch : self::PRIMARY_DEFAULT;
+    }
+
+    // Мессенджеры в порядке приоритета: основной первым, остальные — запасные.
+    public static function byPriority(): array
+    {
+        $p = self::primary();
+        return array_merge([$p], array_values(array_diff(self::MESSENGERS, [$p])));
     }
 
     // Клиент канала или null.
@@ -42,11 +60,11 @@ class Channels
         return $c !== null && $c->isConfigured();
     }
 
-    // Список настроенных каналов.
+    // Список настроенных каналов — основной первым (фронт берёт [0] как канал по умолчанию).
     public static function active(): array
     {
         $out = [];
-        foreach (array_keys(self::LABELS) as $ch) {
+        foreach (array_merge(self::byPriority(), ['sms']) as $ch) {
             if (self::configured($ch)) $out[] = $ch;
         }
         return $out;
@@ -90,32 +108,56 @@ class Channels
         return $st === 'open' || $st === 'ready';
     }
 
-    // Наличие канала у номера: true / false / null (канал не настроен или проверка не удалась).
-    public static function presence(string $ch, string $phone): ?bool
+    // Наличие канала у номера + его chatId.
+    //   known=false → проверить НЕ удалось. Это не «канала нет»: ответ неизвестен, врать нельзя.
+    //   limited=true → упёрлись в лимит мессенджера на просмотр контактов (HTTP 469), надо ждать.
+    //   chat_id      → сохраняем в contacts, чтобы при отправке не дёргать проверку заново.
+    public static function presenceInfo(string $ch, string $phone): array
     {
+        $out = ['known' => false, 'exists' => null, 'chat_id' => '', 'limited' => false, 'error' => ''];
         $c = self::client($ch);
-        if ($c === null || !$c->isConfigured()) return null;
+        if ($c === null || !$c->isConfigured()) {
+            $out['error'] = self::label($ch) . ': канал не настроен';
+            return $out;
+        }
+        if ($ch === 'sms') return ['known' => true, 'exists' => true, 'chat_id' => '', 'limited' => false, 'error' => ''];
 
-        if ($ch === 'whatsapp') {
-            $r = $c->checkNumbers([$phone]);
-            if (empty($r['ok'])) return null;
-            $num = preg_replace('/\D+/', '', $phone);
-            return isset($r['exists'][$num]) ? (bool) $r['exists'][$num] : false;
-        }
-        if ($ch === 'max' || $ch === 'telegram') {
+        // Green API (max/telegram/whatsapp) отдаёт chatId; Evolution умеет только батч-проверку номеров.
+        if (method_exists($c, 'checkAccount')) {
             $r = $c->checkAccount($phone);
-            return empty($r['ok']) ? null : (bool) $r['exists'];
+            if (empty($r['ok'])) {
+                $out['limited'] = !empty($r['limited']);
+                $out['error'] = (string) ($r['error'] ?? 'проверка не удалась');
+                return $out;
+            }
+            return ['known' => true, 'exists' => (bool) $r['exists'], 'chat_id' => (string) ($r['chatId'] ?? ''), 'limited' => false, 'error' => ''];
         }
-        if ($ch === 'sms') return true; // по номеру SMS возможна всегда
-        return null;
+        $r = $c->checkNumbers([$phone]);
+        if (empty($r['ok'])) {
+            $out['error'] = (string) ($r['error'] ?? 'проверка не удалась');
+            return $out;
+        }
+        $num = preg_replace('/\D+/', '', $phone);
+        if (!array_key_exists($num, (array) ($r['exists'] ?? []))) {
+            $out['error'] = 'номер не вернулся в ответе провайдера'; // неизвестно, а не «нет канала»
+            return $out;
+        }
+        return ['known' => true, 'exists' => (bool) $r['exists'][$num], 'chat_id' => '', 'limited' => false, 'error' => ''];
     }
 
-    // Проверка всех мессенджеров у номера → ['whatsapp'=>?bool, 'max'=>?bool, 'telegram'=>?bool].
-    // null означает «канал не настроен» — такой не проверяем.
+    // Наличие канала у номера: true / false / null (не настроен либо проверка не удалась).
+    public static function presence(string $ch, string $phone): ?bool
+    {
+        $i = self::presenceInfo($ch, $phone);
+        return $i['known'] ? (bool) $i['exists'] : null;
+    }
+
+    // Проверка всех мессенджеров у номера → ['max'=>?bool, 'telegram'=>?bool, 'whatsapp'=>?bool].
+    // null означает «канал не настроен» или «проверить не удалось».
     public static function presenceAll(string $phone): array
     {
         $out = [];
-        foreach (self::MESSENGERS as $ch) {
+        foreach (self::byPriority() as $ch) {
             $out[$ch] = self::configured($ch) ? self::presence($ch, $phone) : null;
         }
         return $out;
