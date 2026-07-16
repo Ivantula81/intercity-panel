@@ -123,6 +123,8 @@ let GROUPS = [], TEMPLATES = [], BUS_PHOTO = '', GDS_LOADED = false, CHANNELS_AC
 // Основной канал рассылки — из «Настроек». От него считаются галочка по умолчанию и «запасные» каналы.
 let PRIMARY_CHANNEL = 'max', CHANNEL_LIMITED = [];
 const CHANNEL_LABELS = { max: 'MAX', telegram: 'Telegram', whatsapp: 'WhatsApp', sms: 'SMS' };
+// Мессенджеры, у которых наличие у номера проверяется. SMS сюда не входит — она возможна на любой номер.
+const MESSENGERS = ['max', 'telegram', 'whatsapp'];
 let CHANNEL_CHECKING = false, OVERVIEW_TIMER = null;
 let SELECTED_CHANNELS = new Set([PRIMARY_CHANNEL]);
 let FULL_CHANNEL_CHECK_REQUESTED = false;
@@ -329,7 +331,7 @@ function updateChannelEstimate() {
     const attempts = recipients * channels.length;
     // Покрытие: у скольких получателей реально есть выбранный мессенджер (по проверке).
     const cover = {};
-    ['whatsapp', 'max', 'telegram'].forEach(ch => { cover[ch] = all.filter(x => x.channels && x.channels[ch] === true).length; });
+    MESSENGERS.forEach(ch => { cover[ch] = all.filter(x => x.channels && x.channels[ch] === true).length; });
     const zero = channels.filter(ch => cover[ch] !== undefined && cover[ch] === 0 && recipients > 0);
     let html = channels.length > 1
         ? `Параллельная отправка: ${recipients} пассажиров × ${channels.length} канала = до ${attempts} сообщений. Пассажиры могут получить одинаковый текст несколько раз.`
@@ -506,10 +508,10 @@ function preparationIssues() {
             }
             if (!recipient.channels?.checked) return;
             [...SELECTED_CHANNELS].forEach(channel => {
-                if (!CHANNEL_LABELS[channel]) return; // SMS — наличие у номера не проверяется
+                if (!MESSENGERS.includes(channel)) return; // SMS — наличие у номера не проверяется
                 const has = recipient.channels[channel];
                 if (has === false) {
-                    const spare = Object.keys(labels).find(c => c !== channel && recipient.channels[c] === true);
+                    const spare = MESSENGERS.find(c => c !== channel && recipient.channels[c] === true);
                     issues.push({ type: 'channel', level: spare ? 'warn' : 'err', groupIndex, passengerId: recipient.id,
                         title: recipient.name || recipient.phone,
                         text: spare ? `${CHANNEL_LABELS[channel]} не найден; у номера доступен ${CHANNEL_LABELS[spare]}.` : `${CHANNEL_LABELS[channel]} не найден; другой мессенджер не обнаружен.` });
@@ -533,7 +535,7 @@ function renderPreparationSummary() {
     const valid = recipients.filter(x => x.valid).length;
     const checked = recipients.filter(x => x.valid && x.channels?.checked).length;
     // Метрика по ОСНОВНОМУ каналу (задаётся в Настройках), а не по захардкоженному WhatsApp.
-    const others = ['max', 'telegram', 'whatsapp'].filter(c => c !== PRIMARY_CHANNEL);
+    const others = MESSENGERS.filter(c => c !== PRIMARY_CHANNEL);
     const primaryHave = recipients.filter(x => x.valid && x.channels?.[PRIMARY_CHANNEL] === true).length;
     const fallback = recipients.filter(x => x.valid && x.channels?.[PRIMARY_CHANNEL] === false && others.some(c => x.channels?.[c] === true)).length;
     const issues = preparationIssues();
