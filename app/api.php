@@ -655,8 +655,13 @@ switch ($action) {
                 if (!Channels::configured($ch) || isset($limited[$ch])) continue;
                 $col = 'has_' . $ch;
                 $known = ($row[$col] ?? null) !== null;
-                // Свежий известный результат не перепроверяем — бережём лимит мессенджера.
-                if (!$force && $known && !empty($row['fresh'])) continue;
+                // MAX/Telegram адресуются по chatId — без него знание «канал есть» бесполезно:
+                // отправка всё равно пойдёт спрашивать провайдера и сожжёт лимит. Поэтому
+                // «есть канал, но chatId неизвестен» — повод проверить, даже если ответ свежий.
+                $needChat = ($ch === 'max' || $ch === 'telegram') && !empty($row[$col]);
+                $haveChat = !$needChat || ($row[$ch . '_chat_id'] ?? '') !== '';
+                // Свежий и полный результат не перепроверяем — бережём лимит мессенджера.
+                if (!$force && $known && $haveChat && !empty($row['fresh'])) continue;
                 $info = Channels::presenceInfo($ch, $ph);
                 $checked++;
                 if (!empty($info['limited'])) { $limited[$ch] = true; continue; }
