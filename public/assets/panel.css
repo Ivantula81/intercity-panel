@@ -375,7 +375,9 @@ table.cat input.cell, table.cat select.cell { font-size: 13.5px; }
 .origin-template { padding: 9px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
 .origin-template .ot-select { font-size: 12px; max-width: 170px; }
 .origin-template textarea { font-size: 13px; }
-.daily-counts { margin-top: 8px; color: var(--muted); font-size: 12px; }
+/* Счётчик живёт внутри flex-контейнера с галочками каналов — без этого он встаёт
+   ещё одной «фишкой» в общий ряд и теряется. Отдельная строка на всю ширину. */
+.daily-counts { flex: 0 0 100%; margin-top: 8px; color: var(--muted); font-size: 12px; }
 .daily-counts .daily-near { color: var(--warn); font-weight: 600; }
 .daily-counts .daily-over { color: var(--err); font-weight: 700; }
 .gmeta { margin-top: 4px; font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

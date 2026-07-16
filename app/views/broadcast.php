@@ -4,7 +4,7 @@
         <h1>Свободная рассылка</h1>
         <div class="sub">любые номера (один или несколько) · выбор каналов · текст · картинка</div>
     </div>
-    <div class="head-actions"><span id="waStatus" class="badge muted">проверяю канал…</span></div>
+    <div class="head-actions"><span id="channelStatus" class="badge muted">проверяю канал…</span></div>
 </div>
 
 <div class="split">
@@ -48,4 +48,4 @@
         <div id="bResult" class="mt"></div>
     </div>
 </div>
-<script>document.addEventListener('DOMContentLoaded', () => { waStatus(); broadcastLoadChannels(); });</script>
+<script>document.addEventListener('DOMContentLoaded', () => { channelStatusBadge(); broadcastLoadChannels(); });</script>

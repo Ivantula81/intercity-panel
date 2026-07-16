@@ -296,7 +296,7 @@ function renderSendChannels() {
 }
 // Мягкий счётчик дневного лимита по каналам (предупреждение, не блокирует).
 function dailyCountsLine() {
-    const labels = { whatsapp: 'WA', max: 'MAX', telegram: 'TG', sms: 'SMS' };
+    const labels = { max: 'MAX', telegram: 'TG', whatsapp: 'WA', sms: 'SMS' };
     const parts = Object.entries(labels).map(([ch, l]) => {
         const n = Number(TODAY_COUNTS[ch] || 0);
         const cls = DAILY_CAP && n >= DAILY_CAP ? 'daily-over' : (DAILY_CAP && n >= DAILY_CAP * 0.8 ? 'daily-near' : '');
@@ -758,7 +758,7 @@ function resendButtons(rec, gi) {
     const fallbacks = CHANNELS_ACTIVE.filter(c => c !== PRIMARY_CHANNEL);
     if (!fallbacks.length) return '';
     const urgent = needsResend(rec);
-    const labels = { max: 'МАКС', sms: 'SMS', telegram: 'TG', whatsapp: 'WA' };
+    const labels = { max: 'МАКС', telegram: 'TG', whatsapp: 'WA', sms: 'SMS' };
     return fallbacks.map(c => {
         const has = rec.channels ? rec.channels[c] : null;
         if (has === false && c !== 'sms') return '';
@@ -799,7 +799,7 @@ function overviewRecipientRow(rec) {
 }
 
 function channelAttemptBadges(rec) {
-    const labels = { whatsapp: 'WA', max: 'MAX', telegram: 'TG', sms: 'SMS' };
+    const labels = { max: 'MAX', telegram: 'TG', whatsapp: 'WA', sms: 'SMS' };
     const states = rec.channel_states || {};
     const stateLabels = { read: 'прочитано', delivered: 'доставлено', sent: 'отправлено', failed: 'ошибка', pending: 'очередь' };
     const entries = Object.entries(states);
@@ -1283,21 +1283,34 @@ async function delTpl(btn) {
     box.remove();
 }
 
-/* ── WhatsApp статус и QR ── */
-async function waStatus() {
-    const el = document.getElementById('waStatus');
+/* ── Статус каналов (единый источник: channels.states → Channels::state) ── */
+// Бейдж основного канала. Раньше звал wa.status, который отдавал состояние АКТИВНОГО
+// инстанса рассылки — при провайдере Green API это инстанс MAX, и бейдж бодро писал
+// «WhatsApp подключен», пока WhatsApp лежал. Статусы берём там же, где и все остальные.
+async function channelStatusBadge() {
+    const el = document.getElementById('channelStatus');
     if (!el) return;
-    const r = await fetch('/?p=api&a=wa.status').then(x => x.json()).catch(() => null);
+    const r = await api('channels.states', {}).catch(() => null);
+    if (r?.ok) {
+        CHANNELS_STATE = r.states || {};
+        PRIMARY_CHANNEL = r.primary || PRIMARY_CHANNEL;
+    }
+    const label = CHANNEL_LABELS[PRIMARY_CHANNEL] || PRIMARY_CHANNEL;
     const map = {
-        open: ['ok', 'WhatsApp подключен'],
-        connecting: ['warn', 'WhatsApp: подключение…'],
-        close: ['warn', 'WhatsApp: номер не привязан'],
-        unconfigured: ['muted', 'WhatsApp не настроен'],
-        error: ['err', 'WhatsApp: ошибка шлюза'],
+        open: ['ok', `${label} подключён`],
+        ready: ['ok', `${label} подключён`],
+        connecting: ['warn', `${label}: подключение…`],
+        close: ['err', `${label}: номер не привязан`],
+        unconfigured: ['muted', `${label} не настроен`],
+        error: ['err', `${label}: ошибка шлюза`],
     };
-    const [cls, text] = map[r?.state] || ['muted', 'WhatsApp: нет данных'];
+    const [cls, text] = map[CHANNELS_STATE[PRIMARY_CHANNEL]] || ['muted', `${label}: нет данных`];
     el.className = 'badge ' + cls;
     el.textContent = text;
+    // Остальные каналы показываем, только если с ними что-то не так — иначе шум.
+    const broken = Object.keys(CHANNEL_LABELS).filter(c => c !== PRIMARY_CHANNEL && CHANNELS_STATE[c]
+        && !['open', 'ready', 'unconfigured'].includes(CHANNELS_STATE[c]));
+    el.title = broken.length ? 'Не готовы: ' + broken.map(c => CHANNEL_LABELS[c]).join(', ') : '';
 }
 /* ── Аккаунты WhatsApp (мультиаккаунт) ── */
 async function waAccounts() {

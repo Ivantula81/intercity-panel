@@ -9,11 +9,16 @@
             <a class="btn ghost sm" href="/?p=notifications&fresh=1" title="Сбросить выбор и начать с новой ведомости">↺ Сбросить</a>
             <button class="btn ghost sm" style="color:var(--err);margin-left:auto" onclick="deleteManifestFromNotif(<?= $selectedId ?>)" title="Удалить ведомость из системы (необратимо)">🗑 Удалить</button>
         <?php endif; ?>
-        <span id="waStatus" class="badge muted">проверяю канал…</span>
+        <span id="channelStatus" class="badge muted">проверяю канал…</span>
     </div>
 </div>
 
-<div class="wa-note"><?= icon('whatsapp') ?><span><b>WhatsApp</b> — основной канал. Проверка получателей и доступных каналов выполняется автоматически; проблемные доставки появятся в общей сводке.</span></div>
+<?php
+require_once PANEL_ROOT . '/lib/Channels.php';
+$primaryCh = Channels::primary();
+[$primaryLabel, $primaryColor] = msg_channel_meta($primaryCh);
+?>
+<div class="wa-note" style="border-left:3px solid <?= e($primaryColor) ?>"><?= icon('bell') ?><span><b><?= e($primaryLabel) ?></b> — основной канал (меняется в Настройках). Наличие мессенджера у получателей проверяется автоматически; проблемные доставки появятся в общей сводке.</span></div>
 
 <?php if ($uploadError !== ''): ?><div class="alert err"><?= e($uploadError) ?></div><?php endif; ?>
 
@@ -103,7 +108,7 @@
             </div>
             <div id="gdsInfo" class="mt"></div>
             <div class="send-channel-panel mt">
-                <div><b>Каналы отправки</b><div class="muted small">Отмеченные каналы работают параллельно. По умолчанию выбран только WhatsApp.</div></div>
+                <div><b>Каналы отправки</b><div class="muted small">Отмеченные каналы работают параллельно. По умолчанию выбран основной — <?= e($primaryLabel) ?>.</div></div>
                 <div id="sendChannels" class="send-channel-choices"><span class="muted small">проверяю подключения…</span></div>
                 <div id="sendChannelEstimate" class="small muted"></div>
             </div>
@@ -171,7 +176,7 @@
 <script>
 window.HAS_MANIFEST = <?= $selected ? 'true' : 'false' ?>;
 document.addEventListener('DOMContentLoaded', () => {
-    waStatus();
+    channelStatusBadge();
     bindTripFacts();
     if (window.HAS_MANIFEST) { loadGroups(true); loadCampaignOverview(); }
 });

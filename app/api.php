@@ -99,7 +99,7 @@ function wa_channel_states(): array
     if (is_array($c) && isset($c['at'], $c['states']) && (time() - (int) $c['at'] < 20)) return $c['states'];
     require_once PANEL_ROOT . '/lib/Channels.php';
     $states = [];
-    foreach (['whatsapp', 'max', 'telegram', 'sms'] as $ch) $states[$ch] = Channels::state($ch);
+    foreach (array_merge(Channels::byPriority(), ['sms']) as $ch) $states[$ch] = Channels::state($ch);
     opt_set('channel_states_cache', json_encode(['at' => time(), 'states' => $states]));
     return $states;
 }
