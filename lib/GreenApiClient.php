@@ -103,10 +103,16 @@ class GreenApiClient
     // Настроить webhook на нашу панель
     public function configureWebhook($webhookUrl, $webhookToken)
     {
+        // ⚠️ Для статусов delivered/read нужны ТРИ настройки сразу: outgoingMessageWebhook,
+        // outgoingAPIMessageWebhook и outgoingWebhook. Без последней провайдер шлёт только
+        // failed/noAccount (их отключить нельзя) — и кажется, будто вебхуки работают, хотя
+        // подтверждений доставки нет вовсе. Так у MAX-инстанса 479 отправок остались без
+        // единого delivered. https://green-api.com/v3/docs/api/receiving/notifications-format/statuses/OutgoingMessageStatus/
         return $this->post('setSettings', [
             'webhookUrl' => (string) $webhookUrl,
             'webhookUrlToken' => (string) $webhookToken,
             'incomingWebhook' => 'yes',
+            'outgoingWebhook' => 'yes',
             'outgoingMessageWebhook' => 'yes',
             'outgoingAPIMessageWebhook' => 'yes',
             'stateWebhook' => 'yes',
