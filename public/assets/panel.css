@@ -668,11 +668,14 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 .chat-empty p { margin: 0; font-size: 14px; }
 
 .chat-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.chat-head { display: flex; align-items: center; gap: 12px; padding: 11px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+/* Имя и номер собеседника — главное в шапке, они не должны сжиматься до «П..»/«+...».
+   При нехватке места контролы и ссылка на рейс переносятся на вторую строку (flex-wrap),
+   а не давят идентификацию. */
+.chat-head { display: flex; align-items: center; gap: 12px; padding: 11px 16px; background: var(--surface); border-bottom: 1px solid var(--line); flex-wrap: wrap; row-gap: 8px; }
 .chat-back { display: none; place-items: center; width: 36px; height: 36px; margin-left: -6px; border: 0; background: none; border-radius: 10px; color: var(--ink); cursor: pointer; }
 .chat-back svg { width: 24px; height: 24px; }
 .chat-head-ava { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--brand), #8a7ef2); color: #fff; font-weight: 700; }
-.chat-head-info { flex: 1; min-width: 0; }
+.chat-head-info { flex: 1 1 200px; min-width: 180px; }
 .chat-head-name { font-weight: 700; font-size: 15px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-head-phone { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-head-controls { display: flex; align-items: center; gap: 6px; flex: none; }
