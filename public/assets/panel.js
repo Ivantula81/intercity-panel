@@ -326,22 +326,19 @@ function changeSendChannels(input) {
 function updateChannelEstimate() {
     const box = document.getElementById('sendChannelEstimate');
     if (!box) return;
-    const all = manifestRecipients().filter(x => x.valid);
-    const recipients = all.length;
     const channels = selectedSendChannels();
-    const attempts = recipients * channels.length;
-    // Покрытие: у скольких получателей реально есть выбранный мессенджер (по проверке).
-    const cover = {};
-    MESSENGERS.forEach(ch => { cover[ch] = all.filter(x => x.channels && x.channels[ch] === true).length; });
-    const zero = channels.filter(ch => cover[ch] !== undefined && cover[ch] === 0 && recipients > 0);
+    if (!channels.length) { box.className = 'small muted'; box.textContent = ''; return; }
+    const b = deliveryBuckets(); // единый честный источник: уйдут / под вопросом / без канала
+    const attempts = b.total * channels.length;
     let html = channels.length > 1
-        ? `Параллельная отправка: ${recipients} пассажиров × ${channels.length} канала = до ${attempts} сообщений. Пассажиры могут получить одинаковый текст несколько раз.`
-        : `Сообщения уйдут только через ${CHANNEL_LABELS[channels[0]] || channels[0]}.`;
-    const coverParts = channels.filter(ch => cover[ch] !== undefined).map(ch => `${CHANNEL_LABELS[ch]}: у ${cover[ch]} из ${recipients}`);
-    if (coverParts.length) html += ` · ${coverParts.join(' · ')}`;
-    box.className = `small ${zero.length || channels.length > 1 ? 'send-channel-warning' : 'muted'}`;
-    box.innerHTML = html + (zero.length
-        ? `<br><b style="color:var(--err)">⚠️ ${zero.map(c => CHANNEL_LABELS[c]).join(', ')} — нет ни у кого из получателей. Отправка в этот канал уйдёт впустую (все попытки провалятся).</b>`
+        ? `Параллельная отправка в ${channels.length} канала: до ${attempts} сообщений. Пассажир может получить один текст несколько раз.`
+        : `Уйдут только через ${CHANNEL_LABELS[channels[0]] || channels[0]}.`;
+    // «Впустую» — ТОЛЬКО когда все проверены и ни у кого нет канала. «Под вопросом» (не проверено
+    // из-за лимита) сюда не считается: такие проверятся при отправке, а не проваливаются.
+    const useless = b.total > 0 && b.go === 0 && b.pending === 0;
+    box.className = `small ${useless || channels.length > 1 ? 'send-channel-warning' : 'muted'}`;
+    box.innerHTML = html + (useless
+        ? `<br><b style="color:var(--err)">⚠️ Ни у кого из получателей нет выбранного канала — отправка уйдёт впустую.</b>`
         : '');
 }
 
