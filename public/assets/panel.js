@@ -527,6 +527,32 @@ function preparationIssues() {
     return issues;
 }
 
+// Судьба получателя по выбранным каналам: уйдёт / не уйдёт / под вопросом.
+//   go      — хотя бы один выбранный канал подтверждён у номера (chatId есть) ИЛИ выбран SMS.
+//   no      — все выбранные мессенджеры проверены и канала нет.
+//   pending — хоть один выбранный канал ещё не проверен (упёрлись в лимит или не успели).
+// При отправке «под вопросом» до-проверяются на месте, так что go — это гарантированный минимум.
+function recipientDelivery(recipient, channels) {
+    if (channels.some(c => !MESSENGERS.includes(c))) return 'go'; // SMS — наличие у номера не проверяется, уйдёт всегда
+    if (!recipient.channels?.checked) return 'pending';
+    let anyTrue = false, anyUnknown = false;
+    for (const c of channels) {
+        const v = recipient.channels[c];
+        if (v === true) anyTrue = true;
+        else if (v === null || v === undefined) anyUnknown = true;
+    }
+    return anyTrue ? 'go' : (anyUnknown ? 'pending' : 'no');
+}
+
+function deliveryBuckets() {
+    const channels = selectedSendChannels();
+    const valid = manifestRecipients().filter(x => x.valid);
+    const b = { go: 0, no: 0, pending: 0, total: valid.length };
+    if (!channels.length) { b.pending = valid.length; return b; }
+    valid.forEach(r => { b[recipientDelivery(r, channels)]++; });
+    return b;
+}
+
 function renderPreparationSummary() {
     const box = document.getElementById('notificationReadiness');
     const issueBox = document.getElementById('notificationIssues');
@@ -534,25 +560,27 @@ function renderPreparationSummary() {
     const recipients = manifestRecipients();
     const valid = recipients.filter(x => x.valid).length;
     const checked = recipients.filter(x => x.valid && x.channels?.checked).length;
-    // Метрика по ОСНОВНОМУ каналу (задаётся в Настройках), а не по захардкоженному WhatsApp.
-    const others = MESSENGERS.filter(c => c !== PRIMARY_CHANNEL);
-    const primaryHave = recipients.filter(x => x.valid && x.channels?.[PRIMARY_CHANNEL] === true).length;
-    const fallback = recipients.filter(x => x.valid && x.channels?.[PRIMARY_CHANNEL] === false && others.some(c => x.channels?.[c] === true)).length;
     const issues = preparationIssues();
     const blocking = issues.filter(x => x.level === 'err' && x.type === 'route').length;
-    const unknown = Math.max(0, valid - checked);
     const selectedChannels = selectedSendChannels();
     const attemptCount = valid * selectedChannels.length;
+    const b = deliveryBuckets(); // три корзины: уйдут / под вопросом / не уйдут
+    const chLabel = selectedChannels.map(c => CHANNEL_LABELS[c] || c).join(', ') || '—';
     const title = CHANNEL_CHECKING ? 'Проверяю получателей и каналы…' : (blocking ? `Нужно исправить: ${blocking}` : 'Рассылка готова к подтверждению');
-    const subtitle = CHANNEL_CHECKING ? `Проверено ${checked} из ${valid} корректных номеров.`
-        : (blocking ? 'Отправка будет доступна после проверки критичных данных.' : `${valid} пассажиров включены в рассылку.`);
+    // Подзаголовок прямо отвечает на «уйдёт или нет».
+    const subtitle = CHANNEL_CHECKING ? `Проверено ${checked} из ${valid} корректных номеров…`
+        : blocking ? 'Отправка будет доступна после проверки критичных данных.'
+        : b.pending ? `Точно уйдут: ${b.go} · под вопросом: ${b.pending} (проверятся при отправке) · без канала: ${b.no}. Каналы: ${esc(chLabel)}.`
+        : `Уйдут ${b.go} из ${valid} через ${esc(chLabel)}${b.no ? ` · без канала: ${b.no}` : ''}.`;
+    const btnLabel = CHANNEL_CHECKING ? `Отправить ${valid} пассажирам`
+        : b.pending ? `Отправить ${valid} · уйдёт ≥ ${b.go}`
+        : `Отправить ${valid} · уйдёт ${b.go}`;
     box.innerHTML = `<div class="notif-ready-top"><div class="notif-ready-head"><div class="notif-ready-icon ${blocking ? 'warn' : ''}">${blocking ? '!' : '✓'}</div><div><div class="notif-ready-title">${esc(title)}</div><div class="muted small">${esc(subtitle)}</div></div></div>
-        <button class="btn" data-send-all onclick="sendAllGroups(this)">Отправить ${valid} пассажирам</button></div>
-        <div class="notif-metrics"><div><b>${recipients.length}</b><span>пассажиров</span></div><div><b>${GROUPS.length}</b><span>направлений</span></div><div><b>${CHANNEL_CHECKING ? '…' : primaryHave}</b><span>${esc(CHANNEL_LABELS[PRIMARY_CHANNEL] || PRIMARY_CHANNEL)}</span></div><div class="${issues.length ? 'warn' : ''}"><b>${issues.length}</b><span>требует внимания</span></div></div>
+        <button class="btn" data-send-all onclick="sendAllGroups(this)">${esc(btnLabel)}</button></div>
+        <div class="notif-metrics"><div><b>${valid}</b><span>получателей</span></div><div><b style="color:var(--ok)">${CHANNEL_CHECKING ? '…' : b.go}</b><span>уйдут</span></div><div class="${b.pending ? 'warn' : ''}"><b${b.pending ? ' style="color:var(--warn)"' : ''}>${CHANNEL_CHECKING ? '…' : b.pending}</b><span>под вопросом</span></div><div class="${b.no ? 'warn' : ''}"><b${b.no ? ' style="color:var(--err)"' : ''}>${b.no}</b><span>без канала</span></div></div>
         <div class="notif-auto-check"><span class="badge ${CHANNEL_CHECKING ? 'warn' : 'ok'}">${CHANNEL_CHECKING ? 'идёт проверка' : 'проверка завершена'}</span>
         <button class="btn ghost sm" onclick="autoCheckManifestChannels(true, true)" ${CHANNEL_CHECKING ? 'disabled' : ''} title="Заново проверить у всех номеров наличие MAX / Telegram / WhatsApp">🔄 Проверить мессенджеры</button>
-        <span class="muted small">${fallback ? `Для ${fallback} найден запасной канал. ` : ''}${unknown && !CHANNEL_CHECKING ? `Не проверено: ${unknown}.` : ''}</span>
-        ${CHANNEL_LIMITED.length ? `<div class="small" style="color:var(--err);margin-top:6px">⚠️ ${CHANNEL_LIMITED.map(c => CHANNEL_LABELS[c] || c).join(', ')}: мессенджер исчерпал лимит на проверку контактов. Часть номеров осталась непроверенной — это <b>не</b> значит, что канала у них нет. Лимит восстанавливается со временем.</div>` : ''}</div>`;
+        ${CHANNEL_LIMITED.length && !CHANNEL_CHECKING ? `<span class="muted small">Лимит проверки MAX временно исчерпан — оставшиеся проверятся при отправке или позже.</span>` : ''}</div>`;
 
     const visibleIssues = issues.slice(0, 12);
     issueBox.innerHTML = issues.length ? `<div class="notif-issues"><div class="notif-issues-head"><b>Требует внимания · ${issues.length}</b><span class="muted small">все проблемы собраны в одном месте</span></div>${visibleIssues.map(issue => `
@@ -560,12 +588,12 @@ function renderPreparationSummary() {
 
     document.querySelectorAll('[data-send-all]').forEach(sendBtn => {
         sendBtn.disabled = blocking > 0 || CHANNEL_CHECKING;
-        sendBtn.innerHTML = `${sendBtn.querySelector('svg')?.outerHTML || ''} Отправить ${valid} пассажирам${selectedChannels.length > 1 ? ` · ${attemptCount} сообщений` : ''}`;
+        sendBtn.innerHTML = `${sendBtn.querySelector('svg')?.outerHTML || ''} ${esc(btnLabel)}${selectedChannels.length > 1 ? ` · до ${attemptCount} сообщений` : ''}`;
     });
     const sendSummary = document.getElementById('sendSummary');
     if (sendSummary) sendSummary.innerHTML = blocking
         ? `<b style="color:var(--err)">Сначала исправьте критичные данные: ${blocking}</b>`
-        : `Готово: <b>${valid}</b> получателей · ${GROUPS.length} направлений · ${selectedChannels.length} ${selectedChannels.length === 1 ? 'канал' : 'канала'}`;
+        : `<b style="color:var(--ok)">Уйдут: ${b.go}</b>${b.pending ? ` · <b style="color:var(--warn)">под вопросом: ${b.pending}</b>` : ''}${b.no ? ` · без канала: ${b.no}` : ''} · ${GROUPS.length} направлений · ${esc(chLabel)}`;
     updateChannelEstimate();
 }
 
@@ -612,12 +640,15 @@ async function autoCheckManifestChannels(force = false, checkAllMessengers = fal
     CHANNEL_LIMITED = [];
     renderPreparationSummary();
     try {
-        for (let i = 0; i < phones.length; i += 50) {
+        // Порции меньше и с паузой — дозаполняем chatId «тихо», а не залпом; на первом лимите
+        // мессенджера останавливаемся (дальше долбить исчерпанную квоту бессмысленно — оставшиеся
+        // проверятся при отправке или позже). Быстро проверяемые из кэша провайдера лимит не тратят.
+        const CHUNK = 20;
+        for (let i = 0; i < phones.length; i += CHUNK) {
             // force — перепроверить даже свежие результаты (кнопка «Проверить мессенджеры»).
             // Без force сервер не трогает известные свежие ответы и бережёт лимит мессенджера.
-            const result = await api('channels.check', { phones: phones.slice(i, i + 50), force: checkAllMessengers ? 1 : 0 }).catch(() => null);
+            const result = await api('channels.check', { phones: phones.slice(i, i + CHUNK), force: checkAllMessengers ? 1 : 0 }).catch(() => null);
             if (!result?.ok) continue;
-            if (result.limited?.length) CHANNEL_LIMITED = [...new Set([...CHANNEL_LIMITED, ...result.limited])];
             GROUPS.forEach(group => group.recipients.forEach(recipient => {
                 const norm = recipient.phone.replace(/\D+/g, '');
                 const key = Object.keys(result.presence || {}).find(phone => phone.replace(/\D+/g, '') === norm);
@@ -625,6 +656,11 @@ async function autoCheckManifestChannels(force = false, checkAllMessengers = fal
             }));
             updateChannelCells();
             renderPreparationSummary();
+            if (result.limited?.length) { // квота исчерпана — прекращаем, чтобы не жечь её впустую
+                CHANNEL_LIMITED = [...new Set([...CHANNEL_LIMITED, ...result.limited])];
+                break;
+            }
+            if (i + CHUNK < phones.length) await new Promise(r => setTimeout(r, 400)); // дать UI/квоте дышать
         }
     } finally {
         CHANNEL_CHECKING = false;
