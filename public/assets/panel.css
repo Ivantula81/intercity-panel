@@ -405,6 +405,10 @@ table.cat input.cell, table.cat select.cell { font-size: 13.5px; }
 .notif-origin { margin-top: 12px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
 .notif-origin-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 13px 15px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
 .notif-origin-title { margin-bottom: 3px; color: var(--ink); font-size: 15.5px; font-weight: 750; }
+/* Метка «что ушло по блоку» — берётся с сервера, видна при открытии ведомости. */
+.origin-sent { margin-top: 5px; font-weight: 650; display: flex; align-items: center; gap: 5px; }
+.origin-sent-ok { color: var(--ok, #1a9a54); }
+.origin-sent-warn { color: var(--warn, #b8760a); }
 .notif-origin-routes .gcard { margin: 0; border-width: 0 0 1px 4px; border-radius: 0; box-shadow: none; }
 .notif-origin-routes .gcard:last-child { border-bottom: 0; }
 .notif-origin-routes .gcard-head { padding: 11px 14px; }

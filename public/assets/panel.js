@@ -122,6 +122,7 @@ async function delService(ev, id) {
 let GROUPS = [], TEMPLATES = [], BUS_PHOTO = '', GDS_LOADED = false, CHANNELS_ACTIVE = ['max'], CHANNELS_STATE = {}, MANIFEST_TEMPLATE = '', BLOCK_TEMPLATES = {}, TODAY_COUNTS = {}, DAILY_CAP = 200;
 // Основной канал рассылки — из «Настроек». От него считаются галочка по умолчанию и «запасные» каналы.
 let PRIMARY_CHANNEL = 'max', CHANNEL_LIMITED = [];
+let LAST_OVERVIEW = null; // последний campaign.overview — источник меток «что ушло по блоку»
 const CHANNEL_LABELS = { max: 'MAX', telegram: 'Telegram', whatsapp: 'WhatsApp', sms: 'SMS' };
 // Мессенджеры, у которых наличие у номера проверяется. SMS сюда не входит — она возможна на любой номер.
 const MESSENGERS = ['max', 'telegram', 'whatsapp'];
@@ -361,9 +362,11 @@ function renderGroups() {
             const originPassengers = originGroups.reduce((sum, x) => sum + x.recipients.length, 0);
             const origin = document.createElement('section');
             origin.className = 'notif-origin';
+            origin.dataset.station = g.station; // якорь для метки «что ушло по блоку»
             origin.innerHTML = `<div class="notif-origin-head"><div><div class="notif-origin-title">${esc(g.station)}</div>
-                <div class="muted small">${originPassengers} пассажиров · ${originGroups.length} направлений · посадка ${esc((g.date ? g.date + ' ' : '') + (g.time || 'время не указано'))}${g.address ? ' · ' + esc(g.address) : ''}</div></div>
-                <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap"><span class="badge ${originGroups.some(x => !x.time || !x.in_catalog || x.time_warning == 1) ? 'warn' : 'ok'}">${originGroups.some(x => !x.time || !x.in_catalog || x.time_warning == 1) ? 'проверьте' : 'готово'}</span><button class="btn sm" onclick="sendBlock(this)">Отправить блоку</button></div></div>
+                <div class="muted small">${originPassengers} пассажиров · ${originGroups.length} направлений · посадка ${esc((g.date ? g.date + ' ' : '') + (g.time || 'время не указано'))}${g.address ? ' · ' + esc(g.address) : ''}</div>
+                <div class="origin-sent small" hidden></div></div>
+                <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap"><span class="badge ${originGroups.some(x => !x.time || !x.in_catalog || x.time_warning == 1) ? 'warn' : 'ok'}">${originGroups.some(x => !x.time || !x.in_catalog || x.time_warning == 1) ? 'проверьте' : 'готово'}</span><button class="btn sm block-send-btn" onclick="sendBlock(this)">Отправить блоку</button></div></div>
                 <div class="origin-template" data-station="${esc(g.station)}">
                     <div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
                         <span class="small">Шаблон блока <span class="g-tpl-badge${blockIsCustom(g.station) ? ' custom' : ''}">${blockIsCustom(g.station) ? '✏ свой шаблон' : 'как у ведомости'}</span></span>
@@ -468,6 +471,57 @@ function renderGroups() {
 
     const sum = document.getElementById('sendSummary');
     if (sum) sum.innerHTML = `К отправке: <b>${totalValid}</b> получателей в ${GROUPS.length} направлениях`;
+    updateBlockSentBadges(); // метки «что ушло по блоку» из последнего монитора
+}
+
+// Агрегат отправки по блоку (станции отправления) из последнего campaign.overview.
+// Считаем ФАКТ отправки (sent), а не доставку — «нажал → видно, что ушло».
+function blockSentAgg(station) {
+    const recs = (LAST_OVERVIEW?.recipients || []).filter(r => r.station === station && r.valid);
+    const sent = recs.filter(r => r.sent);
+    const channels = [...new Set(sent.map(r => r.channel).filter(Boolean))];
+    const lastAt = sent.reduce((m, r) => (r.sent_at && r.sent_at > m ? r.sent_at : m), '');
+    return { total: recs.length, sent: sent.length, channels, lastAt };
+}
+
+// Проставить метку и подстроить кнопку на каждом блоке отправления.
+function updateBlockSentBadges() {
+    document.querySelectorAll('.notif-origin[data-station]').forEach(origin => {
+        const station = origin.dataset.station;
+        const badge = origin.querySelector('.origin-sent');
+        const btn = origin.querySelector('.block-send-btn');
+        if (!badge) return;
+        const a = blockSentAgg(station);
+        const rest = a.total - a.sent;
+        const chLabel = a.channels.map(c => CHANNEL_LABELS[c] || c).join(', ');
+        if (!a.sent) { // ещё не отправляли
+            badge.hidden = true;
+            if (btn) btn.textContent = 'Отправить блоку';
+            return;
+        }
+        badge.hidden = false;
+        const when = a.lastAt ? ' · ' + fmtSentAt(a.lastAt) : '';
+        const ch = chLabel ? ' · ' + chLabel : '';
+        if (rest > 0) { // ушло частично
+            badge.className = 'origin-sent small origin-sent-warn';
+            badge.textContent = `⚠ Отправлено ${a.sent} из ${a.total} · ${rest} не ушло${when}${ch}`;
+            if (btn) btn.textContent = `Дослать ${rest}`;
+        } else { // ушло всё
+            badge.className = 'origin-sent small origin-sent-ok';
+            badge.textContent = `✓ Отправлено ${a.sent} из ${a.total}${when}${ch}`;
+            if (btn) { btn.textContent = 'Отправить повторно'; btn.classList.add('ghost'); }
+        }
+    });
+}
+
+// «сегодня 19:23» / «14.07 19:23» из ISO-времени сервера.
+function fmtSentAt(iso) {
+    const d = new Date((iso || '').replace(' ', 'T'));
+    if (isNaN(d)) return '';
+    const hh = String(d.getHours()).padStart(2, '0'), mm = String(d.getMinutes()).padStart(2, '0');
+    const now = new Date();
+    const sameDay = d.toDateString() === now.toDateString();
+    return sameDay ? `сегодня ${hh}:${mm}` : `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} ${hh}:${mm}`;
 }
 
 function manifestRecipients() {
@@ -877,7 +931,9 @@ async function loadCampaignOverview(manual = false) {
         return;
     }
     CHANNELS_ACTIVE = result.channels_active?.length ? result.channels_active : CHANNELS_ACTIVE;
+    LAST_OVERVIEW = result;
     renderCampaignOverview(result);
+    updateBlockSentBadges(); // обновить метки блоков свежими статусами
     clearTimeout(OVERVIEW_TIMER);
     const hasPending = (result.summary?.sent || 0) + (result.summary?.pending || 0) > 0;
     if (hasPending) OVERVIEW_TIMER = setTimeout(() => loadCampaignOverview(), 15000);
@@ -1093,7 +1149,10 @@ async function sendBlock(btn) {
     if (!channels.length) { alert('Не выбран канал отправки.'); return; }
     const valid = gis.reduce((n, gi) => n + GROUPS[gi].recipients.filter(x => x.valid).length, 0);
     const dup = channels.length > 1 ? `\n\nВыбрано ${channels.length} канала — пассажир может получить сообщение в каждом.` : '';
-    if (!confirm(`Отправить блоку «${station}» — ${valid} пассажирам в ${gis.length} направлениях?\nКаналы: ${channels.map(x => CHANNEL_LABELS[x] || x).join(', ')}.${dup}`)) return;
+    // Повторная отправка: честно показываем, сколько новых, а сколько уже ушло (дубли отсекаются на сервере).
+    const already = blockSentAgg(station).sent;
+    const again = already ? `\n\nУже отправлено ранее: ${already}${valid - already > 0 ? `, новых: ${valid - already}` : ''}. Повторно те же сообщения не уйдут (защита от дублей).` : '';
+    if (!confirm(`Отправить блоку «${station}» — ${valid} пассажирам в ${gis.length} направлениях?\nКаналы: ${channels.map(x => CHANNEL_LABELS[x] || x).join(', ')}.${dup}${again}`)) return;
     btn.disabled = true;
     let total = 0, failed = 0, duplicates = 0;
     for (const card of cards) {
@@ -1102,7 +1161,7 @@ async function sendBlock(btn) {
         total += r.sent || 0; failed += r.failed || 0; duplicates += r.duplicates || 0;
     }
     btn.disabled = false;
-    loadCampaignOverview(true);
+    loadCampaignOverview(true); // подтянет статусы и обновит метку блока
     alert(`Блок «${station}»: отправлено ${total}, ошибок ${failed}${duplicates ? ', без дублей ' + duplicates : ''}.`);
 }
 
