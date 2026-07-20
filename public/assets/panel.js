@@ -160,6 +160,28 @@ async function uploadManifest(inp) {
     else alert(r.error || 'Ошибка загрузки');
 }
 
+// Подтянуть ведомость по номеру рейса из системы автовокзала. preview → карточка, затем import.
+async function pullManifest(mode) {
+    const id = (document.getElementById('pullTripId')?.value || '').replace(/\D+/g, '');
+    const box = document.getElementById('pullResult');
+    const btn = document.getElementById('pullBtn');
+    if (!id) { if (box) box.innerHTML = '<div class="alert warn">Введите номер рейса.</div>'; return; }
+    if (btn) btn.disabled = true;
+    if (box) box.innerHTML = '<p class="muted small">Запрашиваю систему автовокзала…</p>';
+    const r = await api('manifest.pull', { id, mode }).catch(() => null);
+    if (btn) btn.disabled = false;
+    if (!r?.ok) { if (box) box.innerHTML = `<div class="alert err">${esc(r?.error || 'Не удалось получить рейс.')}</div>`; return; }
+    if (r.mode === 'import') { location = '/?p=notifications&manifest_id=' + r.manifest_id; return; }
+    // превью → подтверждение
+    const t = r.trip, c = r.counts;
+    box.innerHTML = `<div class="pull-preview">
+        <div class="pull-preview-head"><span class="pull-ic">✓</span><div><b>Рейс №${esc(t.id)} · ${esc(t.route)}</b><div class="muted small">${esc([t.departure, t.carrier, t.bus].filter(Boolean).join(' · '))}</div></div></div>
+        <div class="pull-metrics"><div><b>${c.passengers}</b><span>пассажиров</span></div><div><b>${c.agents}</b><span>агентов</span></div><div><b>${c.stations}</b><span>станций с ID</span></div><div><b>${c.segments}</b><span>отрезков</span></div></div>
+        <div class="row" style="gap:10px;flex-wrap:wrap"><button class="btn" onclick="pullManifest('import')">Импортировать рейс</button><button class="btn ghost" onclick="document.getElementById('pullResult').innerHTML='';document.getElementById('pullTripId').focus()">Другой номер</button></div>
+        <div class="muted small mt">Если рейс уже загружен — просто откроется, дубль не создаётся.</div>
+    </div>`;
+}
+
 async function loadGroups(autoGds) {
     const box = document.getElementById('groupsBox');
     if (!box) return;

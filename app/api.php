@@ -182,6 +182,35 @@ function resolve_send_target(string $channel, string $phone): array
     return ['ok' => true, 'target' => $info['chat_id'] !== '' ? $info['chat_id'] : $phone, 'error' => ''];
 }
 
+// Тянет ведомость по номеру рейса из системы автовокзала (Артмарк), csv=open → CSV.
+// Возвращает путь к временному UTF-8 файлу (вызывающий обязан удалить). Бросает при ошибке.
+// URL можно переопределить в env (ARTMARK_URL); по умолчанию — боевой адрес системы.
+function artmark_fetch_manifest(string $tripId): string
+{
+    $tripId = preg_replace('/\D+/', '', $tripId);
+    if ($tripId === '') throw new RuntimeException('Укажите номер рейса.');
+    $base = env_get('ARTMARK_URL') ?: 'http://213.226.126.81:8082';
+    $url = rtrim($base, '/') . '//?S1=S3&Otch=1&csv=open&Id=' . $tripId;
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_CONNECTTIMEOUT => 10]);
+    $raw = curl_exec($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
+    curl_close($ch);
+    if ($raw === false) throw new RuntimeException('Система автовокзала недоступна: ' . $err);
+    if ($code !== 200) throw new RuntimeException('Система автовокзала вернула ошибку (HTTP ' . $code . ').');
+    // При ошибке/отсутствии рейса система отдаёт HTML, а не CSV.
+    $peek = ltrim(substr($raw, 0, 200));
+    if (stripos($peek, '<html') !== false || stripos($peek, '<!doctype') !== false) {
+        throw new RuntimeException('Рейс ' . $tripId . ' не найден в системе.');
+    }
+    $utf = mb_convert_encoding($raw, 'UTF-8', 'Windows-1251');
+    $tmp = tempnam(sys_get_temp_dir(), 'artmark') . '.csv';
+    if (file_put_contents($tmp, $utf) === false) throw new RuntimeException('Не удалось сохранить временный файл.');
+    return $tmp;
+}
+
 // Провайдер активного аккаунта рассылки
 function active_wa_provider(): string
 {
@@ -1398,6 +1427,58 @@ switch ($action) {
             json_out(['ok' => true, 'id' => $id]);
         } catch (Exception $e) {
             json_out(['ok' => false, 'error' => $e->getMessage()]);
+        }
+
+    // Подтянуть ведомость по номеру рейса из системы автовокзала (Артмарк) вместо ручной загрузки CSV.
+    // mode=preview — только показать, что нашлось (не импортировать); mode=import — создать/открыть рейс.
+    case 'manifest.pull':
+        require_once PANEL_ROOT . '/lib/ManifestParser.php';
+        require_once PANEL_ROOT . '/app/manifest_import.php';
+        $tripId = preg_replace('/\D+/', '', (string) ($body['id'] ?? ''));
+        if ($tripId === '') json_out(['ok' => false, 'error' => 'Укажите номер рейса.']);
+        $mode = ($body['mode'] ?? 'preview') === 'import' ? 'import' : 'preview';
+        try {
+            $tmp = artmark_fetch_manifest($tripId);
+        } catch (Throwable $e) {
+            json_out(['ok' => false, 'error' => $e->getMessage()]);
+        }
+        try {
+            $parsed = (new ManifestParser())->parseFile($tmp, 'artmark_' . $tripId . '.csv');
+            $ps = $parsed['passengers'] ?? [];
+            if (empty($parsed['trip']['id']) || !$ps) {
+                json_out(['ok' => false, 'error' => 'В ответе системы нет данных по рейсу ' . $tripId . '.']);
+            }
+            if ($mode === 'preview') {
+                $agents = []; $stations = []; $segs = [];
+                foreach ($ps as $p) {
+                    if (!empty($p['agent_raw'])) $agents[$p['agent_raw']] = true;
+                    if (($p['from_id'] ?? null) !== null) $stations[$p['from_id']] = true;
+                    if (($p['to_id'] ?? null) !== null) $stations[$p['to_id']] = true;
+                    $segs[trim((string) ($p['from'] ?? '') . '→' . (string) ($p['to'] ?? ''))] = true;
+                }
+                json_out(['ok' => true, 'mode' => 'preview',
+                    'trip' => [
+                        'id' => $parsed['trip']['id'], 'route' => $parsed['trip']['route'] ?? '',
+                        'departure' => $parsed['trip']['departure_at'] ?? '', 'carrier' => $parsed['trip']['carrier'] ?? '',
+                        'bus' => $parsed['trip']['bus'] ?? '',
+                    ],
+                    'counts' => ['passengers' => count($ps), 'agents' => count($agents),
+                        'stations' => count($stations), 'segments' => count($segs)]]);
+            }
+            // import: если рейс с таким номером уже есть — открываем его, дубль не создаём.
+            $ex = db()->prepare('SELECT id FROM manifests WHERE trip_number=? ORDER BY id DESC LIMIT 1');
+            $ex->execute([$parsed['trip']['id']]);
+            $mid = (int) ($ex->fetchColumn() ?: 0);
+            $wasExisting = $mid !== 0;
+            if (!$mid) {
+                $file = ['tmp_name' => $tmp, 'name' => 'artmark_' . $tripId . '.csv', 'error' => 0, 'size' => filesize($tmp)];
+                $mid = import_manifest_csv($file, $parsed);
+            }
+            json_out(['ok' => true, 'mode' => 'import', 'manifest_id' => $mid, 'existing' => $wasExisting]);
+        } catch (Throwable $e) {
+            json_out(['ok' => false, 'error' => 'Не удалось разобрать ведомость: ' . $e->getMessage()]);
+        } finally {
+            @unlink($tmp);
         }
 
     case 'carrier.save':

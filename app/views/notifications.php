@@ -40,15 +40,25 @@ $primaryCh = Channels::primary();
                     <label class="btn ghost sm" style="cursor:pointer">📂 Загрузить другую<input type="file" accept=".csv" style="display:none" onchange="this.closest('form')||0;uploadManifest(this)"></label>
                 </div>
             <?php else: ?>
-                <div class="step-title-sub muted small">Загрузите CSV из Jasper или выберите ранее загруженную</div>
-                <form method="post" enctype="multipart/form-data" id="upForm" class="mt">
-                    <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
-                    <label class="drop">
-                        <?= icon('upload') ?>
-                        <div><b>Выберите CSV-файл</b> или перетащите сюда</div>
-                        <input type="file" name="manifest" accept=".csv,text/csv" onchange="this.form.submit()">
-                    </label>
-                </form>
+                <div class="step-title-sub muted small">Введите номер рейса — ведомость подтянется из системы автовокзала: пассажиры, места, цены, агенты, станции.</div>
+                <div class="pull-box mt">
+                    <div class="pull-row">
+                        <input id="pullTripId" class="pull-input" inputmode="numeric" placeholder="Номер рейса" onkeydown="if(event.key==='Enter')pullManifest('preview')">
+                        <button class="btn" id="pullBtn" onclick="pullManifest('preview')"><?= icon('download') ?> Подтянуть из системы</button>
+                    </div>
+                    <div id="pullResult" class="mt"></div>
+                    <div class="muted small mt"><?= icon('upload') ?> или <a href="#" onclick="document.getElementById('manualUpload').hidden=!document.getElementById('manualUpload').hidden;return false;">загрузить CSV-файл вручную</a></div>
+                    <div id="manualUpload" hidden>
+                        <form method="post" enctype="multipart/form-data" id="upForm" class="mt">
+                            <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+                            <label class="drop">
+                                <?= icon('upload') ?>
+                                <div><b>Выберите CSV-файл</b> или перетащите сюда</div>
+                                <input type="file" name="manifest" accept=".csv,text/csv" onchange="this.form.submit()">
+                            </label>
+                        </form>
+                    </div>
+                </div>
                 <?php if ($manifests): ?>
                     <div class="row mt">
                         <select id="cManPick" style="max-width:340px">
@@ -56,7 +66,7 @@ $primaryCh = Channels::primary();
                                 <option value="<?= $m['id'] ?>">№<?= e($m['trip_number']) ?> · <?= e($m['route']) ?></option>
                             <?php endforeach; ?>
                         </select>
-                        <button class="btn ghost sm" onclick="location='/?p=notifications&manifest_id='+document.getElementById('cManPick').value">Открыть</button>
+                        <button class="btn ghost sm" onclick="location='/?p=notifications&manifest_id='+document.getElementById('cManPick').value">Открыть ранее загруженную</button>
                     </div>
                 <?php endif; ?>
             <?php endif; ?>
