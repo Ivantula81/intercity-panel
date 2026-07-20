@@ -140,8 +140,8 @@ class ManifestParser
                 $birthdate = '';
             }
 
-            $fromId = $this->first($record, array('id станции отправления'));
-            $toId = $this->first($record, array('id станции прибытия'));
+            $fromId = $this->first($record, array('id станции отправления', 'st_id_from'));
+            $toId = $this->first($record, array('id станции прибытия', 'st_id_to'));
 
             // стоимость
             $priceRaw = $this->first($record, array('Стоимость', 'Тариф'));
