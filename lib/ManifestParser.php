@@ -99,13 +99,27 @@ class ManifestParser
         return array(
             'id' => $this->first($record, array('ID', 'ID1')),
             'route' => $this->first($record, array('Маршрут', 'Рейс')),
-            'departure_at' => $this->first($record, array('Дата/время отправления', 'date1')),
+            'departure_at' => $this->tripDeparture($record),
             'carrier' => $this->first($record, array('ATP')),
             // номер автобуса — только из «Номер_авт.» (госномер). «Транспорт» — это места/категория, не номер
             'bus' => $this->first($record, array('Номер_авт.', 'Transport')),
             'transport_info' => $this->first($record, array('Транспорт')),
             'drivers' => $this->first($record, array('Водители')),
         );
+    }
+
+    // Время отправления РЕЙСА — от начальной точки маршрута, а не точки посадки первого пассажира.
+    // Колонка «Время_отпр.» одинакова во всех строках (напр. «08:30(по графику) (факт)»), а
+    // «Дата/время отправления» у каждого билета своё (время его остановки). Берём Дата_отпр. + Время_отпр.;
+    // если их нет (старый формат) — fallback на прежнее поле.
+    private function tripDeparture($record)
+    {
+        $date = trim($this->first($record, array('Дата_отпр.')));
+        $timeRaw = trim($this->first($record, array('Время_отпр.')));
+        if ($date !== '' && preg_match('/(\d{1,2}):(\d{2})/', $timeRaw, $tm)) {
+            return $date . ' ' . sprintf('%02d:%02d', $tm[1], $tm[2]);
+        }
+        return $this->first($record, array('Дата/время отправления', 'date1'));
     }
 
     private function extractPassengers($records)
