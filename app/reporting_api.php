@@ -71,6 +71,31 @@ try {
         case 'cash.delete':
             db()->prepare('DELETE FROM manifest_cash_entries WHERE id=?')->execute([(int) ($body['id'] ?? 0)]);
             json_out(['ok'=>true]);
+
+        // Продажи автовокзалов на рейс: мимо ведомости, деньги напрямую перевозчику.
+        // Храним ТОЛЬКО сумму — процент всегда берётся из справочника (report_stations),
+        // поэтому правка ставки пересчитывает все рейсы разом.
+        case 'station_sale.add':
+            $manifestId = (int) ($body['manifest_id'] ?? 0);
+            $stationId = (int) ($body['station_id'] ?? 0);
+            $amount = round((float) str_replace(',', '.', (string) ($body['amount'] ?? 0)), 2);
+            if (!$stationId) throw new RuntimeException('Выберите автовокзал.');
+            if ($amount <= 0) throw new RuntimeException('Укажите сумму продаж.');
+            $st = db()->prepare('SELECT id FROM report_stations WHERE id=? AND active=1');
+            $st->execute([$stationId]);
+            if (!$st->fetchColumn()) throw new RuntimeException('Автовокзал не найден или скрыт.');
+            db()->prepare('INSERT INTO manifest_station_sales (manifest_id,station_id,amount,note,actor) VALUES (?,?,?,?,?)')
+                ->execute([$manifestId,$stationId,$amount,mb_substr(trim((string) ($body['note'] ?? '')),0,255),current_user_name()]);
+            json_out(['ok'=>true,'id'=>(int) db()->lastInsertId(),
+                'calculation'=>reporting_calculate_manifest($manifestId)]);
+
+        case 'station_sale.delete':
+            $id = (int) ($body['id'] ?? 0);
+            $mSt = db()->prepare('SELECT manifest_id FROM manifest_station_sales WHERE id=?');
+            $mSt->execute([$id]);
+            $manifestId = (int) $mSt->fetchColumn();
+            db()->prepare('DELETE FROM manifest_station_sales WHERE id=?')->execute([$id]);
+            json_out(['ok'=>true,'calculation'=>$manifestId ? reporting_calculate_manifest($manifestId) : null]);
     }
     json_out(['ok'=>false,'error'=>'Неизвестное действие'],404);
 } catch (Throwable $e) {

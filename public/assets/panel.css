@@ -879,7 +879,12 @@ select.attendance-unknown { color: var(--muted); }
 .report-error { color: var(--err) !important; }
 .report-bottom-grid, .report-file-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
 .report-breakdown > div { display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--line-soft); }
-.report-breakdown strong { font-variant-numeric: tabular-nums; }
+.report-breakdown strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Продажи автовокзалов: суммы столбиком справа, итоговая строка выделена */
+.ta-r { text-align: right; }
+.money-cell { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.report-station-total td { border-top: 2px solid var(--line); background: var(--surface-2); }
+.report-stations .table-wrap { margin-bottom: 4px; }
 .report-warning { margin-bottom: 7px; padding: 8px 10px; border-radius: 8px; background: #fff7df; color: #815d00; font-size: 12.5px; }
 .report-note { margin-top: 12px; }
 .report-note textarea { min-height: 76px; resize: vertical; }

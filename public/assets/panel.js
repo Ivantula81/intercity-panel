@@ -1893,6 +1893,28 @@ async function reportSubmitCash(event) {
     return false;
 }
 
+// Продажи автовокзалов на рейсе. Процент не вводится — он берётся из справочника,
+// поэтому в строку уходит только сумма. После правки перезагружаем: меняются и
+// таблица вокзалов, и оборот, и все зависимые итоги.
+async function reportAddStationSale(manifestId) {
+    const pick = $id('stationPick'), amount = $id('stationAmount');
+    if (!pick?.value) { alert('Выберите автовокзал.'); pick?.focus(); return; }
+    if (!(parseFloat(amount?.value) > 0)) { alert('Укажите сумму продаж.'); amount?.focus(); return; }
+    try {
+        await reportApi('station_sale.add', {manifest_id: manifestId, station_id: pick.value, amount: amount.value});
+        location.reload();
+    } catch (e) { alert(e.message); }
+}
+
+async function reportDeleteStationSale(button) {
+    const row = button.closest('tr');
+    if (!row || !confirm('Удалить эту продажу автовокзала?')) return;
+    try {
+        await reportApi('station_sale.delete', {id: +row.dataset.id});
+        location.reload();
+    } catch (e) { alert(e.message); }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     bindCells();
     bindCatalog();

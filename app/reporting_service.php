@@ -11,11 +11,61 @@ function reporting_contracts(): array
     return $result;
 }
 
+// Продажи автовокзалов на рейс. Процент берётся ИЗ СПРАВОЧНИКА (не с строки продажи):
+// правка ставки пересчитывает все рейсы разом — так решено с владельцем.
+function reporting_station_sales(int $manifestId): array
+{
+    try {
+        $st = db()->prepare('SELECT ss.id, ss.station_id, ss.amount, ss.note, ss.created_at, ss.actor,
+            s.name, s.rate FROM manifest_station_sales ss
+            JOIN report_stations s ON s.id = ss.station_id
+            WHERE ss.manifest_id = ? ORDER BY ss.id');
+        $st->execute([$manifestId]);
+        return $st->fetchAll();
+    } catch (Throwable $e) { return []; } // до применения schema19
+}
+
+// Ставки перевозчика рейса: диспетчерские с ОБОРОТА и комиссия Терры с НАШИХ продаж.
+// Базы разные — см. ReportingCalculator. Перевозчик в ведомости хранится строкой (ATP).
+function reporting_carrier_rates(?string $carrierName): array
+{
+    $rates = ['disp_rate' => ReportingCalculator::DEFAULT_DISP_RATE, 'our_rate' => ReportingCalculator::DEFAULT_OUR_RATE];
+    $name = trim((string) $carrierName);
+    if ($name === '') return $rates;
+    try {
+        $st = db()->prepare('SELECT disp_rate, our_rate FROM carriers WHERE atp = ? LIMIT 1');
+        $st->execute([$name]);
+        if ($row = $st->fetch()) {
+            $rates['disp_rate'] = (float) $row['disp_rate'];
+            $rates['our_rate'] = (float) $row['our_rate'];
+        }
+    } catch (Throwable $e) { /* до применения schema19 — остаются дефолты */ }
+    return $rates;
+}
+
 function reporting_calculate_manifest(int $manifestId): array
 {
     $st = db()->prepare('SELECT * FROM passengers WHERE manifest_id=? ORDER BY sort,id');
     $st->execute([$manifestId]);
-    return ReportingCalculator::calculate($st->fetchAll(), reporting_contracts());
+    $passengers = $st->fetchAll();
+
+    $mSt = db()->prepare('SELECT carrier, other_costs FROM manifests WHERE id=?');
+    $mSt->execute([$manifestId]);
+    $manifest = $mSt->fetch() ?: [];
+
+    $opts = reporting_carrier_rates($manifest['carrier'] ?? '');
+    $opts['other_costs'] = (float) ($manifest['other_costs'] ?? 0);
+    // Наличные — форма оплаты продаж Терры: уменьшают долг перевозчику, но не его доход.
+    $cSt = db()->prepare('SELECT COALESCE(SUM(amount),0) FROM manifest_cash_entries WHERE manifest_id=?');
+    $cSt->execute([$manifestId]);
+    $opts['cash'] = (float) $cSt->fetchColumn();
+    // Автовокзалы: входят в оборот (база диспетчерских), но не в долг Терры перевозчику.
+    $opts['station_sales'] = array_map(static fn($s) => [
+        'station_id' => (int) $s['station_id'], 'name' => $s['name'],
+        'amount' => (float) $s['amount'], 'rate' => (float) $s['rate'],
+    ], reporting_station_sales($manifestId));
+
+    return ReportingCalculator::calculate($passengers, reporting_contracts(), $opts);
 }
 
 function reporting_match_imported_agents(int $manifestId): void

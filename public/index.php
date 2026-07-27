@@ -91,10 +91,16 @@ switch ($page) {
         $vs = db()->prepare('SELECT version,created_at,actor FROM manifest_calculations WHERE manifest_id=? ORDER BY version DESC LIMIT 1');
         $vs->execute([$manifest['id']]);
         $lastCalculation = $vs->fetch();
+        // Автовокзалы: справочник для выбора + уже внесённые продажи этого рейса
+        try {
+            $stationList = db()->query('SELECT id, name, rate FROM report_stations WHERE active=1 ORDER BY name')->fetchAll();
+        } catch (Throwable $e) { $stationList = []; }
+        $stationSales = reporting_station_sales((int) $manifest['id']);
         view('layout', ['title'=>'Отчёт по рейсу №'.$manifest['trip_number'],'page'=>'reporting',
             'content'=>fn()=>view('report_trip',['manifest'=>$manifest,'passengers'=>$passengers,
                 'contracts'=>reporting_contracts(),'files'=>$files,'cashEntries'=>$cashEntries,
                 'calculation'=>reporting_calculate_manifest((int) $manifest['id']),
+                'stationList'=>$stationList,'stationSales'=>$stationSales,
                 'lastCalculation'=>$lastCalculation,'activeTab'=>$_GET['tab'] ?? 'calculation'])]);
         break;
 
