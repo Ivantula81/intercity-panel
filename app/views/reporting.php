@@ -1,4 +1,4 @@
-<?php /** @var array $rows @var array $agentContracts */ ?>
+<?php /** @var array $rows @var array $agentContracts @var array $stations */ ?>
 <div class="page-head">
     <div><h1>Отчётность по рейсам</h1><div class="sub">Ведомость → сверка явки и возвратов → расчёт → файлы рейса</div></div>
     <div class="head-actions"><a class="btn ghost" href="/?p=reporting_help"><?= icon('doc') ?> Инструкция</a></div>
@@ -54,5 +54,37 @@
         <label>Диспетчерская, %<input type="number" step="0.01" min="0" name="dispatch_rate" value="7"></label>
         <label>Расчёт диспетчерской<select name="dispatch_settlement"><option value="offset">Взаимозачёт</option><option value="receivable">Отдельная задолженность</option></select></label>
         <button class="btn" type="submit">Добавить договор</button>
+    </form>
+</details>
+
+<details class="card report-agents" id="stations">
+    <summary><strong>Справочник автовокзалов</strong> <span class="muted">— <?= count($stations) ?> шт.</span></summary>
+    <p class="muted small mt">Автовокзалы продают <b>напрямую перевозчику</b>, в посадочную ведомость не попадают — их продажи вносятся суммой на карточке рейса. Процент хранится здесь: если его поменять, все рейсы пересчитаются по новому.</p>
+    <div class="table-wrap mt"><table class="t"><thead><tr><th>Автовокзал</th><th>Процент</th><th>Примечание</th><th>Продаж внесено</th><th>Статус</th><th></th></tr></thead><tbody>
+    <?php foreach ($stations as $s): ?>
+        <tr<?= (int)$s['active'] ? '' : ' style="opacity:.55"' ?>>
+            <td><strong><?= e($s['name']) ?></strong></td>
+            <td><?= e(rtrim(rtrim(number_format((float)$s['rate'], 2, '.', ''), '0'), '.')) ?>%</td>
+            <td class="muted small"><?= e($s['note']) ?></td>
+            <td><?= (int) $s['sales_count'] ?></td>
+            <td><span class="badge <?= (int)$s['active'] ? 'ok' : 'muted' ?>"><?= (int)$s['active'] ? 'активен' : 'скрыт' ?></span></td>
+            <td>
+                <form method="post" style="display:inline">
+                    <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="toggle_station">
+                    <input type="hidden" name="station_id" value="<?= (int) $s['id'] ?>">
+                    <button class="btn ghost sm" type="submit" title="Скрытый вокзал не предлагается при вводе продаж, но прошлые рейсы не меняются"><?= (int)$s['active'] ? 'Скрыть' : 'Вернуть' ?></button>
+                </form>
+            </td>
+        </tr>
+    <?php endforeach; ?>
+    <?php if (!$stations): ?><tr><td colspan="6" class="muted">Пока пусто. Добавьте первый автовокзал — он появится в выборе на карточке рейса.</td></tr><?php endif; ?>
+    </tbody></table></div>
+    <form method="post" class="report-agent-form mt">
+        <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="save_station">
+        <label>Автовокзал<input name="station_name" required placeholder="МГТ"></label>
+        <label>Процент, %<input type="number" step="0.01" min="0" name="station_rate" value="0" required></label>
+        <label>Примечание<input name="station_note" placeholder="напр. договор от 2026"></label>
+        <button class="btn" type="submit">Сохранить автовокзал</button>
     </form>
 </details>

@@ -58,6 +58,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: /?p=reporting#agents');
             exit;
         }
+        // Автовокзалы: продают напрямую перевозчику, в ведомость не попадают.
+        // Процент храним ТОЛЬКО здесь — в продажах на рейсе лежит одна сумма, поэтому
+        // изменение ставки пересчитывает все рейсы разом (решение владельца).
+        if ($action === 'save_station') {
+            $name = mb_substr(trim((string) ($_POST['station_name'] ?? '')), 0, 255);
+            if ($name === '') throw new RuntimeException('Укажите название автовокзала.');
+            $rate = max(0, (float) str_replace(',', '.', (string) ($_POST['station_rate'] ?? 0)));
+            $note = mb_substr(trim((string) ($_POST['station_note'] ?? '')), 0, 255);
+            db()->prepare('INSERT INTO report_stations (name, rate, note) VALUES (?,?,?)
+                ON DUPLICATE KEY UPDATE rate = VALUES(rate), note = VALUES(note), active = 1')
+                ->execute([$name, $rate, $note]);
+            flash('Автовокзал сохранён: ' . $name . ' — ' . rtrim(rtrim(number_format($rate, 2, '.', ''), '0'), '.') . '%');
+            header('Location: /?p=reporting#stations');
+            exit;
+        }
+        if ($action === 'toggle_station') {
+            // Не удаляем: на прошлых рейсах могут быть его продажи. Просто убираем из выбора.
+            db()->prepare('UPDATE report_stations SET active = 1 - active WHERE id = ?')
+                ->execute([(int) ($_POST['station_id'] ?? 0)]);
+            header('Location: /?p=reporting#stations');
+            exit;
+        }
     } catch (Throwable $e) {
         $reportingError = $e->getMessage();
     }
@@ -70,7 +92,12 @@ $rows = db()->query("SELECT m.*,
     FROM manifests m ORDER BY m.departure_at DESC,m.id DESC LIMIT 100")->fetchAll();
 $agentContracts = db()->query("SELECT c.*,a.name agent_name,a.aliases FROM report_agent_contracts c
     JOIN report_agents a ON a.id=c.agent_id ORDER BY a.name,c.id")->fetchAll();
+try {
+    $stations = db()->query('SELECT s.*,
+        (SELECT COUNT(*) FROM manifest_station_sales ss WHERE ss.station_id = s.id) sales_count
+        FROM report_stations s ORDER BY s.active DESC, s.name')->fetchAll();
+} catch (Throwable $e) { $stations = []; } // до применения schema19
 
 view('layout', ['title'=>'Отчётность','page'=>'reporting',
     'content'=>fn()=>view('reporting',['rows'=>$rows,'agentContracts'=>$agentContracts,
-        'reportingError'=>$reportingError ?? ''])]);
+        'stations'=>$stations,'reportingError'=>$reportingError ?? ''])]);
