@@ -1,12 +1,17 @@
 <?php
-/** @var array $manifest @var array $passengers @var array $contracts @var array $calculation */
-$t = $calculation['totals'];
+/** @var array $manifest @var array $passengers @var array $contracts @var ?array $calculation */
+// Расчёт НЕ выполняется автоматически: либо пришёл из снимка, либо по кнопке (?calc=1).
+$hasCalc = is_array($calculation) && !empty($calculation['totals']);
+$t = $hasCalc ? $calculation['totals'] : [];
 $money = static fn($v) => number_format((float) $v, 0, ',', ' ') . ' ₽';
+$num = static fn($k, $d = 0) => (float) ($t[$k] ?? $d);
 $isFiles = $activeTab === 'files';
 ?>
 <div class="page-head report-trip-head">
     <div><a class="small muted" href="/?p=reporting">← Все рейсы</a><h1>Рейс № <?= e($manifest['trip_number']) ?></h1><div class="sub"><?= e($manifest['route']) ?></div></div>
-    <div class="head-actions"><a class="btn ghost" href="/?p=reporting_help" title="Инструкция"><?= icon('doc') ?></a><button class="btn ghost" type="button" onclick="reportAddCash()">+ Внести наличные</button><button class="btn" type="button" onclick="reportSaveSnapshot(<?= (int)$manifest['id'] ?>)">Сохранить расчёт</button></div>
+    <div class="head-actions"><a class="btn ghost" href="/?p=reporting_help" title="Инструкция"><?= icon('doc') ?></a><button class="btn ghost" type="button" onclick="reportAddCash()">+ Внести наличные</button>
+    <a class="btn<?= $hasCalc ? ' ghost' : '' ?>" href="/?p=report_trip&id=<?= (int)$manifest['id'] ?>&calc=1"><?= $hasCalc ? '↻ Пересчитать' : 'Рассчитать' ?></a>
+    <?php if ($hasCalc): ?><button class="btn" type="button" onclick="reportSaveSnapshot(<?= (int)$manifest['id'] ?>)">Сохранить расчёт</button><?php endif; ?></div>
 </div>
 <script>window.REPORT_MANIFEST_ID=<?= (int)$manifest['id'] ?>;</script>
 
@@ -58,12 +63,20 @@ $isFiles = $activeTab === 'files';
     <label>Водители<input class="report-manifest-field" data-id="<?= (int)$manifest['id'] ?>" data-field="drivers" value="<?= e($manifest['drivers']) ?>"></label>
 </div></div>
 
+<?php if (!$hasCalc): ?>
+<div class="alert warn">
+    <b>Расчёт не выполнен.</b> Отчётность — отдельная среда: цифры не считаются сами, чтобы не подставлять
+    случайные проценты. Сначала настройте <a href="/?p=reporting#agents">агентов с алиасами и процентами</a>
+    и <a href="/?p=reporting#stations">автовокзалы</a>, отметьте явку и цены, затем нажмите «Рассчитать».
+</div>
+<?php endif; ?>
+
 <div class="report-metrics" id="reportMetrics">
-    <div><span>По ведомости</span><strong data-total="manifest_total"><?= $money($t['manifest_total']) ?></strong></div>
-    <div><span>Наши продажи</span><strong data-total="our_sales"><?= $money($t['our_sales']) ?></strong></div>
-    <div><span>Продажи перевозчика</span><strong data-total="carrier_direct_sales"><?= $money($t['carrier_direct_sales']) ?></strong></div>
-    <div><span>К выплате перевозчику</span><strong data-total="carrier_due"><?= $money($t['carrier_due']) ?></strong></div>
-    <div class="accent"><span>Наша рентабельность</span><strong data-total="profit"><?= $money($t['profit']) ?></strong></div>
+    <div><span>По ведомости</span><strong data-total="manifest_total"><?= $money($num('manifest_total')) ?></strong></div>
+    <div><span>Наши продажи</span><strong data-total="our_sales"><?= $money($num('our_sales')) ?></strong></div>
+    <div><span>Продажи перевозчика</span><strong data-total="carrier_direct_sales"><?= $money($num('carrier_direct_sales')) ?></strong></div>
+    <div><span>К выплате перевозчику</span><strong data-total="carrier_due"><?= $money($num('carrier_due')) ?></strong></div>
+    <div class="accent"><span>Наша рентабельность</span><strong data-total="profit"><?= $money($num('profit')) ?></strong></div>
 </div>
 
 <div class="card report-passengers">
@@ -126,30 +139,30 @@ $isFiles = $activeTab === 'files';
 
 <div class="report-bottom-grid">
     <div class="card"><h2>Расшифровка</h2><div class="report-breakdown">
-        <div><span>Ведомость (по ехавшим)</span><strong data-total="manifest_total"><?= $money($t['manifest_total']) ?></strong></div>
-        <?php if (($t['stations_total'] ?? 0) > 0): ?>
-        <div><span>+ продажи автовокзалов</span><strong data-total="stations_total"><?= $money($t['stations_total']) ?></strong></div>
-        <div><span><b>= Оборот рейса</b></span><strong data-total="turnover"><?= $money($t['turnover']) ?></strong></div>
+        <div><span>Ведомость (по ехавшим)</span><strong data-total="manifest_total"><?= $money($num('manifest_total')) ?></strong></div>
+        <?php if ($num('stations_total', 0) > 0): ?>
+        <div><span>+ продажи автовокзалов</span><strong data-total="stations_total"><?= $money($num('stations_total')) ?></strong></div>
+        <div><span><b>= Оборот рейса</b></span><strong data-total="turnover"><?= $money($num('turnover')) ?></strong></div>
         <?php endif; ?>
         <?php $pc = static fn($v) => rtrim(rtrim(number_format((float)$v, 2, '.', ''), '0'), '.'); ?>
-        <div><span>Диспетчеризация Терры <?= $pc($t['disp_rate'] ?? 7) ?>% <span class="muted small">(с <?= ($t['stations_total'] ?? 0) > 0 ? 'оборота' : 'ведомости' ?>)</span></span><strong data-total="dispatch_fee"><?= $money($t['dispatch_fee']) ?></strong></div>
-        <div><span>Комиссия Терры <?= $pc($t['our_rate'] ?? 15) ?>% <span class="muted small">(с наших продаж <?= $money($t['our_sales']) ?>)</span></span><strong data-total="our_commission"><?= $money($t['our_commission']) ?></strong></div>
-        <div><span>Комиссии агентов перевозчика</span><strong data-total="carrier_agent_cost"><?= $money($t['carrier_agent_cost']) ?></strong></div>
-        <?php if (($t['station_agent_cost'] ?? 0) > 0): ?>
-        <div><span>Комиссии автовокзалов</span><strong data-total="station_agent_cost"><?= $money($t['station_agent_cost']) ?></strong></div>
+        <div><span>Диспетчеризация Терры <?= $pc($num('disp_rate', 7)) ?>% <span class="muted small">(с <?= $num('stations_total', 0) > 0 ? 'оборота' : 'ведомости' ?>)</span></span><strong data-total="dispatch_fee"><?= $money($num('dispatch_fee')) ?></strong></div>
+        <div><span>Комиссия Терры <?= $pc($num('our_rate', 15)) ?>% <span class="muted small">(с наших продаж <?= $money($num('our_sales')) ?>)</span></span><strong data-total="our_commission"><?= $money($num('our_commission')) ?></strong></div>
+        <div><span>Комиссии агентов перевозчика</span><strong data-total="carrier_agent_cost"><?= $money($num('carrier_agent_cost')) ?></strong></div>
+        <?php if ($num('station_agent_cost', 0) > 0): ?>
+        <div><span>Комиссии автовокзалов</span><strong data-total="station_agent_cost"><?= $money($num('station_agent_cost')) ?></strong></div>
         <?php endif; ?>
-        <div><span>Комиссии наших агентов</span><strong data-total="our_agent_ride_cost"><?= $money($t['our_agent_ride_cost']) ?></strong></div>
-        <?php if (($t['extra'] ?? 0) != 0): ?>
-        <div><span>Разница цен <span class="muted small">(наша цена выше ведомости)</span></span><strong data-total="extra"><?= $money($t['extra']) ?></strong></div>
+        <div><span>Комиссии наших агентов</span><strong data-total="our_agent_ride_cost"><?= $money($num('our_agent_ride_cost')) ?></strong></div>
+        <?php if ($num('extra', 0) != 0): ?>
+        <div><span>Разница цен <span class="muted small">(наша цена выше ведомости)</span></span><strong data-total="extra"><?= $money($num('extra')) ?></strong></div>
         <?php endif; ?>
-        <?php if (($t['noshow_income'] ?? 0) != 0): ?>
-        <div><span>Доход с неявок <span class="muted small">(<?= (int)($t['noshow_count'] ?? 0) ?> шт., без возврата)</span></span><strong data-total="noshow_income"><?= $money($t['noshow_income']) ?></strong></div>
+        <?php if ($num('noshow_income', 0) != 0): ?>
+        <div><span>Доход с неявок <span class="muted small">(<?= (int)$num('noshow_count', 0) ?> шт., без возврата)</span></span><strong data-total="noshow_income"><?= $money($num('noshow_income')) ?></strong></div>
         <?php endif; ?>
-        <?php if (($t['cash'] ?? 0) != 0): ?>
-        <div><span>Наличные <span class="muted small">(уменьшают долг Терры, не доход перевозчика)</span></span><strong data-total="cash"><?= $money($t['cash']) ?></strong></div>
+        <?php if ($num('cash', 0) != 0): ?>
+        <div><span>Наличные <span class="muted small">(уменьшают долг Терры, не доход перевозчика)</span></span><strong data-total="cash"><?= $money($num('cash')) ?></strong></div>
         <?php endif; ?>
     </div></div>
-    <div class="card"><h2>Контроль</h2><div id="reportWarnings"><?php foreach(array_slice($calculation['warnings'],0,8) as $w):?><div class="report-warning">⚠ <?= e($w) ?></div><?php endforeach;?><?php if(!$calculation['warnings']):?><div class="alert ok">Противоречий не найдено.</div><?php endif;?></div>
+    <div class="card"><h2>Контроль</h2><div id="reportWarnings"><?php foreach(array_slice($calculation['warnings'] ?? [],0,8) as $w):?><div class="report-warning">⚠ <?= e($w) ?></div><?php endforeach;?><?php if(empty($calculation['warnings'])):?><div class="alert ok">Противоречий не найдено.</div><?php endif;?></div>
         <label class="report-note">Комментарий к расчёту<textarea class="report-manifest-field" data-id="<?= (int)$manifest['id'] ?>" data-field="reporting_note"><?= e($manifest['reporting_note']) ?></textarea></label>
         <?php if($lastCalculation):?><div class="small muted mt">Последний сохранённый расчёт: v<?= (int)$lastCalculation['version'] ?>, <?= e(date('d.m.Y H:i',strtotime($lastCalculation['created_at']))) ?> · <?= e($lastCalculation['actor']) ?></div><?php endif;?>
     </div>

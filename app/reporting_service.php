@@ -2,6 +2,19 @@
 
 require_once PANEL_ROOT . '/lib/ReportingCalculator.php';
 
+// Отчётность — отдельная среда: рейс попадает в неё только явным добавлением.
+function reporting_attach(int $manifestId): void
+{
+    try { db()->prepare('UPDATE manifests SET in_reporting = 1 WHERE id = ?')->execute([$manifestId]); }
+    catch (Throwable $e) { /* до применения schema21 */ }
+}
+
+function reporting_detach(int $manifestId): void
+{
+    try { db()->prepare('UPDATE manifests SET in_reporting = 0 WHERE id = ?')->execute([$manifestId]); }
+    catch (Throwable $e) { /* до применения schema21 */ }
+}
+
 function reporting_contracts(): array
 {
     $rows = db()->query("SELECT c.*, a.name agent_name FROM report_agent_contracts c

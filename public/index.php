@@ -96,10 +96,22 @@ switch ($page) {
             $stationList = db()->query('SELECT id, name, rate FROM report_stations WHERE active=1 ORDER BY name')->fetchAll();
         } catch (Throwable $e) { $stationList = []; }
         $stationSales = reporting_station_sales((int) $manifest['id']);
+        // Автоматически НЕ считаем (требование владельца): расчёт запускается кнопкой.
+        // Показываем последний сохранённый снимок, если он есть, иначе пустую заготовку.
+        $calc = null;
+        if (!empty($_GET['calc'])) {                       // ?calc=1 — посчитать сейчас
+            $calc = reporting_calculate_manifest((int) $manifest['id']);
+        } elseif ($lastCalculation) {                       // иначе — из снимка
+            $snap = db()->prepare('SELECT totals_json FROM manifest_calculations WHERE manifest_id=? ORDER BY version DESC LIMIT 1');
+            $snap->execute([$manifest['id']]);
+            $totals = json_decode((string) $snap->fetchColumn(), true) ?: [];
+            if ($totals) $calc = ['totals' => $totals, 'passengers' => [], 'by_agent' => $totals['by_agent'] ?? [],
+                'station_sales' => $totals['station_sales'] ?? [], 'debts' => $totals['debts'] ?? [], 'warnings' => []];
+        }
         view('layout', ['title'=>'Отчёт по рейсу №'.$manifest['trip_number'],'page'=>'reporting',
             'content'=>fn()=>view('report_trip',['manifest'=>$manifest,'passengers'=>$passengers,
                 'contracts'=>reporting_contracts(),'files'=>$files,'cashEntries'=>$cashEntries,
-                'calculation'=>reporting_calculate_manifest((int) $manifest['id']),
+                'calculation'=>$calc,
                 'stationList'=>$stationList,'stationSales'=>$stationSales,
                 'lastCalculation'=>$lastCalculation,'activeTab'=>$_GET['tab'] ?? 'calculation'])]);
         break;

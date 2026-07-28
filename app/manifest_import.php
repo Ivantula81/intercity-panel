@@ -1,5 +1,41 @@
 <?php
 
+// Тянет ведомость по номеру рейса из системы автовокзала (Артмарк), csv=open → CSV.
+// Возвращает путь к временному UTF-8 файлу (вызывающий обязан удалить). Бросает при ошибке.
+// URL переопределяется в env (ARTMARK_URL). Живёт здесь, а не в api.php, потому что
+// используется и API (manifest.pull), и отчётностью (добавление рейса по номеру).
+if (!function_exists('artmark_fetch_manifest')) {
+    function artmark_fetch_manifest(string $tripId): string
+    {
+        $tripId = preg_replace('/\D+/', '', $tripId);
+        if ($tripId === '') throw new RuntimeException('Укажите номер рейса.');
+        $base = '';
+        foreach (@file('/etc/panel.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+            if (str_starts_with($line, 'ARTMARK_URL=')) { $base = substr($line, strlen('ARTMARK_URL=')); break; }
+        }
+        $base = $base !== '' ? $base : 'http://213.226.126.81:8082';
+        $url = rtrim($base, '/') . '//?S1=S3&Otch=1&csv=open&Id=' . $tripId;
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_CONNECTTIMEOUT => 10]);
+        $raw = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
+        if ($raw === false) throw new RuntimeException('Система автовокзала недоступна: ' . $err);
+        if ($code !== 200) throw new RuntimeException('Система автовокзала вернула ошибку (HTTP ' . $code . ').');
+        // При ошибке/отсутствии рейса система отдаёт HTML, а не CSV.
+        $peek = ltrim(substr($raw, 0, 200));
+        if (stripos($peek, '<html') !== false || stripos($peek, '<!doctype') !== false) {
+            throw new RuntimeException('Рейс ' . $tripId . ' не найден в системе.');
+        }
+        $utf = mb_convert_encoding($raw, 'UTF-8', 'Windows-1251');
+        $tmp = tempnam(sys_get_temp_dir(), 'artmark') . '.csv';
+        if (file_put_contents($tmp, $utf) === false) throw new RuntimeException('Не удалось сохранить временный файл.');
+        return $tmp;
+    }
+}
+
 // Загрузка CSV-ведомости в БД + авто-подстановка водителя/телефона из справочника автобусов.
 // Возвращает id ведомости. Бросает Exception при ошибке.
 

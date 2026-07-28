@@ -1839,6 +1839,7 @@ async function reportRecalculate() {
 }
 
 function reportInit() {
+    reportDirBind(); // справочники агентов и автовокзалов — правка на месте
     document.querySelectorAll('.report-p-field').forEach(el => el.addEventListener('change', async () => {
         const row = el.closest('tr[data-id]');
         let value = el.type === 'checkbox' ? (el.checked ? 'completed' : 'none') : el.value;
@@ -1891,6 +1892,45 @@ async function reportSubmitCash(event) {
         location.reload();
     } catch (e) { alert(e.message); }
     return false;
+}
+
+// ── Справочники отчётности: правка на месте (владелец настраивает сам) ──
+function reportDirBind() {
+    const state = $id('reportAgentState');
+    const flash = (text, err) => { if (state) { state.textContent = text; state.style.color = err ? 'var(--err)' : ''; } };
+    // агенты: имя/алиасы/где искать/сторона/ставка/договор
+    document.querySelectorAll('.report-a-field').forEach(el => el.addEventListener('change', async () => {
+        const row = el.closest('tr');
+        flash('Сохраняю…');
+        try {
+            await reportApi('agent.update', {id: +row.dataset.cid, field: el.dataset.field, value: el.value});
+            flash('Сохранено ✓');
+        } catch (e) { flash('Ошибка: ' + e.message, true); }
+    }));
+    // автовокзалы: название/процент/примечание
+    document.querySelectorAll('.report-s-field').forEach(el => el.addEventListener('change', async () => {
+        const row = el.closest('tr');
+        try {
+            await reportApi('station.update', {id: +row.dataset.sid, field: el.dataset.field, value: el.value});
+            flash('Сохранено ✓');
+        } catch (e) { flash('Ошибка: ' + e.message, true); }
+    }));
+}
+
+async function reportDeleteAgent(button) {
+    const row = button.closest('tr');
+    const name = row.querySelector('[data-field="name"]')?.value || 'агента';
+    if (!confirm(`Удалить условие «${name}»?\nУ пассажиров ссылка на него снимется, продажи и рейсы не тронутся.`)) return;
+    try { await reportApi('agent.delete', {id: +row.dataset.cid}); row.remove(); }
+    catch (e) { alert(e.message); }
+}
+
+async function reportDeleteStation(button) {
+    const row = button.closest('tr');
+    const name = row.querySelector('[data-field="name"]')?.value || 'автовокзал';
+    if (!confirm(`Удалить «${name}» из справочника?`)) return;
+    try { await reportApi('station.delete', {id: +row.dataset.sid}); row.remove(); }
+    catch (e) { alert(e.message); }
 }
 
 // Продажи автовокзалов на рейсе. Процент не вводится — он берётся из справочника,
