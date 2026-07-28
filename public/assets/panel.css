@@ -140,6 +140,9 @@ h1 svg, h2 svg, h3 svg { width: 19px; height: 19px; vertical-align: -3px; margin
     padding: 26px 30px 60px;
     max-width: 1240px;
 }
+/* Отчётность — широкие финансовые таблицы (пассажиры, свод за месяц): 1240px им мало,
+   правые колонки обрезались. Отдаём всю ширину экрана, остальные разделы не трогаем. */
+body[data-page="reporting"] .main { max-width: none; }
 .flash-top { margin-bottom: 18px; }
 
 /* ============================================================
@@ -878,7 +881,11 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 .report-passenger-table tr.row-noshow  { background: var(--warn-bg, #fff6e8); }
 .report-passenger-table tr.row-refund  { background: var(--err-bg, #fdeeee); }
 .report-passenger-table tr.row-refund td { opacity: .55; }
-.seat-input { max-width: 46px; text-align: center; }
+/* У полей в строке общий min-width:105px — он распирал узкие колонки (места и цены
+   по 56–96px), из-за чего таблица вылезала за экран и правые колонки обрезались. */
+.report-passenger-table .report-p-field { min-width: 0; }
+.report-passenger-table .money-input { min-width: 0; width: 100%; }
+.seat-input { min-width: 0; max-width: 44px; text-align: center; padding-left: 4px; padding-right: 4px; }
 .p-noshow { display: flex; gap: 8px; align-items: center; }
 .p-noshow select { font-size: 12px; max-width: 118px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
