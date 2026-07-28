@@ -884,6 +884,11 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 /* У полей в строке общий min-width:105px — он распирал узкие колонки (места и цены
    по 56–96px), из-за чего таблица вылезала за экран и правые колонки обрезались. */
 .report-passenger-table .report-p-field { min-width: 0; }
+/* Чекбокс — не текстовое поле: width:100% схлопывал его в точку, когда сняли min-width. */
+.report-passenger-table input[type="checkbox"].report-p-field {
+    width: 19px; height: 19px; min-width: 19px; flex: none; padding: 0; margin: 0;
+    accent-color: var(--brand); cursor: pointer;
+}
 .report-passenger-table .money-input { min-width: 0; width: 100%; }
 .seat-input { min-width: 0; max-width: 44px; text-align: center; padding-left: 4px; padding-right: 4px; }
 .p-noshow { display: flex; gap: 8px; align-items: center; }
