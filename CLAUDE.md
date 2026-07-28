@@ -17,9 +17,11 @@
 - Рабочая сессия на сервере: `/root/work.sh` (tmux `dev`). Можно подключаться с ноута и планшета — одна общая сессия.
 
 ## Каналы сообщений
-Единый реестр — `lib/Channels.php` (`configured` / `presence` / `sendText`). Наличие канала у номера и его chatId — через `CheckAccount`.
-- **WhatsApp** = Evolution API (инстанс `rabochiy_86ed8`), `lib/EvolutionApiClient.php`.
-- **MAX** и **Telegram** = Green API (разные инстансы), `lib/GreenApiClient.php`. Ключи `GREENAPI_*` (MAX) и `GREENAPI_TG_*` (Telegram).
+Единый реестр — `lib/Channels.php` (`configured` / `presence` / `sendText` / `primary`). Наличие канала у номера и его chatId — через `CheckAccount`; chatId кэшируется в `contacts.max_chat_id` / `telegram_chat_id`, чтобы не жечь лимит провайдера при отправке.
+- **Основной канал — MAX** (в России им пользуются, WhatsApp у нас выжжен по IP). Переключается в «Настройки → Основной канал» (`opt('primary_channel')`), от него считаются дефолтная галочка, порядок каналов и «запасные».
+- **WhatsApp / MAX / Telegram** = Green API (три разных инстанса), `lib/GreenApiClient.php`. Ключи `GREENAPI_WA_*` / `GREENAPI_*` (MAX) / `GREENAPI_TG_*`. Evolution (`lib/EvolutionApiClient.php`) остался запасным путём, но self-hosted на нашем IP датацентра получает мгновенные баны.
+- ⚠️ Для статусов доставки нужны ТРИ настройки инстанса: `outgoingMessageWebhook` + `outgoingAPIMessageWebhook` + **`outgoingWebhook`**. Без последней приходят только `failed`/`noAccount` (их отключить нельзя) — кажется, что вебхуки работают, а `delivered`/`read` нет.
+- ⚠️ Темп рассылки — серверная пауза Green API `delaySendMessagesMilliseconds` (Настройки → Темп рассылки, дефолт 15 сек). PHP-паузы не используем: панель шлёт «по факту», очередь провайдера растягивает.
 - **SMS** = SMS.RU (`lib/SmsRuClient.php`, ключ `SMSRU_API_ID`, сервисные сообщения).
 - **Email** = SMTP smtp.bz (`lib/SmtpMailer.php`).
 - Статусы доставки/прочтения и входящие приходят в `public/webhook.php` (Evolution) и `public/greenapi-webhook.php` (Green API) → таблицы `messages` / `inbox`.
@@ -34,6 +36,16 @@
 ## Грабли (проверены на практике)
 - Много частых SSH-сессий с паролем → **fail2ban** временно банит IP (симптом: `Connection closed by … port 22`, при этом сайт по HTTP жив). Спадает за ~10 мин.
 - **RAM** (VPS 4 ГБ): Twenty CRM (Docker, «для оценки») и утечка chromium у Gotenberg съедают память → панель тормозит. Лечится остановкой Twenty + `docker restart gotenberg-gotenberg-1`.
+
+## Отчётность по рейсам (финмодель)
+Ядро — `lib/ReportingCalculator.php` (чистая функция, `formula_version=2`), сервисный слой — `app/reporting_service.php`, API — `app/reporting_api.php`, экраны — `reporting.php` / `report_trip.php`.
+- **Ставки на ПЕРЕВОЗЧИКЕ** (`carriers.disp_rate` / `our_rate`), но базы РАЗНЫЕ: диспетчерские с **оборота** (ведомость + автовокзалы), комиссия Терры — только с **продаж Терры**. Это главная ловушка: легко посчитать 7% не с того.
+- **Матчинг агента:** ручной комментарий кассира (`pay_note`, из колонки `BIRTHPLACE_NAME`) **сильнее** автозаполненного поля «Агент/кассир» (`agent_raw`). Источник задаётся в `report_agent_contracts.match_src` (raw/comment/both). Артмарк собирает свои каналы по алиасам; Рус-Билет различается по месту.
+- **Неявки:** возврат → строки нет; без возврата → ведомость 0, доход = цена − комиссия агента; диспетчерские с неявок не берутся.
+- **Наличные** уменьшают долг перевозчику, но НЕ его доход. Сходимость: `доход = долги + наличные + удержанные неявки − прочие расходы` (не «долги = доход»!).
+- **Снимки** (`manifest_calculations`) морозят totals+debts+by_agent; сценарии = именованные снимки (`scenario_name`). Свод по месяцам считается из снимков, не пересчётом.
+- Тест: `php scripts/test_reporting_calc.php` — контрольные числа ТЗ + два зафиксированных фактических рейса. **Гонять после любой правки финмодели.**
+- ⚠️ Матчинг зависит от алиасов в справочнике агентов. Если они не совпадают с фактическими данными ведомостей — все продажи падают в «без агента», наши 15% не начисляются, прибыль = только диспетчерские. Проверка: `tools/reporting_agents_fix.php` (dry-run).
 
 ## Дорожная карта / аудит
 - `CODEX_RECOMMENDATIONS.md` и `docs/ux-audit/REPORT-2026-06-21.md` — независимый UX-аудит + предложения.
