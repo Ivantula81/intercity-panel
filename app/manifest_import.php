@@ -9,12 +9,16 @@ if (!function_exists('artmark_fetch_manifest')) {
     {
         $tripId = preg_replace('/\D+/', '', $tripId);
         if ($tripId === '') throw new RuntimeException('Укажите номер рейса.');
-        $base = '';
-        foreach (@file('/etc/panel.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
-            if (str_starts_with($line, 'ARTMARK_URL=')) { $base = substr($line, strlen('ARTMARK_URL=')); break; }
+        // Шаблон ссылки задаётся в «Отчётность → Настройки → Источник ведомостей» ({id} = номер рейса).
+        $tpl = function_exists('opt') ? trim((string) opt('artmark_url_template', '')) : '';
+        if ($tpl === '' || !str_contains($tpl, '{id}')) {
+            $base = '';
+            foreach (@file('/etc/panel.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+                if (str_starts_with($line, 'ARTMARK_URL=')) { $base = substr($line, strlen('ARTMARK_URL=')); break; }
+            }
+            $tpl = rtrim($base !== '' ? $base : 'http://213.226.126.81:8082', '/') . '//?S1=S3&Otch=1&csv=open&Id={id}';
         }
-        $base = $base !== '' ? $base : 'http://213.226.126.81:8082';
-        $url = rtrim($base, '/') . '//?S1=S3&Otch=1&csv=open&Id=' . $tripId;
+        $url = str_replace('{id}', rawurlencode($tripId), $tpl);
 
         $ch = curl_init($url);
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_CONNECTTIMEOUT => 10]);

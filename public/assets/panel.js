@@ -1942,6 +1942,25 @@ function reportDirBind() {
             flash('Сохранено ✓');
         } catch (e) { flash('Ошибка: ' + e.message, true); }
     }));
+    // перевозчики: диспетчерские % и наша комиссия % (базы у них разные — см. подпись в блоке)
+    document.querySelectorAll('.report-c-field').forEach(el => el.addEventListener('change', async () => {
+        const row = el.closest('tr');
+        try {
+            await reportApi('carrier.rates', {id: +row.dataset.carrier, field: el.dataset.field, value: el.value});
+            flash('Сохранено ✓');
+        } catch (e) { flash('Ошибка: ' + e.message, true); }
+    }));
+}
+
+// Шаблон ссылки на систему автовокзала ({id} = номер рейса)
+async function reportSaveSourceUrl() {
+    const input = $id('srcUrlInput'), state = $id('srcUrlState');
+    if (!input) return;
+    const show = (t, err) => { if (state) { state.textContent = t; state.style.color = err ? 'var(--err)' : 'var(--ok)'; } };
+    try {
+        await reportApi('source_url.save', {url: input.value});
+        show('Сохранено ✓');
+    } catch (e) { show(e.message, true); }
 }
 
 async function reportDeleteAgent(button) {

@@ -133,6 +133,23 @@ try {
             }
             json_out(['ok'=>true]);
 
+        // Ставки перевозчика. Базы РАЗНЫЕ: disp_rate с оборота (ведомость + вокзалы),
+        // our_rate только с продаж Терры — см. ReportingCalculator.
+        case 'carrier.rates':
+            $field = (string) ($body['field'] ?? '');
+            if (!in_array($field, ['disp_rate', 'our_rate'], true)) throw new RuntimeException('Поле недоступно для изменения.');
+            $rate = max(0, round((float) str_replace(',', '.', (string) ($body['value'] ?? 0)), 4));
+            db()->prepare("UPDATE carriers SET `$field`=? WHERE id=?")->execute([$rate, (int) ($body['id'] ?? 0)]);
+            json_out(['ok'=>true]);
+
+        // Шаблон ссылки на систему автовокзала: вместо номера рейса — {id}
+        case 'source_url.save':
+            $url = trim((string) ($body['url'] ?? ''));
+            if ($url !== '' && !str_contains($url, '{id}')) throw new RuntimeException('В ссылке должен быть {id} — вместо него подставится номер рейса.');
+            if ($url !== '' && !preg_match('~^https?://~i', $url)) throw new RuntimeException('Ссылка должна начинаться с http:// или https://');
+            opt_set('artmark_url_template', mb_substr($url, 0, 500));
+            json_out(['ok'=>true]);
+
         // ── Справочник автовокзалов: правка и удаление ──
         case 'station.update':
             $sid = (int) ($body['id'] ?? 0);

@@ -131,6 +131,35 @@ try {
 }
 $agentContracts = db()->query("SELECT c.*,a.name agent_name,a.aliases FROM report_agent_contracts c
     JOIN report_agents a ON a.id=c.agent_id ORDER BY a.name,c.id")->fetchAll();
+
+// Раздел «Отчётность» — три вкладки: рейсы, аналитика, настройки.
+$tab = in_array($_GET['tab'] ?? '', ['settings', 'analytics'], true) ? $_GET['tab'] : 'trips';
+
+if ($tab === 'settings') {
+    try {
+        $stations = db()->query('SELECT s.*, (SELECT COUNT(*) FROM manifest_station_sales ss WHERE ss.station_id=s.id) sales_count
+            FROM report_stations s ORDER BY s.name')->fetchAll();
+    } catch (Throwable $e) { $stations = []; }
+    try { $carriers = db()->query('SELECT * FROM carriers ORDER BY atp, id')->fetchAll(); }
+    catch (Throwable $e) { $carriers = []; }
+    view('layout', ['title'=>'Отчётность · Настройки','page'=>'reporting',
+        'content'=>fn()=>view('reporting_settings',[
+            'agentContracts'=>$agentContracts, 'stations'=>$stations, 'carriers'=>$carriers,
+            'sourceUrl'=>opt('artmark_url_template', 'http://213.226.126.81:8082//?S1=S3&Otch=1&csv=open&Id={id}'),
+            'reportingError'=>$reportingError ?? '', 'tab'=>$tab])]);
+    return;
+}
+
+if ($tab === 'analytics') {
+    require_once PANEL_ROOT . '/app/reporting_service.php';
+    $month = (string) ($_GET['month'] ?? date('Y-m'));
+    $summary = reporting_month_summary($month);
+    view('layout', ['title'=>'Отчётность · Аналитика','page'=>'reporting',
+        'content'=>fn()=>view('reporting_analytics',[
+            'month'=>$month, 'months'=>reporting_months(),
+            'rows'=>$summary['rows'], 'totals'=>$summary['totals'], 'tab'=>$tab])]);
+    return;
+}
 try {
     $stations = db()->query('SELECT s.*,
         (SELECT COUNT(*) FROM manifest_station_sales ss WHERE ss.station_id = s.id) sales_count
