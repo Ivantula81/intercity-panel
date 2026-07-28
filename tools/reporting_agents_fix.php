@@ -45,19 +45,11 @@ $upSrc = $db->prepare('UPDATE report_agent_contracts SET match_src = ? WHERE id 
 $changed = 0; $created = 0;
 
 foreach ($want as $w) {
-    $key = mb_strtolower($w['name']);
-    // ищем по имени или по пересечению алиасов (в проде имена чуть другие)
-    $found = $byName[$key] ?? null;
-    if (!$found) {
-        foreach ($existing as $row) {
-            foreach (explode('|', $w['alias']) as $al) {
-                $al = trim(mb_strtolower($al));
-                if ($al !== '' && mb_strlen($al) >= 4 && str_contains(mb_strtolower($row['name'] . ' ' . $row['aliases']), $al)) {
-                    $found = $row; break 2;
-                }
-            }
-        }
-    }
+    // Ищем ТОЛЬКО по точному имени. Поиск по пересечению алиасов пробовал — он опасен:
+    // запись «Автовокзал.ру» с алиасом «Автовокзал Толкачев» цеплялась и к Толкачеву,
+    // и к Артмарку, и её (со ставкой 5%) перезаписало бы дважды. Не угадываем: если
+    // имя не совпало — создаём новую запись, чужие не трогаем.
+    $found = $byName[mb_strtolower($w['name'])] ?? null;
 
     if ($found) {
         $needAlias = mb_strtolower(trim((string) $found['aliases'])) !== mb_strtolower($w['alias']);
