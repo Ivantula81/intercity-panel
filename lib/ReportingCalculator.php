@@ -165,6 +165,11 @@ final class ReportingCalculator
         foreach ($byAgent as &$a) {
             $a['sales'] = self::round2($a['sales']);
             $a['commission'] = self::round2($a['commission']);
+            $a['rate'] = self::num($agents[$a['agent_id']]['rate'] ?? 0);
+            // «К перечислению перевозчику» есть только у агентов ПЕРЕВОЗЧИКА: они собирают
+            // деньги сами. Продажи Терры перевозчику отдельно не перечисляются — они внутри
+            // общего долга Терры, поэтому net у них null.
+            $a['net'] = $a['side'] === 'carrier' ? self::round2($a['sales'] - $a['commission']) : null;
             if ($a['side'] === 'carrier') $carrierAgentCost += $a['commission']; else $ourAgentCost += $a['commission'];
         }
         unset($a);
@@ -229,11 +234,35 @@ final class ReportingCalculator
             'direct_dispatch_receivable' => 0.0,
         ];
 
+        // ── КТО ДОЛЖЕН ЗА РЕЙС (для отчёта перевозчику) ──
+        // Три источника: Терра (собрала свои продажи), агенты перевозчика и автовокзалы
+        // (собрали сами, деньги у них). СХОДИМОСТЬ не «долги = доход»: наличные перевозчик
+        // уже получил авансом, неявки по его продажам мы удержали, прочие расходы — его.
+        //   доход = долги + наличные + удержанные неявки − прочие расходы
+        $carrierAgentsNet = self::round2($carrierSales - $carrierAgentCost);
+        $debtsTotal = self::round2($toCarrier + $carrierAgentsNet + $stationsNet);
+        $reconciled = self::round2($debtsTotal + $cash + $noshowCarrier - $otherCosts);
+        $debts = [
+            'terra' => $toCarrier,                        // к перечислению от нас
+            'carrier_agents' => $carrierAgentsNet,        // продажи его агентов − их комиссии
+            'stations' => $stationsNet,                   // продажи вокзалов − их комиссии
+            'total' => $debtsTotal,
+            'cash_received' => $cash,                     // получено авансом на руки
+            'noshow_withheld' => self::round2($noshowCarrier), // удержано за неявки по его продажам
+            'other_costs' => $otherCosts,
+            'reconciled_to' => $reconciled,
+            'matches_carrier_earn' => abs($reconciled - $carrierEarn) < 0.01,
+        ];
+        $totals['carrier_agents_net'] = $carrierAgentsNet;
+        $totals['debts_total'] = $debtsTotal;
+        $totals['debts_reconciled'] = $debts['matches_carrier_earn'];
+
         return [
             'totals' => $totals,
             'passengers' => $rows,
             'by_agent' => array_values($byAgent),
             'station_sales' => $stationSales,
+            'debts' => $debts,
             'warnings' => array_values(array_unique($warnings)),
         ];
     }
