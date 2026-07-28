@@ -352,6 +352,39 @@ switch ($page) {
             'content' => fn() => view('contact', ['contact' => $contact, 'history' => $history, 'incoming' => $incoming])]);
         break;
 
+    // Свод по месяцу в CSV (BOM + «;» — чтобы Excel открывал без танцев)
+    case 'report_month_export':
+        require_once PANEL_ROOT . '/app/reporting_service.php';
+        $month = (string) ($_GET['month'] ?? date('Y-m'));
+        $sum = reporting_month_summary($month, (string) ($_GET['scenario'] ?? ''));
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="reys_' . $month . '.csv"');
+        $out = fopen('php://output', 'w');
+        fwrite($out, "\xEF\xBB\xBF");
+        fputcsv($out, ['Дата', 'Рейс', 'Маршрут', 'Перевозчик', 'Автобус', 'Расчёт',
+            'Пассажиров', 'Оборот', 'Ведомость', 'Автовокзалы', 'Наличные',
+            'Продажи Терры', 'Продажи перевозчика', 'Диспетчерские', 'Комиссия Терры',
+            'Комиссии агентов', 'Разница цен', 'Доход с неявок',
+            'Наша прибыль', 'Маржа, %', 'Доход перевозчика'], ';', '"', '\\');
+        foreach ($sum['rows'] as $r) {
+            fputcsv($out, [
+                $r['departure_at'] ? date('d.m.Y H:i', strtotime($r['departure_at'])) : '',
+                $r['trip_number'], $r['route'], $r['carrier'], $r['bus'], $r['scenario_name'],
+                $r['pax'], $r['turnover'], $r['manifest_total'], $r['stations_total'], $r['cash'],
+                $r['our_sales'], $r['carrier_sales'], $r['dispatch_fee'], $r['our_commission'],
+                $r['agent_commission'], $r['extra'], $r['noshow_income'],
+                $r['our_profit'], $r['margin'], $r['carrier_earn'],
+            ], ';', '"', '\\');
+        }
+        $t = $sum['totals'];
+        fputcsv($out, ['ИТОГО за ' . $month, $t['trips'] . ' рейсов', '', '', '', '',
+            $t['pax'], $t['turnover'], $t['manifest_total'], $t['stations_total'], $t['cash'],
+            $t['our_sales'], $t['carrier_sales'], $t['dispatch_fee'], $t['our_commission'],
+            $t['agent_commission'], $t['extra'], $t['noshow_income'],
+            $t['our_profit'], $t['margin'], $t['carrier_earn']], ';', '"', '\\');
+        fclose($out);
+        exit;
+
     case 'contacts_export':
         $rows = db()->query('SELECT phone, name, messages_count, trips_count, last_route, last_seen, tags, note FROM contacts ORDER BY name')->fetchAll();
         header('Content-Type: text/csv; charset=utf-8');

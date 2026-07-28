@@ -108,6 +108,14 @@ class ManifestParser
         );
     }
 
+    // Номер места: в ведомости приходит «Место 7», нужен «7» (для сортировки и печати).
+    // Если числа нет — оставляем как пришло (бывают пометки вроде «доп»).
+    private function seatNumber($value)
+    {
+        $value = trim((string) $value);
+        return preg_match('/(\d+)/', $value, $m) ? $m[1] : $value;
+    }
+
     // Время отправления РЕЙСА — от начальной точки маршрута, а не точки посадки первого пассажира.
     // Колонка «Время_отпр.» одинакова во всех строках (напр. «08:30(по графику) (факт)»), а
     // «Дата/время отправления» у каждого билета своё (время его остановки). Берём Дата_отпр. + Время_отпр.;
@@ -167,7 +175,7 @@ class ManifestParser
             $agentRaw = $this->first($record, array('Агент/кассир', 'Агент', 'Кассир'));
 
             $passengers[] = array(
-                'seat' => $this->first($record, array('Место')),
+                'seat' => $this->seatNumber($this->first($record, array('Место'))),
                 'name' => $name,
                 'phone' => $phone,
                 'phone_valid' => (bool) preg_match('/^\+\d{10,15}$/', $phone),

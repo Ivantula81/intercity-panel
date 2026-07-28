@@ -55,8 +55,20 @@ try {
 
         case 'snapshot.save':
             $manifestId = (int) ($body['manifest_id'] ?? 0);
-            $version = reporting_save_snapshot($manifestId);
-            json_out(['ok'=>true,'version'=>$version,'calculation'=>reporting_calculate_manifest($manifestId)]);
+            // scenario — имя расчёта: одну ведомость можно посчитать несколькими вариантами
+            $version = reporting_save_snapshot($manifestId, (string) ($body['scenario'] ?? 'Вариант 1'));
+            json_out(['ok'=>true,'version'=>$version,'scenarios'=>reporting_scenarios($manifestId),
+                'calculation'=>reporting_calculate_manifest($manifestId)]);
+
+        // Список сохранённых сценариев рейса (последняя версия каждого) — для переключения и сравнения
+        case 'snapshot.list':
+            json_out(['ok'=>true,'scenarios'=>reporting_scenarios((int) ($body['manifest_id'] ?? 0))]);
+
+        // Свод по месяцу: строка = рейс, считается по сохранённым снимкам
+        case 'month.summary':
+            $sum = reporting_month_summary((string) ($body['month'] ?? ''), (string) ($body['scenario'] ?? ''));
+            json_out(['ok'=>true,'month'=>$body['month'] ?? '','months'=>reporting_months(),
+                'rows'=>$sum['rows'],'totals'=>$sum['totals']]);
 
         case 'cash.add':
             $manifestId = (int) ($body['manifest_id'] ?? 0);
