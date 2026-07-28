@@ -81,17 +81,30 @@ $isFiles = $activeTab === 'files';
 
 <div class="card report-passengers">
     <div class="row report-card-head"><div><h2>Пассажиры <span class="badge muted" id="reportPassengerCount"><?= count($passengers) ?></span></h2><div class="small muted">Неизвестная явка считается предварительно как поездка. Перед финальным расчётом отметьте всех.</div></div><button class="btn sm" onclick="reportAddPassenger(<?= (int)$manifest['id'] ?>)"><?= icon('plus') ?> Добавить пассажира</button></div>
-    <div class="table-wrap"><table class="t report-passenger-table"><thead><tr><th>Явка</th><th>Возврат</th><th>Пассажир</th><th>Телефон</th><th>Откуда → куда</th><th>Агент / договор</th><th>Ведомость</th><th>Наша цена</th><th>Комментарий</th><th></th></tr></thead><tbody>
-    <?php foreach ($passengers as $p): ?><tr data-id="<?= (int)$p['id'] ?>">
-        <td><select class="report-p-field attendance-<?= e($p['attendance']) ?>" data-field="attendance"><option value="unknown" <?= $p['attendance']==='unknown'?'selected':'' ?>>Не отмечено</option><option value="present" <?= $p['attendance']==='present'?'selected':'' ?>>Явка</option><option value="absent" <?= $p['attendance']==='absent'?'selected':'' ?>>Неявка</option></select></td>
-        <td><label class="report-refund"><input type="checkbox" class="report-p-field" data-field="refund_status" value="completed" <?= $p['refund_status']==='completed'?'checked':'' ?>><span>Оформлен</span></label></td>
-        <td><input class="report-p-field" data-field="name" value="<?= e($p['name']) ?>"><input class="report-p-field small-input" data-field="birthdate" value="<?= e($p['birthdate']) ?>" placeholder="Дата рождения"></td>
+    <div class="table-wrap"><table class="t report-passenger-table"><thead><tr>
+        <th style="width:64px">Место</th><th style="width:132px">Статус</th><th>Пассажир</th><th style="width:150px">Телефон</th>
+        <th style="width:170px">Откуда → куда</th><th style="width:210px">Агент</th>
+        <th style="width:104px" class="ta-r">Ведомость</th><th style="width:104px" class="ta-r">Наша цена</th>
+        <th style="width:150px">Комментарий</th><th style="width:36px"></th>
+    </tr></thead><tbody>
+    <?php foreach ($passengers as $p):
+        // Возврат по модели исключает строку целиком, поэтому статус один, а не «явка + галочка возврата»
+        $status = $p['refund_status'] === 'completed' ? 'refund' : $p['attendance'];
+    ?><tr data-id="<?= (int)$p['id'] ?>" class="status-<?= e($status) ?>">
+        <td class="muted"><?= e($p['seat']) ?></td>
+        <td><select class="report-p-field p-status" data-field="status">
+            <option value="unknown" <?= $status==='unknown'?'selected':'' ?>>Не отмечен</option>
+            <option value="present" <?= $status==='present'?'selected':'' ?>>Ехал</option>
+            <option value="absent"  <?= $status==='absent' ?'selected':'' ?>>Не явился</option>
+            <option value="refund"  <?= $status==='refund' ?'selected':'' ?>>Возврат</option>
+        </select></td>
+        <td><input class="report-p-field" data-field="name" value="<?= e($p['name']) ?>"><?php if($p['birthdate']!==''):?><div class="small muted"><?= e($p['birthdate']) ?></div><?php endif;?></td>
         <td><input class="report-p-field" data-field="phone" value="<?= e($p['phone']) ?>"></td>
-        <td><input class="report-p-field" data-field="from_stop" value="<?= e($p['from_stop']) ?>"><input class="report-p-field small-input" data-field="to_stop" value="<?= e($p['to_stop']) ?>"></td>
-        <td><select class="report-p-field" data-field="agent_contract_id"><option value="">По умолчанию (15% + 7%)</option><?php foreach($contracts as $c):?><option value="<?= (int)$c['id'] ?>" <?= (int)$p['agent_contract_id']===(int)$c['id']?'selected':'' ?>><?= e($c['agent_name'].' · '.$c['title'].' · '.($c['settlement_side']==='ours'?'наш':'перевозчика')) ?></option><?php endforeach;?></select><input class="report-p-field small-input" data-field="agent_raw" value="<?= e($p['agent_raw']) ?>" placeholder="Значение из CSV"></td>
+        <td class="small muted"><?= e($p['from_stop']) ?><?php if($p['to_stop']!==''):?><div>→ <?= e($p['to_stop']) ?></div><?php endif;?></td>
+        <td><select class="report-p-field" data-field="agent_contract_id"><option value="">— не задан —</option><?php foreach($contracts as $c):?><option value="<?= (int)$c['id'] ?>" <?= (int)$p['agent_contract_id']===(int)$c['id']?'selected':'' ?>><?= e($c['agent_name'].' · '.($c['settlement_side']==='ours'?'наш':'перев.')) ?></option><?php endforeach;?></select><div class="small muted" title="Значение из ведомости"><?= e($p['agent_raw']) ?></div></td>
         <td><input type="number" step="0.01" class="report-p-field money-input" data-field="manifest_price" value="<?= e($p['manifest_price'] ?? $p['price']) ?>"></td>
-        <td><input type="number" step="0.01" class="report-p-field money-input" data-field="our_price" value="<?= e($p['our_price']) ?>" placeholder="= ведомость"></td>
-        <td><input class="report-p-field" data-field="finance_comment" value="<?= e($p['finance_comment']) ?>" placeholder="Комментарий"></td>
+        <td><input type="number" step="0.01" class="report-p-field money-input" data-field="our_price" value="<?= e($p['our_price']) ?>" placeholder="= вед."></td>
+        <td><input class="report-p-field" data-field="finance_comment" value="<?= e($p['finance_comment']) ?>" placeholder="—"></td>
         <td><button class="icon-btn" onclick="reportDeletePassenger(this)" title="Удалить"><?= icon('trash') ?></button></td>
     </tr><?php endforeach; ?>
     </tbody></table></div>

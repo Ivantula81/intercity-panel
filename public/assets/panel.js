@@ -1842,11 +1842,22 @@ function reportInit() {
     reportDirBind(); // справочники агентов и автовокзалов — правка на месте
     document.querySelectorAll('.report-p-field').forEach(el => el.addEventListener('change', async () => {
         const row = el.closest('tr[data-id]');
-        let value = el.type === 'checkbox' ? (el.checked ? 'completed' : 'none') : el.value;
+        const id = Number(row.dataset.id);
         reportSetState('Сохраняю…');
         try {
-            await reportApi('passenger.update', {id: Number(row.dataset.id), field: el.dataset.field, value});
-            if (el.dataset.field === 'attendance') el.className = 'report-p-field attendance-' + value;
+            if (el.dataset.field === 'status') {
+                // Один выпадающий «Статус» вместо «явка + галочка возврата»: возврат по модели
+                // исключает строку целиком, поэтому раскладываем его в два поля БД.
+                const v = el.value;
+                const attendance = v === 'refund' ? 'absent' : v;
+                const refund = v === 'refund' ? 'completed' : 'none';
+                await reportApi('passenger.update', {id, field: 'attendance', value: attendance});
+                await reportApi('passenger.update', {id, field: 'refund_status', value: refund});
+                row.className = 'status-' + v;
+            } else {
+                const value = el.type === 'checkbox' ? (el.checked ? 'completed' : 'none') : el.value;
+                await reportApi('passenger.update', {id, field: el.dataset.field, value});
+            }
             reportSetState('Все изменения сохранены');
             await reportRecalculate();
         } catch (e) { reportSetState(e.message, true); }
