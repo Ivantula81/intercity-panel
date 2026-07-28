@@ -1838,6 +1838,16 @@ async function reportRecalculate() {
     } catch (e) { reportSetState(e.message, true); }
 }
 
+// Цвет строки пассажира: возврат / неявка / чья продажа. Видно с одного взгляда.
+function reportRowClass(row) {
+    const noshow = row.querySelector('.p-noshow-cb')?.checked;
+    const refund = row.querySelector('.p-refund')?.value === 'completed';
+    const agent = row.querySelector('[data-field="agent_contract_id"]');
+    const side = agent?.selectedOptions[0]?.textContent.includes('перев.') ? 'carrier'
+        : (agent?.value ? 'ours' : 'none');
+    row.className = refund ? 'row-refund' : (noshow ? 'row-noshow' : 'row-' + side);
+}
+
 function reportInit() {
     reportDirBind(); // справочники агентов и автовокзалов — правка на месте
     document.querySelectorAll('.report-p-field').forEach(el => el.addEventListener('change', async () => {
@@ -1845,15 +1855,21 @@ function reportInit() {
         const id = Number(row.dataset.id);
         reportSetState('Сохраняю…');
         try {
-            if (el.dataset.field === 'status') {
-                // Один выпадающий «Статус» вместо «явка + галочка возврата»: возврат по модели
-                // исключает строку целиком, поэтому раскладываем его в два поля БД.
-                const v = el.value;
-                const attendance = v === 'refund' ? 'absent' : v;
-                const refund = v === 'refund' ? 'completed' : 'none';
-                await reportApi('passenger.update', {id, field: 'attendance', value: attendance});
-                await reportApi('passenger.update', {id, field: 'refund_status', value: refund});
-                row.className = 'status-' + v;
+            if (el.dataset.field === 'noshow') {
+                // «Неявка» и «что с билетом» — два разных решения: не явился это факт,
+                // вернули деньги или нет — отдельный вопрос, и считается по-разному.
+                const off = el.checked;
+                const refundSel = row.querySelector('.p-refund');
+                if (refundSel) refundSel.hidden = !off;
+                await reportApi('passenger.update', {id, field: 'attendance', value: off ? 'absent' : 'present'});
+                if (!off && refundSel) {           // сняли неявку — возврата тоже нет
+                    refundSel.value = 'none';
+                    await reportApi('passenger.update', {id, field: 'refund_status', value: 'none'});
+                }
+                reportRowClass(row);
+            } else if (el.dataset.field === 'refund_status') {
+                await reportApi('passenger.update', {id, field: 'refund_status', value: el.value});
+                reportRowClass(row);
             } else {
                 const value = el.type === 'checkbox' ? (el.checked ? 'completed' : 'none') : el.value;
                 await reportApi('passenger.update', {id, field: el.dataset.field, value});

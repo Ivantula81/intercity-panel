@@ -869,15 +869,19 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 .report-passenger-table td { vertical-align: middle; padding: 6px 5px; }
 .report-passenger-table th { padding-left: 5px; padding-right: 5px; }
 .report-passenger-table td .small { line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Статус строки: возврат и неявка видны сразу, без чтения выпадающего списка */
-.report-passenger-table tr.status-refund { background: var(--err-bg, #fdeeee); }
-.report-passenger-table tr.status-refund td { opacity: .6; }
-.report-passenger-table tr.status-absent { background: var(--warn-bg, #fff6e8); }
-select.p-status { font-weight: 650; }
-tr.status-present select.p-status { color: var(--ok); }
-tr.status-absent select.p-status { color: var(--warn); }
-tr.status-refund select.p-status { color: var(--err); }
-tr.status-unknown select.p-status { color: var(--muted); }
+/* Подсветка строки пассажира: чья продажа и что с билетом — видно сразу.
+   Левая цветная полоса — сторона расчёта, фон — проблемные состояния. */
+.report-passenger-table tr { border-left: 3px solid transparent; }
+.report-passenger-table tr.row-ours    { border-left-color: var(--ok, #1a9a54); }
+.report-passenger-table tr.row-carrier { border-left-color: var(--warn, #b8760a); background: #fffaf2; }
+.report-passenger-table tr.row-none    { border-left-color: var(--err, #d4443a); }
+.report-passenger-table tr.row-noshow  { background: var(--warn-bg, #fff6e8); }
+.report-passenger-table tr.row-refund  { background: var(--err-bg, #fdeeee); }
+.report-passenger-table tr.row-refund td { opacity: .55; }
+.seat-input { max-width: 46px; text-align: center; }
+.p-noshow { display: flex; gap: 8px; align-items: center; }
+.p-noshow select { font-size: 12px; max-width: 118px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .report-p-field { width: 100%; min-width: 105px; border: 1px solid transparent; border-radius: 7px; padding: 7px 8px; background: transparent; color: var(--ink); font: inherit; }
 .report-p-field:hover, .report-p-field:focus { border-color: var(--line); background: var(--surface); outline: none; }
 .report-p-field.small-input { margin-top: 3px; color: var(--muted); font-size: 11.5px; }

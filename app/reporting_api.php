@@ -11,8 +11,11 @@ try {
         case 'passenger.update':
             $id = (int) ($body['id'] ?? 0);
             $field = (string) ($body['field'] ?? '');
+            // pay_note — ТОТ САМЫЙ комментарий, что участвует в матчинге (колонка BIRTHPLACE_NAME
+            // из ведомости). Оператор вписывает сюда «Гоубас Ванюк» и этим назначает агента
+            // перевозчика — комментарий сильнее поля «Агент/кассир». Поэтому он редактируемый.
             $allowed = ['seat','name','phone','birthdate','from_stop','to_stop','agent_contract_id','attendance',
-                'refund_status','manifest_price','our_price','finance_comment','agent_raw'];
+                'refund_status','manifest_price','our_price','finance_comment','agent_raw','pay_note'];
             if (!in_array($field, $allowed, true)) throw new RuntimeException('Поле недоступно для изменения.');
             $value = $body['value'] ?? '';
             if ($field === 'attendance' && !in_array($value, ['unknown','present','absent'], true)) $value = 'unknown';
