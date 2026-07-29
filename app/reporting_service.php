@@ -15,13 +15,110 @@ function reporting_detach(int $manifestId): void
     catch (Throwable $e) { /* до применения schema21 */ }
 }
 
-function reporting_contracts(): array
+// ── СЦЕНАРИИ РАСЧЁТА ────────────────────────────────────────────────────────
+// Сценарий = набор настроек (перевозчики со ставками, агенты, автовокзалы).
+// Факты рейса общие: переключил сценарий — те же пассажиры пересчитались иначе.
+
+function reporting_scenario_list(): array
 {
-    $rows = db()->query("SELECT c.*, a.name agent_name FROM report_agent_contracts c
-        JOIN report_agents a ON a.id=c.agent_id WHERE c.active=1 AND a.active=1 ORDER BY a.name,c.title,c.id")->fetchAll();
+    try { return db()->query('SELECT * FROM report_scenarios ORDER BY sort, id')->fetchAll(); }
+    catch (Throwable $e) { return []; }
+}
+
+// Сценарий по умолчанию (первый). Используется, когда у рейса свой не выбран.
+function reporting_default_scenario_id(): int
+{
+    try { return (int) db()->query('SELECT MIN(id) FROM report_scenarios')->fetchColumn(); }
+    catch (Throwable $e) { return 0; }
+}
+
+// Каким сценарием считается рейс.
+function reporting_scenario_for(int $manifestId): int
+{
+    try {
+        $st = db()->prepare('SELECT report_scenario_id FROM manifests WHERE id=?');
+        $st->execute([$manifestId]);
+        $sid = (int) $st->fetchColumn();
+        if ($sid) return $sid;
+    } catch (Throwable $e) {}
+    return reporting_default_scenario_id();
+}
+
+function reporting_set_scenario(int $manifestId, int $scenarioId): void
+{
+    db()->prepare('UPDATE manifests SET report_scenario_id=? WHERE id=?')->execute([$scenarioId ?: null, $manifestId]);
+}
+
+// Копия активного сценария. origin_id договоров ПЕРЕНОСИТСЯ — иначе назначения агентов
+// в строках пассажиров слетят (в JS-прототипе id сохранялись при deep-clone).
+function reporting_scenario_copy(int $sourceId, string $name = ''): int
+{
+    $db = db();
+    $src = $db->prepare('SELECT * FROM report_scenarios WHERE id=?');
+    $src->execute([$sourceId]);
+    $row = $src->fetch();
+    if (!$row) throw new RuntimeException('Сценарий не найден.');
+    $n = (int) $db->query('SELECT COUNT(*) FROM report_scenarios')->fetchColumn();
+    $name = mb_substr(trim($name), 0, 64) ?: 'Вариант ' . ($n + 1);
+
+    $db->prepare('INSERT INTO report_scenarios (name, sort) VALUES (?,?)')->execute([$name, $n]);
+    $newId = (int) $db->lastInsertId();
+
+    // перевозчики со ставками
+    $db->prepare('INSERT INTO report_scenario_carriers (scenario_id, name, disp_rate, our_rate)
+        SELECT ?, name, disp_rate, our_rate FROM report_scenario_carriers WHERE scenario_id=?')
+        ->execute([$newId, $sourceId]);
+    // договоры агентов: origin_id переносим как есть — по нему находится «тот же» агент
+    $db->prepare('INSERT INTO report_agent_contracts
+        (agent_id,title,settlement_side,carrier,agent_commission_rate,agent_commission_basis,
+         commercial_rate,dispatch_rate,dispatch_settlement,match_src,active,scenario_id,origin_id)
+        SELECT agent_id,title,settlement_side,carrier,agent_commission_rate,agent_commission_basis,
+               commercial_rate,dispatch_rate,dispatch_settlement,match_src,active,?,COALESCE(origin_id,id)
+          FROM report_agent_contracts WHERE scenario_id=?')->execute([$newId, $sourceId]);
+    // автовокзалы
+    $db->prepare('INSERT INTO report_stations (name, rate, note, active, scenario_id)
+        SELECT name, rate, note, active, ? FROM report_stations WHERE scenario_id=?')
+        ->execute([$newId, $sourceId]);
+    return $newId;
+}
+
+// Договоры агентов активного сценария. Ключ массива — id договора В ЭТОМ сценарии,
+// плюс отдаём origin_id, чтобы расчёт умел находить «того же» агента в другом сценарии.
+function reporting_contracts(?int $scenarioId = null): array
+{
+    $scenarioId = $scenarioId ?: reporting_default_scenario_id();
+    try {
+        $st = db()->prepare("SELECT c.*, a.name agent_name FROM report_agent_contracts c
+            JOIN report_agents a ON a.id=c.agent_id
+            WHERE c.active=1 AND a.active=1 AND (c.scenario_id = ? OR (c.scenario_id IS NULL AND ? = 0))
+            ORDER BY a.name,c.title,c.id");
+        $st->execute([$scenarioId, $scenarioId]);
+        $rows = $st->fetchAll();
+    } catch (Throwable $e) { // до применения schema22
+        $rows = db()->query("SELECT c.*, a.name agent_name FROM report_agent_contracts c
+            JOIN report_agents a ON a.id=c.agent_id WHERE c.active=1 AND a.active=1 ORDER BY a.name,c.title,c.id")->fetchAll();
+    }
     $result = [];
     foreach ($rows as $row) $result[(int) $row['id']] = $row;
     return $result;
+}
+
+// Назначение агента переносится между сценариями по origin_id: пассажир хранит id
+// договора, а в активном сценарии берём договор с тем же «предком».
+function reporting_map_assignment(?int $assignedId, array $contracts): int
+{
+    $assignedId = (int) $assignedId;
+    if (!$assignedId || isset($contracts[$assignedId])) return $assignedId;
+    try {
+        $st = db()->prepare('SELECT COALESCE(origin_id, id) FROM report_agent_contracts WHERE id=?');
+        $st->execute([$assignedId]);
+        $origin = (int) $st->fetchColumn();
+    } catch (Throwable $e) { return 0; }
+    if (!$origin) return 0;
+    foreach ($contracts as $id => $c) {
+        if ((int) ($c['origin_id'] ?? $id) === $origin) return (int) $id;
+    }
+    return 0;
 }
 
 // Продажи автовокзалов на рейс. Процент берётся ИЗ СПРАВОЧНИКА (не с строки продажи):
@@ -38,13 +135,41 @@ function reporting_station_sales(int $manifestId): array
     } catch (Throwable $e) { return []; } // до применения schema19
 }
 
+// Автовокзалы активного сценария (для выбора при вводе продаж).
+function reporting_stations(?int $scenarioId = null): array
+{
+    $scenarioId = $scenarioId ?: reporting_default_scenario_id();
+    try {
+        $st = db()->prepare('SELECT s.*, (SELECT COUNT(*) FROM manifest_station_sales ss WHERE ss.station_id=s.id) sales_count
+            FROM report_stations s WHERE (s.scenario_id = ? OR (s.scenario_id IS NULL AND ? = 0)) ORDER BY s.name');
+        $st->execute([$scenarioId, $scenarioId]);
+        return $st->fetchAll();
+    } catch (Throwable $e) {
+        try {
+            return db()->query('SELECT s.*, (SELECT COUNT(*) FROM manifest_station_sales ss WHERE ss.station_id=s.id) sales_count
+                FROM report_stations s ORDER BY s.name')->fetchAll();
+        } catch (Throwable $e2) { return []; }
+    }
+}
+
 // Ставки перевозчика рейса: диспетчерские с ОБОРОТА и комиссия Терры с НАШИХ продаж.
 // Базы разные — см. ReportingCalculator. Перевозчик в ведомости хранится строкой (ATP).
-function reporting_carrier_rates(?string $carrierName): array
+// Ставки перевозчика берём ИЗ АКТИВНОГО СЦЕНАРИЯ (там свой набор), с откатом на общую
+// таблицу carriers, пока schema22 не применена.
+function reporting_carrier_rates(?string $carrierName, ?int $scenarioId = null): array
 {
     $rates = ['disp_rate' => ReportingCalculator::DEFAULT_DISP_RATE, 'our_rate' => ReportingCalculator::DEFAULT_OUR_RATE];
     $name = trim((string) $carrierName);
     if ($name === '') return $rates;
+    $scenarioId = $scenarioId ?: reporting_default_scenario_id();
+    try {
+        $st = db()->prepare('SELECT disp_rate, our_rate FROM report_scenario_carriers
+            WHERE scenario_id = ? AND name = ? LIMIT 1');
+        $st->execute([$scenarioId, $name]);
+        if ($row = $st->fetch()) {
+            return ['disp_rate' => (float) $row['disp_rate'], 'our_rate' => (float) $row['our_rate']];
+        }
+    } catch (Throwable $e) { /* schema22 ещё не применена */ }
     try {
         $st = db()->prepare('SELECT disp_rate, our_rate FROM carriers WHERE atp = ? LIMIT 1');
         $st->execute([$name]);
@@ -66,7 +191,16 @@ function reporting_calculate_manifest(int $manifestId): array
     $mSt->execute([$manifestId]);
     $manifest = $mSt->fetch() ?: [];
 
-    $opts = reporting_carrier_rates($manifest['carrier'] ?? '');
+    // Активный сценарий рейса: его ставки, его агенты, его вокзалы.
+    $scenarioId = reporting_scenario_for($manifestId);
+    $contracts = reporting_contracts($scenarioId);
+    // Назначение агента могло быть сделано в другом сценарии — переносим по origin_id.
+    foreach ($passengers as &$p) {
+        $p['agent_contract_id'] = reporting_map_assignment($p['agent_contract_id'] ?? null, $contracts) ?: null;
+    }
+    unset($p);
+
+    $opts = reporting_carrier_rates($manifest['carrier'] ?? '', $scenarioId);
     $opts['other_costs'] = (float) ($manifest['other_costs'] ?? 0);
     // Наличные — форма оплаты продаж Терры: уменьшают долг перевозчику, но не его доход.
     $cSt = db()->prepare('SELECT COALESCE(SUM(amount),0) FROM manifest_cash_entries WHERE manifest_id=?');
@@ -78,7 +212,7 @@ function reporting_calculate_manifest(int $manifestId): array
         'amount' => (float) $s['amount'], 'rate' => (float) $s['rate'],
     ], reporting_station_sales($manifestId));
 
-    return ReportingCalculator::calculate($passengers, reporting_contracts(), $opts);
+    return ReportingCalculator::calculate($passengers, $contracts, $opts);
 }
 
 function reporting_match_imported_agents(int $manifestId): void

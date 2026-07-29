@@ -91,10 +91,10 @@ switch ($page) {
         $vs = db()->prepare('SELECT version,created_at,actor FROM manifest_calculations WHERE manifest_id=? ORDER BY version DESC LIMIT 1');
         $vs->execute([$manifest['id']]);
         $lastCalculation = $vs->fetch();
-        // Автовокзалы: справочник для выбора + уже внесённые продажи этого рейса
-        try {
-            $stationList = db()->query('SELECT id, name, rate FROM report_stations WHERE active=1 ORDER BY name')->fetchAll();
-        } catch (Throwable $e) { $stationList = []; }
+        // Автовокзалы и агенты — из СЦЕНАРИЯ, которым считается этот рейс
+        $tripScenarioId = reporting_scenario_for((int) $manifest['id']);
+        $scenarioList = reporting_scenario_list();
+        $stationList = array_values(array_filter(reporting_stations($tripScenarioId), fn($s) => (int) $s['active']));
         $stationSales = reporting_station_sales((int) $manifest['id']);
         // Автоматически НЕ считаем (требование владельца): расчёт запускается кнопкой.
         // Показываем последний сохранённый снимок, если он есть, иначе пустую заготовку.
@@ -110,9 +110,10 @@ switch ($page) {
         }
         view('layout', ['title'=>'Отчёт по рейсу №'.$manifest['trip_number'],'page'=>'reporting',
             'content'=>fn()=>view('report_trip',['manifest'=>$manifest,'passengers'=>$passengers,
-                'contracts'=>reporting_contracts(),'files'=>$files,'cashEntries'=>$cashEntries,
+                'contracts'=>reporting_contracts($tripScenarioId),'files'=>$files,'cashEntries'=>$cashEntries,
                 'calculation'=>$calc,
                 'stationList'=>$stationList,'stationSales'=>$stationSales,
+                'scenarioList'=>$scenarioList,'tripScenarioId'=>$tripScenarioId,
                 'lastCalculation'=>$lastCalculation,'activeTab'=>$_GET['tab'] ?? 'calculation'])]);
         break;
 

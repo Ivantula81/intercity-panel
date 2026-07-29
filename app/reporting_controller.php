@@ -77,18 +77,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $agentSt->execute([$agentName]);
             $agentId = (int) $agentSt->fetchColumn();
             $side = ($_POST['settlement_side'] ?? '') === 'carrier' ? 'carrier' : 'ours';
+            $scId = (int) ($_POST['scenario_id'] ?? 0) ?: reporting_default_scenario_id();
             db()->prepare('INSERT INTO report_agent_contracts
-                (agent_id,title,settlement_side,carrier,agent_commission_rate,commercial_rate,dispatch_rate,dispatch_settlement)
-                VALUES (?,?,?,?,?,?,?,?)')->execute([
+                (agent_id,title,settlement_side,carrier,agent_commission_rate,commercial_rate,dispatch_rate,dispatch_settlement,scenario_id)
+                VALUES (?,?,?,?,?,?,?,?,?)')->execute([
                     $agentId,mb_substr(trim((string) ($_POST['contract_title'] ?? 'Основной договор')),0,255),$side,
                     mb_substr(trim((string) ($_POST['carrier'] ?? '')),0,255),
                     max(0,(float) str_replace(',','.',(string) ($_POST['agent_commission_rate'] ?? 0))),
                     $side === 'ours' ? max(0,(float) str_replace(',','.',(string) ($_POST['commercial_rate'] ?? 15))) : 0,
                     max(0,(float) str_replace(',','.',(string) ($_POST['dispatch_rate'] ?? 7))),
                     ($_POST['dispatch_settlement'] ?? '') === 'receivable' ? 'receivable' : 'offset',
+                    $scId,
                 ]);
+            // origin_id = собственный id: по нему назначение агента переносится между сценариями
+            $newCid = (int) db()->lastInsertId();
+            db()->prepare('UPDATE report_agent_contracts SET origin_id=? WHERE id=? AND origin_id IS NULL')->execute([$newCid, $newCid]);
             flash('Агент и условия договора сохранены.');
-            header('Location: /?p=reporting#agents');
+            header('Location: /?p=reporting&tab=settings&scenario=' . $scId);
             exit;
         }
         // Автовокзалы: продают напрямую перевозчику, в ведомость не попадают.
@@ -99,18 +104,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($name === '') throw new RuntimeException('Укажите название автовокзала.');
             $rate = max(0, (float) str_replace(',', '.', (string) ($_POST['station_rate'] ?? 0)));
             $note = mb_substr(trim((string) ($_POST['station_note'] ?? '')), 0, 255);
-            db()->prepare('INSERT INTO report_stations (name, rate, note) VALUES (?,?,?)
+            $scId = (int) ($_POST['scenario_id'] ?? 0) ?: reporting_default_scenario_id();
+            db()->prepare('INSERT INTO report_stations (name, rate, note, scenario_id) VALUES (?,?,?,?)
                 ON DUPLICATE KEY UPDATE rate = VALUES(rate), note = VALUES(note), active = 1')
-                ->execute([$name, $rate, $note]);
+                ->execute([$name, $rate, $note, $scId]);
             flash('Автовокзал сохранён: ' . $name . ' — ' . rtrim(rtrim(number_format($rate, 2, '.', ''), '0'), '.') . '%');
-            header('Location: /?p=reporting#stations');
+            header('Location: /?p=reporting&tab=settings&scenario=' . ($scId ?? reporting_default_scenario_id()));
             exit;
         }
         if ($action === 'toggle_station') {
             // Не удаляем: на прошлых рейсах могут быть его продажи. Просто убираем из выбора.
             db()->prepare('UPDATE report_stations SET active = 1 - active WHERE id = ?')
                 ->execute([(int) ($_POST['station_id'] ?? 0)]);
-            header('Location: /?p=reporting#stations');
+            header('Location: /?p=reporting&tab=settings&scenario=' . ($scId ?? reporting_default_scenario_id()));
             exit;
         }
     } catch (Throwable $e) {
@@ -136,15 +142,20 @@ $agentContracts = db()->query("SELECT c.*,a.name agent_name,a.aliases FROM repor
 $tab = in_array($_GET['tab'] ?? '', ['settings', 'analytics'], true) ? $_GET['tab'] : 'trips';
 
 if ($tab === 'settings') {
+    // Настройки относятся к ВЫБРАННОМУ сценарию — у каждого свой набор справочников.
+    $scenarios = reporting_scenario_list();
+    $scenarioId = (int) ($_GET['scenario'] ?? 0) ?: reporting_default_scenario_id();
+    $stations = reporting_stations($scenarioId);
+    $agentContracts = array_values(reporting_contracts($scenarioId));
     try {
-        $stations = db()->query('SELECT s.*, (SELECT COUNT(*) FROM manifest_station_sales ss WHERE ss.station_id=s.id) sales_count
-            FROM report_stations s ORDER BY s.name')->fetchAll();
-    } catch (Throwable $e) { $stations = []; }
-    try { $carriers = db()->query('SELECT * FROM carriers ORDER BY atp, id')->fetchAll(); }
-    catch (Throwable $e) { $carriers = []; }
+        $st = db()->prepare('SELECT * FROM report_scenario_carriers WHERE scenario_id=? ORDER BY name, id');
+        $st->execute([$scenarioId]);
+        $carriers = $st->fetchAll();
+    } catch (Throwable $e) { $carriers = []; }
     view('layout', ['title'=>'Отчётность · Настройки','page'=>'reporting',
         'content'=>fn()=>view('reporting_settings',[
             'agentContracts'=>$agentContracts, 'stations'=>$stations, 'carriers'=>$carriers,
+            'scenarios'=>$scenarios, 'scenarioId'=>$scenarioId,
             'sourceUrl'=>opt('artmark_url_template', 'http://213.226.126.81:8082//?S1=S3&Otch=1&csv=open&Id={id}'),
             'reportingError'=>$reportingError ?? '', 'tab'=>$tab])]);
     return;

@@ -133,6 +133,52 @@ try {
             }
             json_out(['ok'=>true]);
 
+        // ── Сценарии расчёта: наборы настроек (перевозчики, агенты, вокзалы) ──
+        case 'scenario.create':   // копия активного: origin_id договоров переносится,
+                                  // поэтому назначения агентов в строках не слетают
+            $newId = reporting_scenario_copy((int) ($body['from'] ?? reporting_default_scenario_id()),
+                (string) ($body['name'] ?? ''));
+            json_out(['ok'=>true,'id'=>$newId,'scenarios'=>reporting_scenario_list()]);
+
+        case 'scenario.rename':
+            $name = mb_substr(trim((string) ($body['name'] ?? '')), 0, 64);
+            if ($name === '') throw new RuntimeException('Название сценария не может быть пустым.');
+            db()->prepare('UPDATE report_scenarios SET name=? WHERE id=?')->execute([$name, (int) ($body['id'] ?? 0)]);
+            json_out(['ok'=>true]);
+
+        case 'scenario.delete':
+            $sid = (int) ($body['id'] ?? 0);
+            if (count(reporting_scenario_list()) < 2) throw new RuntimeException('Нельзя удалить единственный сценарий.');
+            $used = db()->prepare('SELECT COUNT(*) FROM manifests WHERE report_scenario_id=?');
+            $used->execute([$sid]);
+            if ((int) $used->fetchColumn()) throw new RuntimeException('По этому сценарию считаются рейсы — сначала переключите их на другой.');
+            db()->prepare('DELETE FROM report_agent_contracts WHERE scenario_id=?')->execute([$sid]);
+            db()->prepare('DELETE FROM report_stations WHERE scenario_id=?')->execute([$sid]);
+            db()->prepare('DELETE FROM report_scenario_carriers WHERE scenario_id=?')->execute([$sid]);
+            db()->prepare('DELETE FROM report_scenarios WHERE id=?')->execute([$sid]);
+            json_out(['ok'=>true,'scenarios'=>reporting_scenario_list()]);
+
+        case 'scenario.apply':    // каким сценарием считать конкретный рейс
+            reporting_set_scenario((int) ($body['manifest_id'] ?? 0), (int) ($body['scenario_id'] ?? 0));
+            json_out(['ok'=>true,'calculation'=>reporting_calculate_manifest((int) ($body['manifest_id'] ?? 0))]);
+
+        // Ставки перевозчика в СЦЕНАРИИ (в общей таблице carriers их не трогаем —
+        // она используется документами и справочниками).
+        case 'scenario_carrier.save':
+            $sid = (int) ($body['scenario_id'] ?? reporting_default_scenario_id());
+            $name = mb_substr(trim((string) ($body['name'] ?? '')), 0, 255);
+            if ($name === '') throw new RuntimeException('Укажите перевозчика.');
+            $disp = max(0, round((float) str_replace(',', '.', (string) ($body['disp_rate'] ?? 7)), 4));
+            $our  = max(0, round((float) str_replace(',', '.', (string) ($body['our_rate'] ?? 15)), 4));
+            $id = (int) ($body['id'] ?? 0);
+            if ($id) db()->prepare('UPDATE report_scenario_carriers SET name=?, disp_rate=?, our_rate=? WHERE id=?')->execute([$name,$disp,$our,$id]);
+            else db()->prepare('INSERT INTO report_scenario_carriers (scenario_id,name,disp_rate,our_rate) VALUES (?,?,?,?)')->execute([$sid,$name,$disp,$our]);
+            json_out(['ok'=>true]);
+
+        case 'scenario_carrier.delete':
+            db()->prepare('DELETE FROM report_scenario_carriers WHERE id=?')->execute([(int) ($body['id'] ?? 0)]);
+            json_out(['ok'=>true]);
+
         // Ставки перевозчика. Базы РАЗНЫЕ: disp_rate с оборота (ведомость + вокзалы),
         // our_rate только с продаж Терры — см. ReportingCalculator.
         case 'carrier.rates':

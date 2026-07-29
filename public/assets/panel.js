@@ -1942,14 +1942,68 @@ function reportDirBind() {
             flash('Сохранено ✓');
         } catch (e) { flash('Ошибка: ' + e.message, true); }
     }));
-    // перевозчики: диспетчерские % и наша комиссия % (базы у них разные — см. подпись в блоке)
+    // перевозчики сценария: имя + диспетчерские % + наша комиссия % (базы разные — см. подпись)
     document.querySelectorAll('.report-c-field').forEach(el => el.addEventListener('change', async () => {
         const row = el.closest('tr');
+        const val = f => row.querySelector(`[data-field="${f}"]`)?.value ?? '';
         try {
-            await reportApi('carrier.rates', {id: +row.dataset.carrier, field: el.dataset.field, value: el.value});
+            await reportApi('scenario_carrier.save', {id: +row.dataset.carrier,
+                name: val('name'), disp_rate: val('disp_rate'), our_rate: val('our_rate')});
             flash('Сохранено ✓');
         } catch (e) { flash('Ошибка: ' + e.message, true); }
     }));
+    // переименование сценария
+    document.querySelectorAll('.report-sc-field').forEach(el => el.addEventListener('change', async () => {
+        const row = el.closest('tr');
+        try {
+            await reportApi('scenario.rename', {id: +row.dataset.scid, name: el.value});
+            flash('Сохранено ✓');
+        } catch (e) { flash('Ошибка: ' + e.message, true); }
+    }));
+}
+
+// Новый сценарий = копия текущего. Назначения агентов в строках рейсов сохраняются:
+// на сервере переносится origin_id договоров.
+async function reportCopyScenario(fromId) {
+    const name = prompt('Название нового сценария (копия текущего):', '');
+    if (name === null) return;
+    try {
+        const r = await reportApi('scenario.create', {from: fromId, name});
+        location = '/?p=reporting&tab=settings&scenario=' + r.id;
+    } catch (e) { alert(e.message); }
+}
+
+async function reportDeleteScenario(button) {
+    const row = button.closest('tr');
+    const name = row.querySelector('[data-field="name"]')?.value || 'сценарий';
+    if (!confirm(`Удалить сценарий «${name}» вместе с его агентами, вокзалами и ставками?\nРейсы и пассажиры не пострадают.`)) return;
+    try { await reportApi('scenario.delete', {id: +row.dataset.scid}); location = '/?p=reporting&tab=settings'; }
+    catch (e) { alert(e.message); }
+}
+
+// Переключить сценарий рейса: те же пассажиры пересчитаются по другим ставкам
+async function reportApplyScenario(manifestId, scenarioId) {
+    try {
+        await reportApi('scenario.apply', {manifest_id: manifestId, scenario_id: +scenarioId});
+        location = '/?p=report_trip&id=' + manifestId + '&calc=1';
+    } catch (e) { alert(e.message); }
+}
+
+async function reportAddCarrier(scenarioId) {
+    const name = $id('newCarrierName')?.value.trim();
+    if (!name) { alert('Укажите перевозчика.'); return; }
+    try {
+        await reportApi('scenario_carrier.save', {scenario_id: scenarioId, name,
+            disp_rate: $id('newCarrierDisp')?.value, our_rate: $id('newCarrierOur')?.value});
+        location.reload();
+    } catch (e) { alert(e.message); }
+}
+
+async function reportDeleteCarrier(button) {
+    const row = button.closest('tr');
+    if (!confirm('Удалить перевозчика из этого сценария?')) return;
+    try { await reportApi('scenario_carrier.delete', {id: +row.dataset.carrier}); row.remove(); }
+    catch (e) { alert(e.message); }
 }
 
 // Шаблон ссылки на систему автовокзала ({id} = номер рейса)

@@ -1,5 +1,5 @@
 <?php
-/** @var array $agentContracts @var array $stations @var array $carriers @var string $sourceUrl @var string $tab */
+/** @var array $agentContracts @var array $stations @var array $carriers @var array $scenarios @var int $scenarioId @var string $sourceUrl @var string $tab */
 $pc = static fn($v) => rtrim(rtrim(number_format((float) $v, 2, '.', ''), '0'), '.');
 $ours = array_values(array_filter($agentContracts, fn($c) => $c['settlement_side'] === 'ours'));
 $carrierAgents = array_values(array_filter($agentContracts, fn($c) => $c['settlement_side'] === 'carrier'));
@@ -46,27 +46,48 @@ $agentRow = static function (array $c): void {
     <div class="small muted mt" id="srcUrlState"></div>
 </div>
 
-<div class="card">
+<div class="card" id="scenarios">
     <h2>Сценарии расчёта</h2>
-    <p class="muted small">Одну ведомость можно посчитать по-разному: свой набор перевозчиков, агентов и процентов.
-    Сейчас набор <b>один</b> — все настройки ниже относятся к нему. Переключение и копирование сценариев — следующий шаг.</p>
+    <p class="muted small">Одну ведомость можно посчитать по-разному: у каждого сценария <b>свой</b> набор перевозчиков,
+    агентов и процентов. Все настройки ниже относятся к <b>выбранному</b> сценарию. Новый создаётся копией текущего —
+    назначения агентов в строках рейсов при этом сохраняются.</p>
+    <div class="table-wrap mt"><table class="t"><thead><tr><th style="width:40px"></th><th>Название</th><th>Агентов</th><th>Вокзалов</th><th style="width:34px"></th></tr></thead><tbody>
+    <?php foreach ($scenarios as $sc): $isCur = (int)$sc['id'] === $scenarioId; ?>
+        <tr data-scid="<?= (int)$sc['id'] ?>"<?= $isCur ? ' style="background:var(--brand-50)"' : '' ?>>
+            <td><?php if ($isCur): ?><span class="badge ok">текущий</span><?php else: ?><a class="btn ghost sm" href="/?p=reporting&tab=settings&scenario=<?= (int)$sc['id'] ?>">Выбрать</a><?php endif; ?></td>
+            <td><input class="report-sc-field" data-field="name" value="<?= e($sc['name']) ?>"></td>
+            <td class="muted"><?= (int) db()->query('SELECT COUNT(*) FROM report_agent_contracts WHERE scenario_id='.(int)$sc['id'])->fetchColumn() ?></td>
+            <td class="muted"><?= (int) db()->query('SELECT COUNT(*) FROM report_stations WHERE scenario_id='.(int)$sc['id'])->fetchColumn() ?></td>
+            <td><?php if (count($scenarios) > 1): ?><button class="icon-btn" onclick="reportDeleteScenario(this)" title="Удалить сценарий">×</button><?php endif; ?></td>
+        </tr>
+    <?php endforeach; ?>
+    <?php if (!$scenarios): ?><tr><td colspan="5" class="muted">Сценариев нет — применена ли schema22?</td></tr><?php endif; ?>
+    </tbody></table></div>
+    <button class="btn ghost sm mt" onclick="reportCopyScenario(<?= $scenarioId ?>)">+ Новый сценарий (копия текущего)</button>
 </div>
 
 <div class="card">
     <h2>Перевозчики</h2>
     <p class="muted small">Ставки живут на перевозчике, но базы у них <b>разные</b>: диспетчерские берутся
-    со всего <b>оборота рейса</b> (ведомость + автовокзалы), а наша комиссия — только с <b>продаж Терры</b>.</p>
-    <div class="table-wrap mt"><table class="t"><thead><tr><th>Перевозчик</th><th class="ta-r">Диспетчерские, %</th><th class="ta-r">Наша комиссия, %</th></tr></thead><tbody>
+    со всего <b>оборота рейса</b> (ведомость + автовокзалы), а наша комиссия — только с <b>продаж Терры</b>.
+    Имя должно совпадать с полем ATP из ведомости.</p>
+    <div class="table-wrap mt"><table class="t"><thead><tr><th>Перевозчик</th><th class="ta-r">Диспетчерские, %</th><th class="ta-r">Наша комиссия, %</th><th style="width:34px"></th></tr></thead><tbody>
     <?php foreach ($carriers as $c): ?>
         <tr data-carrier="<?= (int)$c['id'] ?>">
-            <td><?= e($c['atp'] ?: '— без названия —') ?></td>
-            <td class="ta-r"><input type="number" step="0.01" min="0" class="report-c-field money-input" data-field="disp_rate" value="<?= e($pc($c['disp_rate'] ?? 7)) ?>" style="max-width:74px"></td>
-            <td class="ta-r"><input type="number" step="0.01" min="0" class="report-c-field money-input" data-field="our_rate" value="<?= e($pc($c['our_rate'] ?? 15)) ?>" style="max-width:74px"></td>
+            <td><input class="report-c-field" data-field="name" value="<?= e($c['name']) ?>" placeholder="ИП Ванюк А.Н."></td>
+            <td class="ta-r"><input type="number" step="0.01" min="0" class="report-c-field money-input" data-field="disp_rate" value="<?= e($pc($c['disp_rate'])) ?>" style="max-width:74px"></td>
+            <td class="ta-r"><input type="number" step="0.01" min="0" class="report-c-field money-input" data-field="our_rate" value="<?= e($pc($c['our_rate'])) ?>" style="max-width:74px"></td>
+            <td><button class="icon-btn" onclick="reportDeleteCarrier(this)" title="Удалить">×</button></td>
         </tr>
     <?php endforeach; ?>
-    <?php if (!$carriers): ?><tr><td colspan="3" class="muted">Перевозчиков нет — заведите их в <a href="/?p=catalogs">Справочниках</a>.</td></tr><?php endif; ?>
+    <?php if (!$carriers): ?><tr><td colspan="4" class="muted">Пусто. Без перевозчика расчёт возьмёт ставки по умолчанию — 7% и 15%.</td></tr><?php endif; ?>
     </tbody></table></div>
-    <p class="muted small mt">Список перевозчиков ведётся в <a href="/?p=catalogs">Справочниках</a> (он же используется в документах). Здесь задаются только ставки.</p>
+    <div class="row mt" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <label class="f">Перевозчик<input id="newCarrierName" placeholder="ИП Ванюк А.Н."></label>
+        <label class="f">Диспетчерские, %<input type="number" step="0.01" min="0" id="newCarrierDisp" value="7" style="max-width:90px"></label>
+        <label class="f">Наша комиссия, %<input type="number" step="0.01" min="0" id="newCarrierOur" value="15" style="max-width:90px"></label>
+        <button class="btn sm" onclick="reportAddCarrier(<?= $scenarioId ?>)">+ Добавить перевозчика</button>
+    </div>
 </div>
 
 <div class="card">
@@ -78,7 +99,7 @@ $agentRow = static function (array $c): void {
     <?php if (!$ours): ?><tr><td colspan="5" class="muted">Пусто. Без наших агентов расчёт не поймёт, какие продажи наши, и комиссия Терры не начислится.</td></tr><?php endif; ?>
     </tbody></table></div>
     <form method="post" class="row mt" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
-        <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="save_agent_contract">
+        <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="save_agent_contract"><input type="hidden" name="scenario_id" value="<?= $scenarioId ?>">
         <input type="hidden" name="settlement_side" value="ours"><input type="hidden" name="contract_title" value="Основной договор">
         <label class="f">Название<input name="agent_name" required placeholder="ИП Толкачёв А.П."></label>
         <label class="f">Ключи поиска<input name="aliases" placeholder="толкачев|толкачёв"></label>
@@ -96,7 +117,7 @@ $agentRow = static function (array $c): void {
     <?php if (!$carrierAgents): ?><tr><td colspan="5" class="muted">Пусто. Пометки вроде «Гоубас Ванюк» в комментарии не будут распознаны.</td></tr><?php endif; ?>
     </tbody></table></div>
     <form method="post" class="row mt" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
-        <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="save_agent_contract">
+        <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="save_agent_contract"><input type="hidden" name="scenario_id" value="<?= $scenarioId ?>">
         <input type="hidden" name="settlement_side" value="carrier"><input type="hidden" name="contract_title" value="Основной договор">
         <label class="f">Название<input name="agent_name" required placeholder="GoBus Ванюк"></label>
         <label class="f">Ключи поиска<input name="aliases" placeholder="гоубас|гоу бас|gobus"></label>
@@ -130,7 +151,7 @@ $agentRow = static function (array $c): void {
     <?php if (!$stations): ?><tr><td colspan="6" class="muted">Пусто. Заведите вокзалы — тогда их можно будет выбрать при вводе продаж на рейсе.</td></tr><?php endif; ?>
     </tbody></table></div>
     <form method="post" class="row mt" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
-        <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="save_station">
+        <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="save_station"><input type="hidden" name="scenario_id" value="<?= $scenarioId ?>">
         <label class="f">Название<input name="station_name" required placeholder="МГТ"></label>
         <label class="f">%<input type="number" step="0.01" min="0" name="station_rate" value="0" required style="max-width:80px"></label>
         <label class="f">Примечание<input name="station_note" placeholder="необязательно"></label>
