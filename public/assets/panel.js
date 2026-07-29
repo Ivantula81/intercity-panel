@@ -1989,12 +1989,21 @@ async function reportApplyScenario(manifestId, scenarioId) {
     } catch (e) { alert(e.message); }
 }
 
+// «+ Добавить …» создаёт пустую СТРОКУ в таблице (как в прототипе): все поля,
+// включая «где искать» и %, правятся на месте. Отдельных форм нет.
+async function reportAddAgent(side, scenarioId) {
+    try { await reportApi('agent.create', {side, scenario_id: scenarioId}); location.reload(); }
+    catch (e) { alert(e.message); }
+}
+
+async function reportAddStation(scenarioId) {
+    try { await reportApi('station.create', {scenario_id: scenarioId}); location.reload(); }
+    catch (e) { alert(e.message); }
+}
+
 async function reportAddCarrier(scenarioId) {
-    const name = $id('newCarrierName')?.value.trim();
-    if (!name) { alert('Укажите перевозчика.'); return; }
     try {
-        await reportApi('scenario_carrier.save', {scenario_id: scenarioId, name,
-            disp_rate: $id('newCarrierDisp')?.value, our_rate: $id('newCarrierOur')?.value});
+        await reportApi('scenario_carrier.save', {scenario_id: scenarioId, name: 'Новый перевозчик', disp_rate: 7, our_rate: 15});
         location.reload();
     } catch (e) { alert(e.message); }
 }

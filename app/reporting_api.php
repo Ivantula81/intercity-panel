@@ -87,6 +87,44 @@ try {
             db()->prepare('DELETE FROM manifest_cash_entries WHERE id=?')->execute([(int) ($body['id'] ?? 0)]);
             json_out(['ok'=>true]);
 
+        // «+ Добавить агента» — как в прототипе: появляется пустая СТРОКА в таблице,
+        // все поля (включая «где искать» и %) правятся на месте. Отдельной формы нет.
+        case 'agent.create':
+            $side = ($body['side'] ?? '') === 'carrier' ? 'carrier' : 'ours';
+            $scId = (int) ($body['scenario_id'] ?? 0) ?: reporting_default_scenario_id();
+            // имя агента уникально — подбираем свободное «Новый агент N»
+            $base = 'Новый агент';
+            $name = $base;
+            for ($i = 2; $i < 100; $i++) {
+                $ex = db()->prepare('SELECT id FROM report_agents WHERE name=?');
+                $ex->execute([$name]);
+                if (!$ex->fetchColumn()) break;
+                $name = $base . ' ' . $i;
+            }
+            db()->prepare('INSERT INTO report_agents (name, aliases) VALUES (?, "")')->execute([$name]);
+            $aid = (int) db()->lastInsertId();
+            db()->prepare('INSERT INTO report_agent_contracts
+                (agent_id,title,settlement_side,agent_commission_rate,commercial_rate,dispatch_rate,match_src,scenario_id)
+                VALUES (?,?,?,0,15,7,?,?)')
+                ->execute([$aid, 'Основной договор', $side, $side === 'carrier' ? 'comment' : 'raw', $scId]);
+            $cid = (int) db()->lastInsertId();
+            // origin_id = свой id: по нему назначение переносится между сценариями
+            db()->prepare('UPDATE report_agent_contracts SET origin_id=? WHERE id=?')->execute([$cid, $cid]);
+            json_out(['ok'=>true,'id'=>$cid]);
+
+        case 'station.create':
+            $scId = (int) ($body['scenario_id'] ?? 0) ?: reporting_default_scenario_id();
+            $base = 'Новый автовокзал';
+            $name = $base;
+            for ($i = 2; $i < 100; $i++) {
+                $ex = db()->prepare('SELECT id FROM report_stations WHERE name=? AND scenario_id<=>?');
+                $ex->execute([$name, $scId]);
+                if (!$ex->fetchColumn()) break;
+                $name = $base . ' ' . $i;
+            }
+            db()->prepare('INSERT INTO report_stations (name, rate, scenario_id) VALUES (?,0,?)')->execute([$name, $scId]);
+            json_out(['ok'=>true,'id'=>(int) db()->lastInsertId()]);
+
         // ── Справочник агентов: всё редактируемо на месте (владелец настраивает сам) ──
         case 'agent.update':
             $cid = (int) ($body['id'] ?? 0);

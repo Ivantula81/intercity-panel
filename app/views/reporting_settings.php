@@ -82,12 +82,7 @@ $agentRow = static function (array $c): void {
     <?php endforeach; ?>
     <?php if (!$carriers): ?><tr><td colspan="4" class="muted">Пусто. Без перевозчика расчёт возьмёт ставки по умолчанию — 7% и 15%.</td></tr><?php endif; ?>
     </tbody></table></div>
-    <div class="row mt" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
-        <label class="f">Перевозчик<input id="newCarrierName" placeholder="ИП Ванюк А.Н."></label>
-        <label class="f">Диспетчерские, %<input type="number" step="0.01" min="0" id="newCarrierDisp" value="7" style="max-width:90px"></label>
-        <label class="f">Наша комиссия, %<input type="number" step="0.01" min="0" id="newCarrierOur" value="15" style="max-width:90px"></label>
-        <button class="btn sm" onclick="reportAddCarrier(<?= $scenarioId ?>)">+ Добавить перевозчика</button>
-    </div>
+    <button class="btn ghost sm mt" onclick="reportAddCarrier(<?= $scenarioId ?>)">+ Добавить перевозчика</button>
 </div>
 
 <div class="card">
@@ -98,14 +93,7 @@ $agentRow = static function (array $c): void {
     <?php foreach ($ours as $c) $agentRow($c); ?>
     <?php if (!$ours): ?><tr><td colspan="5" class="muted">Пусто. Без наших агентов расчёт не поймёт, какие продажи наши, и комиссия Терры не начислится.</td></tr><?php endif; ?>
     </tbody></table></div>
-    <form method="post" class="row mt" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
-        <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="save_agent_contract"><input type="hidden" name="scenario_id" value="<?= $scenarioId ?>">
-        <input type="hidden" name="settlement_side" value="ours"><input type="hidden" name="contract_title" value="Основной договор">
-        <label class="f">Название<input name="agent_name" required placeholder="ИП Толкачёв А.П."></label>
-        <label class="f">Ключи поиска<input name="aliases" placeholder="толкачев|толкачёв"></label>
-        <label class="f">%<input type="number" step="0.01" min="0" name="agent_commission_rate" value="0" style="max-width:80px"></label>
-        <button class="btn sm" type="submit">+ Добавить агента</button>
-    </form>
+    <button class="btn ghost sm mt" onclick="reportAddAgent('ours', <?= $scenarioId ?>)">+ Добавить агента</button>
 </div>
 
 <div class="card">
@@ -116,14 +104,7 @@ $agentRow = static function (array $c): void {
     <?php foreach ($carrierAgents as $c) $agentRow($c); ?>
     <?php if (!$carrierAgents): ?><tr><td colspan="5" class="muted">Пусто. Пометки вроде «Гоубас Ванюк» в комментарии не будут распознаны.</td></tr><?php endif; ?>
     </tbody></table></div>
-    <form method="post" class="row mt" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
-        <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="save_agent_contract"><input type="hidden" name="scenario_id" value="<?= $scenarioId ?>">
-        <input type="hidden" name="settlement_side" value="carrier"><input type="hidden" name="contract_title" value="Основной договор">
-        <label class="f">Название<input name="agent_name" required placeholder="GoBus Ванюк"></label>
-        <label class="f">Ключи поиска<input name="aliases" placeholder="гоубас|гоу бас|gobus"></label>
-        <label class="f">%<input type="number" step="0.01" min="0" name="agent_commission_rate" value="0" style="max-width:80px"></label>
-        <button class="btn sm" type="submit">+ Добавить агента</button>
-    </form>
+    <button class="btn ghost sm mt" onclick="reportAddAgent('carrier', <?= $scenarioId ?>)">+ Добавить агента</button>
 </div>
 
 <div class="card">
@@ -150,13 +131,7 @@ $agentRow = static function (array $c): void {
     <?php endforeach; ?>
     <?php if (!$stations): ?><tr><td colspan="6" class="muted">Пусто. Заведите вокзалы — тогда их можно будет выбрать при вводе продаж на рейсе.</td></tr><?php endif; ?>
     </tbody></table></div>
-    <form method="post" class="row mt" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
-        <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="save_station"><input type="hidden" name="scenario_id" value="<?= $scenarioId ?>">
-        <label class="f">Название<input name="station_name" required placeholder="МГТ"></label>
-        <label class="f">%<input type="number" step="0.01" min="0" name="station_rate" value="0" required style="max-width:80px"></label>
-        <label class="f">Примечание<input name="station_note" placeholder="необязательно"></label>
-        <button class="btn sm" type="submit">+ Добавить автовокзал</button>
-    </form>
+    <button class="btn ghost sm mt" onclick="reportAddStation(<?= $scenarioId ?>)">+ Добавить автовокзал</button>
 </div>
 
 <div class="report-save-state muted small" id="reportAgentState">Изменения в таблицах сохраняются автоматически</div>
