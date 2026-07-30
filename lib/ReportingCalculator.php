@@ -55,9 +55,15 @@ final class ReportingCalculator
             if ($refunded) $counts['refunds']++;
 
             $agentId = (int) ($p['agent_contract_id'] ?? 0);
-            // Агент не назначен вручную — пробуем сопоставить по ведомости/комментарию.
-            if (!isset($agents[$agentId])) {
-                $agentId = self::matchAgent((string) ($p['agent_raw'] ?? ''), (string) ($p['pay_note'] ?? ''), $agents);
+            $rawAgent = (string) ($p['agent_raw'] ?? '');
+            $payNote = (string) ($p['pay_note'] ?? '');
+            // Ручная пометка кассира сильнее старого автоприсвоения: это позволяет
+            // исправить строку «Агент/кассир» без отдельного сброса назначения.
+            $commentMatch = self::matchAgent('', $payNote, $agents);
+            if ($commentMatch) {
+                $agentId = $commentMatch;
+            } elseif (!isset($agents[$agentId])) {
+                $agentId = self::matchAgent($rawAgent, $payNote, $agents);
             }
             $agent = $agents[$agentId] ?? null;
             $side = $agent ? $agent['side'] : 'none';
@@ -296,7 +302,7 @@ final class ReportingCalculator
         $src = self::agentSrc($agent);
         $text = self::norm($src === 'raw' ? $raw : ($src === 'comment' ? $comment : $raw . ' ' . $comment));
         if ($text === '') return false;
-        foreach (explode('|', (string) $agent['alias']) as $key) {
+        foreach (preg_split('/[|,;]+/u', (string) $agent['alias']) ?: [] as $key) {
             $key = trim(self::norm($key));
             if ($key !== '' && str_contains($text, $key)) return true;
         }
