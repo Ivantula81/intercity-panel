@@ -217,29 +217,32 @@ function reporting_calculate_manifest(int $manifestId): array
 
 function reporting_match_imported_agents(int $manifestId): void
 {
-    $agents = db()->query("SELECT c.id contract_id,c.agent_id,a.name,a.aliases,
+    $agents = db()->query("SELECT c.id contract_id,c.agent_id,a.name,a.aliases,c.settlement_side,
+        c.agent_commission_rate,c.match_src,
         (SELECT COUNT(*) FROM report_agent_contracts c2 WHERE c2.agent_id=c.agent_id AND c2.active=1) contract_count
         FROM report_agent_contracts c JOIN report_agents a ON a.id=c.agent_id
         WHERE c.active=1 AND a.active=1 ORDER BY c.id")->fetchAll();
-    $st = db()->prepare("SELECT id,agent_raw FROM passengers WHERE manifest_id=? AND agent_raw<>'' AND agent_contract_id IS NULL");
+    $matchAgents = [];
+    foreach ($agents as $agent) {
+        // При нескольких договорах одного бренда автоназначение небезопасно — оператор
+        // выберет договор вручную, но уникальный ручной комментарий всё равно применяем.
+        if ((int) $agent['contract_count'] !== 1) continue;
+        $matchAgents[(int) $agent['contract_id']] = [
+            'id' => (int) $agent['contract_id'], 'name' => $agent['name'],
+            'alias' => trim((string) $agent['aliases'] . '|' . (string) $agent['name']), 'side' => $agent['settlement_side'],
+            'rate' => $agent['agent_commission_rate'], 'src' => $agent['match_src'] ?? '',
+        ];
+    }
+    $st = db()->prepare("SELECT id,agent_raw,pay_note,agent_contract_id FROM passengers WHERE manifest_id=?");
     $st->execute([$manifestId]);
     $up = db()->prepare('UPDATE passengers SET agent_contract_id=? WHERE id=?');
     foreach ($st->fetchAll() as $passenger) {
-        $needle = mb_strtolower(trim((string) $passenger['agent_raw']));
-        foreach ($agents as $agent) {
-            // Если у бренда несколько договоров, выбор должен сделать оператор: по одному имени
-            // нельзя безопасно определить, кому фактически поступили деньги.
-            if ((int) $agent['contract_count'] !== 1) continue;
-            $aliases = array_filter(array_map('trim', explode(',', (string) $agent['aliases'])));
-            $aliases[] = (string) $agent['name'];
-            foreach ($aliases as $alias) {
-                $alias = mb_strtolower($alias);
-                if ($alias !== '' && (str_contains($needle, $alias) || str_contains($alias, $needle))) {
-                    $up->execute([(int) $agent['contract_id'], (int) $passenger['id']]);
-                    continue 3;
-                }
-            }
+        $commentMatch = ReportingCalculator::matchAgent('', (string) ($passenger['pay_note'] ?? ''), $matchAgents);
+        $agentId = $commentMatch ?: (int) ($passenger['agent_contract_id'] ?? 0);
+        if (!$agentId) {
+            $agentId = ReportingCalculator::matchAgent((string) ($passenger['agent_raw'] ?? ''), '', $matchAgents);
         }
+        if ($agentId) $up->execute([$agentId, (int) $passenger['id']]);
     }
 }
 
