@@ -1080,8 +1080,14 @@ switch ($action) {
                 if ($unsubLine !== '') $msg .= "\n\n" . $unsubLine;
                 foreach ($channels as $channel) {
                     // Для MAX/Telegram берём только сохранённый chatId; worker не должен
-                    // тратить лимит CheckAccount в фоне. WhatsApp использует номер.
+                    // тратить лимит CheckAccount в фоне. Если chatId неизвестен,
+                    // Green API допускает совместимый адрес phone@c.us и сам вернёт
+                    // итоговый noAccount/delivered через webhook.
                     $resolved = resolve_send_target($channel, $p['phone'], false);
+                    if (empty($resolved['ok']) && $channel === 'max') {
+                        $digits = preg_replace('/\D+/', '', (string)$p['phone']);
+                        if ($digits !== '') $resolved = ['ok'=>true, 'target'=>$digits . '@c.us'];
+                    }
                     if (empty($resolved['ok'])) { $skipped++; continue; }
                     $deliveries[] = ['passenger_id'=>(int)$p['id'], 'channel'=>$channel,
                         'recipient'=>$p['phone'], 'target'=>$resolved['target'], 'body'=>$msg];
