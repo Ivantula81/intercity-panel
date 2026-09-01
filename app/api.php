@@ -855,6 +855,9 @@ switch ($action) {
         if (!$payload) json_out(['ok'=>false,'error'=>'Пустые параметры кампании.'], 400);
         try {
             $job = BroadcastQueue::enqueue($kind, $manifestId, $payload, audit_actor_id());
+            if (!empty($payload['deliveries']) && is_array($payload['deliveries'])) {
+                BroadcastQueue::materializeDeliveries((int)$job['id'], $payload['deliveries']);
+            }
             audit_event('campaign.enqueue', 'messaging', 'broadcast_job', $job['id'], 'success', ['kind'=>$kind]);
             json_out(['ok'=>true,'job'=>$job]);
         } catch (Throwable $e) {
