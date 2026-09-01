@@ -1911,7 +1911,7 @@ async function reportRecalculate() {
     try {
         const r = await reportApi('calculate', {manifest_id: window.REPORT_MANIFEST_ID});
         document.querySelectorAll('[data-total]').forEach(el => {
-            el.textContent = reportMoney(r.calculation.totals[el.dataset.total]);
+            el.textContent = (el.dataset.prefix || '') + reportMoney(r.calculation.totals[el.dataset.total]);
         });
         const warnings = $id('reportWarnings');
         if (warnings) warnings.innerHTML = r.calculation.warnings.length
