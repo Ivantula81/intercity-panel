@@ -25,12 +25,16 @@
             <input type="text" name="login" autofocus required autocomplete="username">
         </label>
         <label class="f">Пароль
-            <input type="password" name="password" required autocomplete="current-password">
+            <span class="password-field"><input type="password" name="password" id="loginPassword" required autocomplete="current-password"><button type="button" class="password-toggle" id="loginPasswordToggle" aria-label="Показать пароль" aria-pressed="false">◉</button></span>
         </label>
         <?php if ($error !== ''): ?><div class="alert err"><?= e($error) ?></div><?php endif; ?>
         <button class="btn" style="width:100%;justify-content:center">Войти</button>
     </form>
 </div>
+<script>
+const password = document.getElementById('loginPassword'), toggle = document.getElementById('loginPasswordToggle');
+toggle?.addEventListener('click', () => { const visible = password.type === 'text'; password.type = visible ? 'password' : 'text'; toggle.setAttribute('aria-label', visible ? 'Показать пароль' : 'Скрыть пароль'); toggle.setAttribute('aria-pressed', String(!visible)); toggle.textContent = visible ? '◉' : '◉̸'; password.focus(); });
+</script>
 <script>if('serviceWorker' in navigator){addEventListener('load',()=>navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{}));}</script>
 </body>
 </html>

@@ -97,7 +97,6 @@
         <button class="btn sm" onclick="saveChannelDelays()">Сохранить темп</button>
         <span class="muted small" id="delState">загружаю…</span>
     </div>
-    <script>document.addEventListener('DOMContentLoaded', loadChannelDelays);</script>
 </div>
 
 <div class="card">
@@ -168,4 +167,3 @@
         <span class="muted small" id="passState"></span>
     </div>
 </div>
-<script>document.addEventListener('DOMContentLoaded', () => { waAccounts(); });</script>
