@@ -895,6 +895,16 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 .report-summary-total { margin-top: 4px; padding-top: 12px !important; border-top: 2px solid var(--line); font-weight: 750; }
 .report-summary-total strong { font-size: 18px; }
 .report-summary-profit { border-color: var(--brand-100); }
+.report-carrier-report-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.report-carrier-report-head h2 { margin: 4px 0 2px; font-size: 20px; text-transform: none; letter-spacing: -.2px; color: var(--ink); }
+.report-carrier-report-head p { margin: 0; }
+.report-carrier-kpis { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; margin: 16px 0; }
+.report-carrier-kpis > div { padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.report-carrier-kpis span { display: block; color: var(--muted); font-size: 12px; }
+.report-carrier-kpis strong { display: block; margin-top: 4px; font-size: 21px; font-variant-numeric: tabular-nums; }
+.report-carrier-columns { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(280px,.85fr); gap: 16px; }
+.report-carrier-columns .card { margin: 0; }
+.report-carrier-version { margin-top: 20px; padding-top: 10px; border-top: 1px solid var(--line-soft); }
 .report-passengers { padding-left: 0; padding-right: 0; }
 .report-passengers > .report-card-head, .report-passengers > .report-save-state { margin-left: 18px; margin-right: 18px; }
 /* Таблица пассажиров вмещается в экран: раньше стояло min-width:1600px при контенте
@@ -1001,7 +1011,9 @@ select.attendance-unknown { color: var(--muted); }
 @media (max-width: 700px) {
     .report-context-bar { align-items: stretch; flex-direction: column; }
     .report-context-bar .btn { width: 100%; justify-content: center; }
-    .report-upload, .report-bottom-grid, .report-file-grid, .report-summary-grid { grid-template-columns: 1fr; }
+    .report-upload, .report-bottom-grid, .report-file-grid, .report-summary-grid, .report-carrier-columns { grid-template-columns: 1fr; }
+    .report-carrier-kpis { grid-template-columns: 1fr; }
+    .report-carrier-report-head { align-items: stretch; flex-direction: column; }
     .report-upload-form { align-items: stretch; flex-direction: column; }
     .report-drop { align-items: flex-start; flex-direction: column; }
     .report-facts { grid-template-columns: 1fr 1fr; }
