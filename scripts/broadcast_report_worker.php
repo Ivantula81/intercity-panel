@@ -8,6 +8,7 @@ $admins = ['+79787720157', '+79112790467'];
 $jobs = $pdo->query("SELECT j.*, m.trip_number,m.route,m.departure_at FROM broadcast_jobs j JOIN manifests m ON m.id=j.manifest_id WHERE j.kind='campaign' AND j.created_at >= DATE_SUB(NOW(), INTERVAL 2 DAY) ORDER BY j.id")->fetchAll();
 foreach ($jobs as $j) {
     $p = json_decode((string)$j['payload_json'], true) ?: [];
+    if (empty($p['reporting_opt_in'])) continue;
     $age = time() - strtotime((string)$j['created_at']);
     $st = $pdo->prepare("SELECT status,COUNT(*) n FROM broadcast_deliveries WHERE job_id=? GROUP BY status"); $st->execute([(int)$j['id']]);
     $counts=[]; foreach ($st->fetchAll() as $x) $counts[$x['status']]=(int)$x['n'];
