@@ -42,6 +42,7 @@ $nav = [
     'broadcast'     => ['/?p=broadcast', 'Рассылка', 'send'],
     'catalogs'      => ['/?p=catalogs', 'Справочники', 'briefcase'],
     'logs'          => ['/?p=logs', 'Логи', 'doc'],
+    'audit'         => ['/?p=audit', 'Журнал действий', 'doc'],
     'settings'      => ['/?p=settings', 'Настройки', 'settings'],
 ];
 $bottom = ['dashboard', 'notifications', 'chats', 'manifests'];

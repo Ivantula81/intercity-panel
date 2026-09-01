@@ -307,6 +307,28 @@ switch ($page) {
             'content' => fn() => view('logs', ['filter' => $filter, 'counts' => $counts, 'rows' => $rows])]);
         break;
 
+    case 'audit':
+        require_admin();
+        $user = (int) ($_GET['user'] ?? 0);
+        $action = trim((string) ($_GET['action'] ?? ''));
+        $from = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($_GET['from'] ?? '')) ? $_GET['from'] : '';
+        $to = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($_GET['to'] ?? '')) ? $_GET['to'] : '';
+        $rows = []; $top = []; $auditReady = true;
+        try {
+            $where = ['1']; $args = [];
+            if ($user > 0) { $where[] = 'user_id=?'; $args[] = $user; }
+            if ($action !== '') { $where[] = 'action=?'; $args[] = mb_substr($action, 0, 80); }
+            if ($from !== '') { $where[] = 'created_at>=?'; $args[] = $from . ' 00:00:00'; }
+            if ($to !== '') { $where[] = 'created_at<?'; $args[] = date('Y-m-d 00:00:00', strtotime($to . ' +1 day')); }
+            $st = db()->prepare('SELECT * FROM audit_events WHERE ' . implode(' AND ', $where) . ' ORDER BY id DESC LIMIT 300');
+            $st->execute($args); $rows = $st->fetchAll();
+            $top = db()->query("SELECT action, COUNT(*) total FROM audit_events GROUP BY action ORDER BY total DESC LIMIT 12")->fetchAll();
+        } catch (Throwable $e) { $auditReady = false; }
+        $users = db()->query('SELECT id,name FROM users ORDER BY name')->fetchAll();
+        view('layout', ['title'=>'Журнал действий','page'=>'audit',
+            'content'=>fn()=>view('audit', compact('rows','top','users','auditReady','user','action','from','to'))]);
+        break;
+
     case 'chats':
         $startPhone = (string) ($_GET['conversation_id'] ?? ($_GET['phone'] ?? ''));
         view('layout', ['title' => 'Чаты', 'page' => 'chats',
