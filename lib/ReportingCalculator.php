@@ -55,7 +55,10 @@ final class ReportingCalculator
             if ($refunded) $counts['refunds']++;
 
             $agentId = (int) ($p['agent_contract_id'] ?? 0);
-            // Агент не назначен вручную — пробуем сопоставить по ведомости/комментарию.
+            // ⚠️ Ручное назначение оператора НЕПРИКОСНОВЕННО — автоподбор только для пустых.
+            // Правило «комментарий сильнее» относится к автозаполненному полю «Агент/кассир»
+            // из ведомости, а не к решению человека (в прототипе: `if (r.agent) return;`).
+            // Пересобрать назначения по свежим комментариям можно кнопкой «Подставить агентов».
             if (!isset($agents[$agentId])) {
                 $agentId = self::matchAgent((string) ($p['agent_raw'] ?? ''), (string) ($p['pay_note'] ?? ''), $agents);
             }
@@ -296,7 +299,7 @@ final class ReportingCalculator
         $src = self::agentSrc($agent);
         $text = self::norm($src === 'raw' ? $raw : ($src === 'comment' ? $comment : $raw . ' ' . $comment));
         if ($text === '') return false;
-        foreach (explode('|', (string) $agent['alias']) as $key) {
+        foreach (preg_split('/[|,;]+/u', (string) $agent['alias']) ?: [] as $key) {
             $key = trim(self::norm($key));
             if ($key !== '' && str_contains($text, $key)) return true;
         }

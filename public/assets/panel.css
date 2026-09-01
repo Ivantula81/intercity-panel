@@ -194,7 +194,9 @@ h3 { margin: 0 0 6px; font-size: 15.5px; font-weight: 700; }
     transition: background .12s, transform .06s, box-shadow .12s;
 }
 .btn:hover { background: var(--brand-600); text-decoration: none; }
-.btn:active { transform: translateY(1px); }
+.btn:active, .chat-send-btn:active, .bn-item:active, .sheet-item:active { transform: scale(.98); }
+.btn[aria-busy="true"] { pointer-events: none; opacity: .72; }
+.btn[aria-busy="true"]::after { content: '…'; margin-left: 4px; }
 .btn svg { width: 17px; height: 17px; }
 .btn.ghost { color: var(--brand-700); background: var(--brand-50); box-shadow: none; }
 .btn.ghost:hover { background: var(--brand-100); }
@@ -218,8 +220,8 @@ h3 { margin: 0 0 6px; font-size: 15.5px; font-weight: 700; }
 /* ============================================================
    ФОРМЫ
    ============================================================ */
-input[type=text], input[type=password], input[type=date], input[type=number],
-input[type=url], input[type=email], select, textarea {
+input[type=text], input[type=password], input[type=date], input[type=datetime-local], input[type=number],
+input[type=url], input[type=email], input[type=file], select, textarea {
     width: 100%; padding: 11px 13px; min-height: 42px;
     border: 1.5px solid var(--line); border-radius: var(--r);
     background: var(--surface); color: var(--ink);
@@ -556,8 +558,8 @@ details summary::-webkit-details-marker { color: var(--muted); }
     .stat .num { font-size: 24px; }
     .stat .lbl { font-size: 12px; }
     .facts { grid-template-columns: 1fr; }
-    /* на мобильном панель отправки не липкая — иначе перекрывает форму и нижнюю навигацию */
-    .send-bar { position: static; bottom: auto; box-shadow: none; }
+    /* Главная команда остаётся рядом с итогом проверки, но не закрывает нижнюю навигацию. */
+    .send-bar { position: sticky; bottom: calc(70px + var(--safe-b)); z-index: 20; box-shadow: 0 8px 28px rgba(28,25,64,.14); background: rgba(255,255,255,.94); backdrop-filter: saturate(180%) blur(14px); }
     .notif-metrics, .notif-delivery-metrics { grid-template-columns: 1fr 1fr; }
     .notif-ready-top { display: block; }
     .notif-ready-top > .btn { width: 100%; margin-top: 12px; justify-content: center; }
@@ -601,7 +603,8 @@ details summary::-webkit-details-marker { color: var(--muted); }
         padding: 8px 16px calc(20px + var(--safe-b));
         background: var(--surface); border-radius: var(--r-xl) var(--r-xl) 0 0;
         box-shadow: 0 -8px 40px rgba(20,20,40,.18);
-        transform: translateY(100%); transition: transform .24s cubic-bezier(.32,.72,0,1);
+        transform: translateY(calc(100% + var(--sheet-drag, 0px))); transition: transform .24s cubic-bezier(.32,.72,0,1);
+        touch-action: none;
     }
     .sheet-grab { width: 40px; height: 4px; margin: 8px auto 12px; border-radius: 99px; background: var(--line); }
     .sheet-item { display: flex; align-items: center; gap: 14px; padding: 14px 8px; border-radius: var(--r); color: var(--ink); font-weight: 600; font-size: 16px; }
@@ -613,7 +616,12 @@ details summary::-webkit-details-marker { color: var(--muted); }
     .sheet-out svg { width: 19px; height: 19px; }
 
     body.sheet-open .sheet-backdrop { opacity: 1; pointer-events: auto; }
-    body.sheet-open .more-sheet { transform: translateY(0); }
+    body.sheet-open .more-sheet { transform: translateY(var(--sheet-drag, 0px)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+    .btn:active, .chat-send-btn:active, .bn-item:active, .sheet-item:active { transform: none; }
 }
 
 @media (max-width: 420px) {
@@ -730,6 +738,8 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 .cm.out .cm-meta { color: rgba(255,255,255,.78); }
 .cm-channel { display: inline-block; margin-right: 6px; padding: 1px 5px; border: 1px solid currentColor; border-radius: 5px; color: var(--cm-channel,var(--muted)); font-size: 9.5px; font-weight: 800; line-height: 1.25; vertical-align: 1px; }
 .cm.out .cm-channel { color: #fff; background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.55); text-shadow: 0 1px 1px rgba(0,0,0,.16); }
+.cm.pending { opacity: .72; }
+.cm.pending .cm-bubble { box-shadow: none; }
 .cm-tick { margin-left: 4px; }
 .cm-tick.read { color: #8be0ff; }
 .cm-tick.fail { color: #ffd2cd; font-weight: 700; }
@@ -783,6 +793,8 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
     .cm-bubble { max-width: 84%; }
     .chat-text { font-size: 16px; }   /* без зума iOS */
     .chat-search { font-size: 16px; }
+    .chat-pane { touch-action: pan-y; }
+    .chat-body { overscroll-behavior: contain; }
 }
 
 /* ============================================================
@@ -846,15 +858,23 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 .report-drop { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 13px; border: 1px dashed var(--brand); border-radius: 10px; background: var(--brand-50); color: var(--brand-700); font-size: 13px; font-weight: 700; }
 .report-drop input { max-width: 220px; }
 .report-card-head { justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.report-passenger-actions { gap: 8px; flex-wrap: wrap; }
+.report-context-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -4px 0 14px; padding: 10px 12px; border: 1px solid var(--brand-100); border-radius: var(--r); background: var(--brand-50); color: var(--brand-700); font-size: 13px; }
 .report-list td { vertical-align: middle; }
 .report-agents summary { cursor: pointer; }
 .report-agent-form { display: grid; grid-template-columns: repeat(3,minmax(180px,1fr)); gap: 12px; align-items: end; }
 .report-agent-form label, .report-facts label, .report-note { display: flex; flex-direction: column; gap: 5px; color: var(--muted); font-size: 12px; font-weight: 700; }
 .report-agent-form input, .report-agent-form select, .report-facts input, .report-facts select, .report-note textarea, .report-file-form input { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; background: var(--surface); color: var(--ink); }
+.report-agent-form input, .report-agent-form select, .report-facts input, .report-facts select, .report-note textarea, .report-file-form input,
+.report-dialog input, .report-dialog select { font: inherit; font-size: 14px; }
+.report-rate-field { width: 94px !important; min-width: 94px; }
 .report-trip-head h1 { margin-top: 5px; }
-.report-tabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
-.report-tabs a { padding: 10px 14px; color: var(--muted); font-weight: 700; font-size: 13px; border-bottom: 2px solid transparent; }
+.report-tabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.report-tabs::-webkit-scrollbar { display: none; }
+.report-tabs a { padding: 10px 14px; color: var(--muted); font-weight: 700; font-size: 13px; border-bottom: 2px solid transparent; white-space: nowrap; }
 .report-tabs a.active { color: var(--brand); border-color: var(--brand); }
+.report-tabs a:not(.active):hover { color: var(--ink); background: var(--surface-2); text-decoration: none; }
+#reportPassengers, #reportCalculation, #reportControl { scroll-margin-top: 18px; }
 .report-facts { display: grid; grid-template-columns: repeat(3,minmax(180px,1fr)); gap: 12px; }
 .report-facts.compact { grid-template-columns: 1fr; }
 .report-facts input:disabled { color: var(--muted); background: var(--surface-2); }
@@ -864,6 +884,17 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 .report-metrics strong { display: block; font-size: 21px; font-variant-numeric: tabular-nums; }
 .report-metrics .accent { color: #fff; background: linear-gradient(135deg,var(--brand),#7669e9); border-color: transparent; }
 .report-metrics .accent span { color: rgba(255,255,255,.78); }
+.report-summary-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; margin: 16px 0; }
+.report-summary-card { margin: 0; }
+.report-summary-card h2 { margin-bottom: 10px; }
+.report-summary-lines > div { display: flex; justify-content: space-between; gap: 14px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+.report-summary-lines > div:last-child { border-bottom: 0; }
+.report-summary-lines span { color: var(--ink-2); }
+.report-summary-lines strong { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.report-summary-lines .negative { color: var(--err); }
+.report-summary-total { margin-top: 4px; padding-top: 12px !important; border-top: 2px solid var(--line); font-weight: 750; }
+.report-summary-total strong { font-size: 18px; }
+.report-summary-profit { border-color: var(--brand-100); }
 .report-passengers { padding-left: 0; padding-right: 0; }
 .report-passengers > .report-card-head, .report-passengers > .report-save-state { margin-left: 18px; margin-right: 18px; }
 /* Таблица пассажиров вмещается в экран: раньше стояло min-width:1600px при контенте
@@ -968,7 +999,9 @@ select.attendance-unknown { color: var(--muted); }
     .report-agent-form { grid-template-columns: repeat(2,1fr); }
 }
 @media (max-width: 700px) {
-    .report-upload, .report-bottom-grid, .report-file-grid { grid-template-columns: 1fr; }
+    .report-context-bar { align-items: stretch; flex-direction: column; }
+    .report-context-bar .btn { width: 100%; justify-content: center; }
+    .report-upload, .report-bottom-grid, .report-file-grid, .report-summary-grid { grid-template-columns: 1fr; }
     .report-upload-form { align-items: stretch; flex-direction: column; }
     .report-drop { align-items: flex-start; flex-direction: column; }
     .report-facts { grid-template-columns: 1fr 1fr; }
@@ -983,6 +1016,37 @@ select.attendance-unknown { color: var(--muted); }
     .report-guide { padding: 16px; }
     .guide-cases, .guide-schema { grid-template-columns: 1fr; }
     .guide-math { grid-template-columns: 1fr 1fr; }
+
+    /* На телефоне строка пассажира становится карточкой, без горизонтального скролла. */
+    .report-passenger-table { min-width: 0; display: block; }
+    .report-passenger-table thead { display: none; }
+    .report-passenger-table tbody, .report-passenger-table tr { display: block; }
+    .report-passenger-table tr { display: grid; grid-template-columns: 34px minmax(0, 1fr) 34px; grid-template-areas:
+        "seat passenger delete" "route route route" "agent agent agent" "manifest our our" "note note note" "noshow noshow noshow"; gap: 8px 10px; padding: 12px 10px; border-left-width: 4px; border-bottom: 1px solid var(--line); }
+    .report-passenger-table tr:last-child { border-bottom: 0; }
+    .report-passenger-table td { min-width: 0; padding: 0; border: 0; white-space: normal; }
+    .report-passenger-table td:nth-child(1) { grid-area: seat; }
+    .report-passenger-table td:nth-child(2) { grid-area: passenger; }
+    .report-passenger-table td:nth-child(3) { grid-area: route; padding-top: 1px; }
+    .report-passenger-table td:nth-child(4) { grid-area: agent; }
+    .report-passenger-table td:nth-child(5) { grid-area: manifest; }
+    .report-passenger-table td:nth-child(6) { grid-area: our; }
+    .report-passenger-table td:nth-child(7) { grid-area: note; }
+    .report-passenger-table td:nth-child(8) { grid-area: noshow; }
+    .report-passenger-table td:nth-child(9) { grid-area: delete; justify-self: end; }
+    .report-passenger-table td:nth-child(5)::before, .report-passenger-table td:nth-child(6)::before,
+    .report-passenger-table td:nth-child(7)::before, .report-passenger-table td:nth-child(8)::before { display: block; margin-bottom: 3px; color: var(--muted); font-size: 11px; font-weight: 650; }
+    .report-passenger-table td:nth-child(5)::before { content: "Ведомость"; }
+    .report-passenger-table td:nth-child(6)::before { content: "Наша стоимость"; }
+    .report-passenger-table td:nth-child(7)::before { content: "Комментарий"; }
+    .report-passenger-table td:nth-child(8)::before { content: "Посещаемость и возврат"; }
+    .report-passenger-table .report-p-field { min-height: 40px; padding: 8px 9px; border-color: var(--line); background: var(--surface); }
+    .report-passenger-table .seat-input { max-width: none; text-align: center; }
+    .report-passenger-table .p-noshow { min-height: 40px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+    .report-passenger-table .p-noshow select { flex: 1; max-width: none; }
+    .report-passenger-table td .small { white-space: normal; }
+    .report-passenger-actions { width: 100%; }
+    .report-passenger-actions .btn { flex: 1 1 180px; }
 }
 
 /* ============================================================

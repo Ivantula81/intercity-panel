@@ -19,7 +19,7 @@ $isFiles = $activeTab === 'files';
             </select>
         </label>
     <?php endif; ?>
-    <a class="btn ghost" href="/?p=reporting_help" title="Инструкция"><?= icon('doc') ?></a><button class="btn ghost" type="button" onclick="reportAddCash()">+ Внести наличные</button>
+    <a class="btn ghost" href="/?p=reporting&tab=settings&scenario=<?= (int)($tripScenarioId ?? 0) ?>&return_manifest=<?= (int)$manifest['id'] ?>" title="Агенты, алиасы, перевозчики и ставки"><?= icon('settings') ?> Настройки</a><a class="btn ghost" href="/?p=reporting_help" title="Инструкция"><?= icon('doc') ?></a><button class="btn ghost" type="button" onclick="reportAddCash()">+ Внести наличные</button>
     <a class="btn<?= $hasCalc ? ' ghost' : '' ?>" href="/?p=report_trip&id=<?= (int)$manifest['id'] ?>&calc=1"><?= $hasCalc ? '↻ Пересчитать' : 'Рассчитать' ?></a>
     <?php if ($hasCalc): ?><button class="btn" type="button" onclick="reportSaveSnapshot(<?= (int)$manifest['id'] ?>)">Сохранить расчёт</button><?php endif; ?></div>
 </div>
@@ -36,8 +36,10 @@ $isFiles = $activeTab === 'files';
 </dialog>
 
 <div class="report-tabs">
-    <a class="<?= !$isFiles?'active':'' ?>" href="/?p=report_trip&id=<?= (int)$manifest['id'] ?>">Первичный расчёт</a>
+    <a class="<?= !$isFiles?'active':'' ?>" href="/?p=report_trip&id=<?= (int)$manifest['id'] ?>#reportPassengers">Ведомость</a>
+    <?php if (!$isFiles): ?><a href="#reportCalculation">Расчёт</a><a href="#reportControl">Контроль</a><?php endif; ?>
     <a class="<?= $isFiles?'active':'' ?>" href="/?p=report_trip&id=<?= (int)$manifest['id'] ?>&tab=files">Файлы рейса <span class="badge muted"><?= count($files) ?></span></a>
+    <a href="/?p=reporting&tab=settings&scenario=<?= (int)($tripScenarioId ?? 0) ?>&return_manifest=<?= (int)$manifest['id'] ?>">Настройки</a>
 </div>
 
 <?php if ($isFiles): ?>
@@ -89,8 +91,34 @@ $isFiles = $activeTab === 'files';
     <div class="accent"><span>Наша рентабельность</span><strong data-total="profit"><?= $money($num('profit')) ?></strong></div>
 </div>
 
-<div class="card report-passengers">
-    <div class="row report-card-head"><div><h2>Пассажиры <span class="badge muted" id="reportPassengerCount"><?= count($passengers) ?></span></h2><div class="small muted">Неизвестная явка считается предварительно как поездка. Перед финальным расчётом отметьте всех.</div></div><button class="btn sm" onclick="reportAddPassenger(<?= (int)$manifest['id'] ?>)"><?= icon('plus') ?> Добавить пассажира</button></div>
+<div class="report-summary-grid" id="reportSummary">
+    <section class="card report-summary-card">
+        <h2>Расчёт с перевозчиком</h2>
+        <div class="report-summary-lines">
+            <div><span>Сумма ведомости</span><strong data-total="manifest_total"><?= $money($num('manifest_total')) ?></strong></div>
+            <div><span>− диспетчерские <?= $num('disp_rate', 7) ?>%</span><strong class="negative" data-total="dispatch_fee" data-prefix="−"><?= $money($num('dispatch_fee')) ?></strong></div>
+            <div><span>− комиссия Терры <?= $num('our_rate', 15) ?>%</span><strong class="negative" data-total="our_commission" data-prefix="−"><?= $money($num('our_commission')) ?></strong></div>
+            <?php if ($num('cash') != 0): ?><div><span>− получено наличными</span><strong class="negative" data-total="cash" data-prefix="−"><?= $money($num('cash')) ?></strong></div><?php endif; ?>
+            <?php if ($num('carrier_direct_sales') != 0): ?><div><span>− продажи агентов перевозчика</span><strong class="negative" data-total="carrier_direct_sales" data-prefix="−"><?= $money($num('carrier_direct_sales')) ?></strong></div><?php endif; ?>
+            <?php if ($num('noshow_carrier') != 0): ?><div><span>− неявки без возврата</span><strong class="negative" data-total="noshow_carrier" data-prefix="−"><?= $money($num('noshow_carrier')) ?></strong></div><?php endif; ?>
+            <div class="report-summary-total"><span>Мы должны перевозчику</span><strong data-total="carrier_due"><?= $money($num('carrier_due')) ?></strong></div>
+        </div>
+    </section>
+    <section class="card report-summary-card report-summary-profit">
+        <h2>Наш заработок</h2>
+        <div class="report-summary-lines">
+            <div><span>Диспетчерское обслуживание</span><strong data-total="dispatch_fee"><?= $money($num('dispatch_fee')) ?></strong></div>
+            <div><span>Комиссия с продаж Терры</span><strong data-total="our_commission"><?= $money($num('our_commission')) ?></strong></div>
+            <?php if ($num('extra') != 0): ?><div><span>Разница цен</span><strong data-total="extra"><?= $money($num('extra')) ?></strong></div><?php endif; ?>
+            <?php if ($num('noshow_income') != 0): ?><div><span>Доход с неявок</span><strong data-total="noshow_income"><?= $money($num('noshow_income')) ?></strong></div><?php endif; ?>
+            <?php if ($num('our_agent_ride_cost') != 0): ?><div><span>− комиссии нашим агентам</span><strong class="negative" data-total="our_agent_ride_cost" data-prefix="−"><?= $money($num('our_agent_ride_cost')) ?></strong></div><?php endif; ?>
+            <div class="report-summary-total"><span>Наша прибыль</span><strong data-total="profit"><?= $money($num('profit')) ?></strong></div>
+        </div>
+    </section>
+</div>
+
+<div class="card report-passengers" id="reportPassengers">
+    <div class="row report-card-head"><div><h2>Пассажиры <span class="badge muted" id="reportPassengerCount"><?= count($passengers) ?></span></h2><div class="small muted">Неизвестная явка считается предварительно как поездка. Перед финальным расчётом отметьте всех.</div></div><div class="row report-passenger-actions"><button class="btn ghost sm" onclick="reportRematchAgents(<?= (int)$manifest['id'] ?>)" title="Пересобрать назначения по комментариям и полю «Агент/кассир». Перезапишет ручные назначения.">Подставить агентов по совпадению</button><button class="btn sm" onclick="reportAddPassenger(<?= (int)$manifest['id'] ?>)"><?= icon('plus') ?> Добавить пассажира</button></div></div>
     <div class="table-wrap"><table class="t report-passenger-table"><thead><tr>
         <th style="width:56px">Место</th><th>Пассажир</th>
         <th style="width:210px">Откуда → куда</th><th style="width:220px">Агент / кассир</th>
@@ -166,8 +194,8 @@ $isFiles = $activeTab === 'files';
     <?php endif; ?>
 </div>
 
-<div class="report-bottom-grid">
-    <div class="card"><h2>Расшифровка</h2><div class="report-breakdown">
+<div class="report-bottom-grid" id="reportCalculation">
+    <div class="card"><h2>Расчёт с перевозчиком</h2><div class="report-breakdown">
         <div><span>Ведомость (по ехавшим)</span><strong data-total="manifest_total"><?= $money($num('manifest_total')) ?></strong></div>
         <?php if ($num('stations_total', 0) > 0): ?>
         <div><span>+ продажи автовокзалов</span><strong data-total="stations_total"><?= $money($num('stations_total')) ?></strong></div>
@@ -191,7 +219,7 @@ $isFiles = $activeTab === 'files';
         <div><span>Наличные <span class="muted small">(уменьшают долг Терры, не доход перевозчика)</span></span><strong data-total="cash"><?= $money($num('cash')) ?></strong></div>
         <?php endif; ?>
     </div></div>
-    <div class="card"><h2>Контроль</h2><div id="reportWarnings"><?php foreach(array_slice($calculation['warnings'] ?? [],0,8) as $w):?><div class="report-warning">⚠ <?= e($w) ?></div><?php endforeach;?><?php if(empty($calculation['warnings'])):?><div class="alert ok">Противоречий не найдено.</div><?php endif;?></div>
+    <div class="card" id="reportControl"><h2>Контроль</h2><div id="reportWarnings"><?php foreach(array_slice($calculation['warnings'] ?? [],0,8) as $w):?><div class="report-warning">⚠ <?= e($w) ?></div><?php endforeach;?><?php if(empty($calculation['warnings'])):?><div class="alert ok">Противоречий не найдено.</div><?php endif;?></div>
         <label class="report-note">Комментарий к расчёту<textarea class="report-manifest-field" data-id="<?= (int)$manifest['id'] ?>" data-field="reporting_note"><?= e($manifest['reporting_note']) ?></textarea></label>
         <?php if($lastCalculation):?><div class="small muted mt">Последний сохранённый расчёт: v<?= (int)$lastCalculation['version'] ?>, <?= e(date('d.m.Y H:i',strtotime($lastCalculation['created_at']))) ?> · <?= e($lastCalculation['actor']) ?></div><?php endif;?>
     </div>

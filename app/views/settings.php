@@ -5,6 +5,14 @@
     </div>
 </div>
 
+<div class="card">
+    <div class="row" style="justify-content:space-between;gap:14px;flex-wrap:wrap">
+        <div><h2 style="margin:0">Обновление панели</h2><p class="muted small" style="margin:6px 0 0">Если после обновления видите старый стиль или «разъехавшуюся» страницу, обновите локальные данные приложения. Авторизация и рабочие настройки сохранятся.</p></div>
+        <button class="btn ghost" type="button" onclick="resetPanelClient()">↻ Обновить панель</button>
+    </div>
+    <div id="panelResetState" class="muted small mt" aria-live="polite"></div>
+</div>
+
 <div class="split">
     <div class="card">
         <div class="row" style="justify-content:space-between">

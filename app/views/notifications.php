@@ -135,7 +135,7 @@ $primaryCh = Channels::primary();
             <div class="step-title-sub muted small">сначала проверьте общую готовность; раскрывайте направление только для точечной правки</div>
         </div>
     </div>
-    <div id="notificationReadiness" class="notif-readiness mt"><p class="muted">Проверяю пассажиров, время и каналы…</p></div>
+    <div id="notificationReadiness" class="notif-readiness mt" aria-live="polite"><p class="muted">Проверяю пассажиров, время и каналы…</p></div>
     <div id="notificationIssues"></div>
     <div class="group-template mt" id="groupTemplateBox" style="display:none">
         <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">

@@ -161,23 +161,27 @@ async function uploadManifest(inp) {
 }
 
 // Подтянуть ведомость по номеру рейса из системы автовокзала. preview → карточка, затем import.
-async function pullManifest(mode) {
-    const id = (document.getElementById('pullTripId')?.value || '').replace(/\D+/g, '');
-    const box = document.getElementById('pullResult');
-    const btn = document.getElementById('pullBtn');
+async function pullManifest(mode, target = 'notifications') {
+    const prefix = target === 'manifests' ? 'manifest' : '';
+    const id = (document.getElementById(prefix ? 'manifestPullTripId' : 'pullTripId')?.value || '').replace(/\D+/g, '');
+    const box = document.getElementById(prefix ? 'manifestPullResult' : 'pullResult');
+    const btn = document.getElementById(prefix ? 'manifestPullBtn' : 'pullBtn');
     if (!id) { if (box) box.innerHTML = '<div class="alert warn">Введите номер рейса.</div>'; return; }
     if (btn) btn.disabled = true;
     if (box) box.innerHTML = '<p class="muted small">Запрашиваю систему автовокзала…</p>';
     const r = await api('manifest.pull', { id, mode }).catch(() => null);
     if (btn) btn.disabled = false;
     if (!r?.ok) { if (box) box.innerHTML = `<div class="alert err">${esc(r?.error || 'Не удалось получить рейс.')}</div>`; return; }
-    if (r.mode === 'import') { location = '/?p=notifications&manifest_id=' + r.manifest_id; return; }
+    if (r.mode === 'import') {
+        location = target === 'manifests' ? '/?p=manifest&id=' + r.manifest_id : '/?p=notifications&manifest_id=' + r.manifest_id;
+        return;
+    }
     // превью → подтверждение
     const t = r.trip, c = r.counts;
     box.innerHTML = `<div class="pull-preview">
         <div class="pull-preview-head"><span class="pull-ic">✓</span><div><b>Рейс №${esc(t.id)} · ${esc(t.route)}</b><div class="muted small">${esc([t.departure, t.carrier, t.bus].filter(Boolean).join(' · '))}</div></div></div>
         <div class="pull-metrics"><div><b>${c.passengers}</b><span>пассажиров</span></div><div><b>${c.agents}</b><span>агентов</span></div><div><b>${c.stations}</b><span>станций с ID</span></div><div><b>${c.segments}</b><span>отрезков</span></div></div>
-        <div class="row" style="gap:10px;flex-wrap:wrap"><button class="btn" onclick="pullManifest('import')">Импортировать рейс</button><button class="btn ghost" onclick="document.getElementById('pullResult').innerHTML='';document.getElementById('pullTripId').focus()">Другой номер</button></div>
+        <div class="row" style="gap:10px;flex-wrap:wrap"><button class="btn" onclick="pullManifest('import','${target}')">Импортировать рейс</button><button class="btn ghost" onclick="document.getElementById('${prefix ? 'manifestPullResult' : 'pullResult'}').innerHTML='';document.getElementById('${prefix ? 'manifestPullTripId' : 'pullTripId'}').focus()">Другой номер</button></div>
         <div class="muted small mt">Если рейс уже загружен — просто откроется, дубль не создаётся.</div>
     </div>`;
 }
@@ -1102,6 +1106,7 @@ async function sendGroup(btn, gi, silent = false) {
     const parallel = channels.length > 1 ? `\nКаждый пассажир может получить ${channels.length} одинаковых сообщения.` : '';
     if (!silent && !confirm(`Отправить группе «${GROUPS[gi].station} → ${GROUPS[gi].destination}» (${ids.length} получателей) через ${channels.map(x => channelLabels[x] || x).join(', ')}?${parallel}`)) return;
     btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
     state.textContent = 'Отправляю…';
     try {
         const r = await api('campaign.send', {
@@ -1125,6 +1130,7 @@ async function sendGroup(btn, gi, silent = false) {
         return r;
     } finally {
         btn.disabled = false;
+        btn.removeAttribute('aria-busy');
     }
 }
 
@@ -1138,7 +1144,7 @@ async function sendAllGroups(btn) {
     const duplicateWarning = channels.length > 1 ? `\n\nВНИМАНИЕ: выбрано ${channels.length} канала. Пассажир может получить одинаковое сообщение в каждом канале.` : '';
     if (!confirm(`Отправить актуальные сообщения ${valid} пассажирам в ${GROUPS.length} направлениях?\nКаналы: ${channels.map(x => CHANNEL_LABELS[x] || x).join(', ')}. До ${attempts} сообщений.${duplicateWarning}`)) return;
     const sendButtons = [...document.querySelectorAll('[data-send-all]')];
-    sendButtons.forEach(button => button.disabled = true);
+    sendButtons.forEach(button => { button.disabled = true; button.setAttribute('aria-busy', 'true'); });
     const all = document.getElementById('allState');
     let total = 0, failed = 0, duplicates = 0;
     const cards = document.querySelectorAll('.gcard');
@@ -1150,7 +1156,7 @@ async function sendAllGroups(btn) {
         duplicates += r.duplicates || 0;
     }
     all.innerHTML = `<div class="alert ${failed ? 'warn' : 'ok'}">Готово: сообщений отправлено ${total}, ошибок ${failed}${duplicates ? ', повторов предотвращено ' + duplicates : ''}.</div>`;
-    sendButtons.forEach(button => button.disabled = false);
+    sendButtons.forEach(button => { button.disabled = false; button.removeAttribute('aria-busy'); });
     loadCampaignOverview(true);
 }
 
@@ -1660,6 +1666,63 @@ const chat = { conversationId: null, conversation: null, threads: [], poll: null
     queue: 'open', channelFilter: 'all', channelCounts: {}, counts: {}, users: [], currentUserId: 0,
     cursor: null, beforeCursor: null, hasOlder: false, messages: [], events: [], searchTimer: null };
 const $id = id => document.getElementById(id);
+
+// Безопасный сброс клиентского кеша: не трогаем cookies, сессию и localStorage
+// (там могут находиться несохранённые пользовательские сценарии).
+async function resetPanelClient() {
+    const state = $id('panelResetState');
+    if (state) state.textContent = 'Очищаю кеш приложения…';
+    try {
+        if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map(reg => reg.unregister()));
+        }
+        if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(key => caches.delete(key)));
+        }
+        if (state) state.textContent = 'Готово. Перезагружаю…';
+    } catch (e) {
+        if (state) state.textContent = 'Кеш браузера недоступен — выполняю принудительное обновление.';
+    }
+    const url = new URL(location.href);
+    url.searchParams.set('_refresh', String(Date.now()));
+    location.replace(url.toString());
+}
+
+// Прямой свайп мобильной шторки: палец двигает её 1:1, а отпускание
+// либо закрывает, либо мягко возвращает в исходное положение.
+function bindSheetGesture() {
+    const sheet = document.querySelector('.more-sheet');
+    const grab = sheet?.querySelector('.sheet-grab');
+    if (!sheet || !grab || !window.PointerEvent) return;
+    let startY = 0, lastY = 0, lastAt = 0, active = false;
+    grab.addEventListener('pointerdown', e => {
+        if (!document.body.classList.contains('sheet-open')) return;
+        active = true; startY = lastY = e.clientY; lastAt = performance.now();
+        sheet.style.transition = 'none'; grab.setPointerCapture(e.pointerId); e.preventDefault();
+    });
+    grab.addEventListener('pointermove', e => {
+        if (!active) return;
+        const y = Math.max(0, e.clientY - startY); lastY = e.clientY; lastAt = performance.now();
+        sheet.style.setProperty('--sheet-drag', `${y}px`);
+    });
+    const finish = e => {
+        if (!active) return; active = false;
+        const dy = Math.max(0, lastY - startY); const dt = Math.max(1, performance.now() - lastAt);
+        const fastDown = (e?.clientY != null ? e.clientY - lastY : 0) / dt > .35;
+        sheet.style.transition = '';
+        if (dy > 90 || fastDown) {
+            document.body.classList.remove('sheet-open');
+            sheet.style.setProperty('--sheet-drag', '100%');
+            setTimeout(() => sheet.style.removeProperty('--sheet-drag'), 260);
+        } else {
+            sheet.style.setProperty('--sheet-drag', '0px');
+        }
+        try { grab.releasePointerCapture(e.pointerId); } catch (_) {}
+    };
+    grab.addEventListener('pointerup', finish); grab.addEventListener('pointercancel', finish);
+}
 const CHAN_META = {
     whatsapp: { name: 'WhatsApp', short: 'WA', color: '#0e7a44' },
     max:      { name: 'MAX', short: 'MAX', color: '#5b2bd6' },
@@ -1764,7 +1827,23 @@ async function chatOpen(id) {
     const t=chat.threads.find(x=>Number(x.id)===chat.conversationId);if(t)t.unread_count=0;chatRenderThreads();$id('chatText').focus();
 }
 function chatCloseConv() { chat.conversationId=null;chat.conversation=null;$id('chatWrap').classList.remove('conv-open');$id('chatPane').hidden=true;$id('chatEmpty').hidden=false;history.replaceState(null,'','/?p=chats');chatRenderThreads(); }
-function chatMessageHtml(m){return `<div class="cm ${m.dir}"><div class="cm-bubble">${chatMedia(m)}${chatText(m)}<span class="cm-meta">${chatChannelTag(m)}${esc(chatTime(m.ts))}${m.dir==='out'?chatTicks(m):''}</span></div></div>`;}
+function bindChatSwipeBack() {
+    const pane = $id('chatPane');
+    if (!pane || !window.PointerEvent || !window.matchMedia('(max-width: 860px)').matches) return;
+    let sx = 0, sy = 0, active = false;
+    pane.addEventListener('pointerdown', e => {
+        if (e.target.closest('textarea, input, select, button, a')) return;
+        sx = e.clientX; sy = e.clientY; active = true; pane.setPointerCapture(e.pointerId);
+    });
+    pane.addEventListener('pointerup', e => {
+        if (!active) return; active = false;
+        const dx = e.clientX - sx, dy = e.clientY - sy;
+        if (dx > 84 && Math.abs(dx) > Math.abs(dy) * 1.25) chatCloseConv();
+        try { pane.releasePointerCapture(e.pointerId); } catch (_) {}
+    });
+    pane.addEventListener('pointercancel', () => { active = false; });
+}
+function chatMessageHtml(m){return `<div class="cm ${m.dir}${m.pending?' pending':''}"${m.pending?' data-pending="1"':''}><div class="cm-bubble">${chatMedia(m)}${chatText(m)}<span class="cm-meta">${chatChannelTag(m)}${m.pending?'отправляется…':esc(chatTime(m.ts))}${m.dir==='out'&&!m.pending?chatTicks(m):''}</span></div></div>`;}
 async function chatLoadMessages(force=false,before=false) {
     if(!chat.conversationId)return; const active=chat.conversationId;
     try{
@@ -1792,11 +1871,14 @@ function chatOpenNotes(){chatRenderNotes();$id('chatNotesDialog').showModal();}
 function chatRenderNotes(){const box=$id('chatNotesList');if(!box)return;const notes=chat.events.filter(e=>e.event_type==='note');box.innerHTML=notes.length?notes.map(n=>`<div class="chat-note"><div>${esc(n.body||'')}</div><small>${esc(n.actor_name||'')} · ${esc(chatTime(n.created_at))}</small></div>`).join(''):'<div class="chat-hint">Заметок пока нет.</div>';}
 async function chatAddNote(e){e.preventDefault();const ta=$id('chatNoteText');const body=ta.value.trim();if(!body)return;try{await chatInboxApi('note',{conversation_id:chat.conversationId,body});ta.value='';await chatLoadMessages();}catch(err){alert(err.message);}}
 async function chatSend(e){
-    if(e)e.preventDefault();const ta=$id('chatText');const text=ta.value.trim();if(!text||!chat.conversationId||chat.busy)return;chat.busy=true;$id('chatSendBtn').disabled=true;$id('chatChannelNote').textContent='';
-    const r=await api('chat.send',{conversation_id:chat.conversationId,text});chat.busy=false;$id('chatSendBtn').disabled=false;
-    if(r.ok){ta.value='';ta.style.height='auto';await chatLoadMessages(true);chatLoadThreads();ta.focus();}else{$id('chatChannelNote').textContent='⚠ '+(r.error||'Не удалось отправить');}
+    if(e)e.preventDefault();const ta=$id('chatText');const text=ta.value.trim();if(!text||!chat.conversationId||chat.busy)return;chat.busy=true;const sendBtn=$id('chatSendBtn');sendBtn.disabled=true;sendBtn.setAttribute('aria-busy','true');$id('chatChannelNote').textContent='';
+    const body=$id('chatBody');const pending={dir:'out',body:text,ts:new Date().toISOString(),channel:chat.conversation?.channel||'',pending:true};
+    body.insertAdjacentHTML('beforeend',chatMessageHtml(pending));body.scrollTop=body.scrollHeight;
+    const r=await api('chat.send',{conversation_id:chat.conversationId,text});chat.busy=false;sendBtn.disabled=false;sendBtn.removeAttribute('aria-busy');
+    if(r.ok){ta.value='';ta.style.height='auto';await chatLoadMessages(true);chatLoadThreads();ta.focus();}else{$id('chatBody').querySelector('[data-pending="1"]')?.remove();$id('chatChannelNote').textContent='⚠ '+(r.error||'Не удалось отправить');}
 }
 async function chatInit(){
+    bindChatSwipeBack();
     try{const b=await chatInboxApi('bootstrap');chat.users=b.users||[];chat.currentUserId=Number(b.current_user_id||0);}catch(e){}
     await chatLoadThreads();const start=$id('chatWrap').dataset.start;if(start){const t=chat.threads.find(x=>x.contact_phone===start||String(x.id)===start);if(t)chatOpen(Number(t.id));}
     const ta=$id('chatText');if(ta){ta.addEventListener('input',()=>{ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,140)+'px';});ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();chatSend();}});}
@@ -1829,7 +1911,7 @@ async function reportRecalculate() {
     try {
         const r = await reportApi('calculate', {manifest_id: window.REPORT_MANIFEST_ID});
         document.querySelectorAll('[data-total]').forEach(el => {
-            el.textContent = reportMoney(r.calculation.totals[el.dataset.total]);
+            el.textContent = (el.dataset.prefix || '') + reportMoney(r.calculation.totals[el.dataset.total]);
         });
         const warnings = $id('reportWarnings');
         if (warnings) warnings.innerHTML = r.calculation.warnings.length
@@ -1884,6 +1966,17 @@ function reportInit() {
             reportSetState('Все изменения сохранены');
         } catch (e) { reportSetState(e.message, true); }
     }));
+}
+
+// Пересобрать назначения агентов по текущим комментариям — по команде оператора.
+// В самом расчёте автоподбор ручной выбор не трогает, поэтому нужна явная кнопка.
+async function reportRematchAgents(manifestId) {
+    if (!confirm('Пересобрать агентов по комментариям и полю «Агент/кассир»?\nРучные назначения будут перезаписаны.')) return;
+    try {
+        const r = await reportApi('agents.rematch', {manifest_id: manifestId});
+        alert('Назначено строк: ' + (r.matched || 0));
+        location.reload();
+    } catch (e) { alert(e.message); }
 }
 
 async function reportAddPassenger(manifestId) {
@@ -2065,6 +2158,7 @@ async function reportDeleteStationSale(button) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    bindSheetGesture();
     bindCells();
     bindCatalog();
     if (document.body.dataset.page === 'chats') chatInit();
