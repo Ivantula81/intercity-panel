@@ -8,9 +8,11 @@ if ($page === 'login') {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         csrf_check();
         if (authenticate((string) ($_POST['login'] ?? ''), (string) ($_POST['password'] ?? ''))) {
+            audit_event('auth.login', 'auth', 'session', null, 'success');
             header('Location: /');
             exit;
         }
+        audit_event('auth.login', 'auth', 'session', null, 'failure');
         sleep(1);
         view('login', ['error' => 'Неверный логин или пароль']);
         exit;
@@ -20,6 +22,7 @@ if ($page === 'login') {
 }
 
 if ($page === 'logout') {
+    audit_event('auth.logout', 'auth', 'session', null, 'success');
     $_SESSION = [];
     if (ini_get('session.use_cookies')) {
         $p = session_get_cookie_params();

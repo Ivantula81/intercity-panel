@@ -7,6 +7,16 @@ require_once PANEL_ROOT . '/app/contacts.php';
 $action = $_GET['a'] ?? '';
 $body = json_decode(file_get_contents('php://input') ?: '[]', true) ?: [];
 
+// Считаем использование функций без записи payload или персональных данных.
+// Результат «started» позволяет видеть частоту вызовов даже до оборачивания
+// отдельных веток в success/failure.
+if ($action !== '') {
+    $section = str_contains((string) $action, 'manifest') || str_contains((string) $action, 'passenger') ? 'manifest'
+        : (str_contains((string) $action, 'campaign') || str_contains((string) $action, 'send') ? 'messaging'
+        : (str_contains((string) $action, 'chat') ? 'chat' : 'settings'));
+    audit_event($action, $section);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
 }

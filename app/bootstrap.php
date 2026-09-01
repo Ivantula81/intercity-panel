@@ -157,6 +157,26 @@ function is_admin(): bool
     return ($_SESSION['user_role'] ?? 'operator') === 'admin';
 }
 
+/** Server-side authorization guard. Keep permission checks next to the mutation.
+ *  The current deployment has only administrators, but this is deliberately
+ *  stricter than hiding a button in the UI so operator accounts cannot bypass it.
+ */
+function require_admin(): void
+{
+    if (!is_admin()) {
+        if (($_GET['p'] ?? '') === 'api' || str_contains((string) ($_SERVER['CONTENT_TYPE'] ?? ''), 'application/json')) {
+            json_out(['ok' => false, 'error' => 'Только администратор'], 403);
+        }
+        http_response_code(403);
+        die('Недостаточно прав');
+    }
+}
+
+function audit_actor_id(): ?int
+{
+    return is_numeric($_SESSION['panel_user'] ?? null) ? (int) $_SESSION['panel_user'] : null;
+}
+
 function csrf_token(): string
 {
     if (empty($_SESSION['csrf'])) {
@@ -216,3 +236,5 @@ function flash(?string $set = null): string
     unset($_SESSION['flash']);
     return $f;
 }
+
+require_once PANEL_ROOT . '/app/audit.php';
