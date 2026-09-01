@@ -1296,7 +1296,7 @@ async function sendBroadcast() {
     btn.disabled = true;
     out.innerHTML = '<div class="alert warn">Отправляю… не закрывайте страницу</div>';
     try {
-        const r = await api('broadcast.send', { phones, text, image: BIMG, channels });
+        const r = await api('broadcast.send', { phones, text, image: BIMG, channels, emergency: document.getElementById('bEmergency')?.checked ? 1 : 0 });
         if (!r.ok) { out.innerHTML = '<div class="alert err">' + esc(r.error) + '</div>'; return; }
         out.innerHTML = `<div class="alert ${r.failed ? 'warn' : 'ok'}">Отправлено сообщений: ${r.sent}, ошибок: ${r.failed}`
             + (r.rest ? `. В очереди ещё ${r.rest} номеров — нажмите «Отправить» снова.` : '.') + '</div>'

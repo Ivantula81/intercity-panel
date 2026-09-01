@@ -1310,6 +1310,12 @@ switch ($action) {
         }
         $phones = array_keys($phones);
         if (!$phones) json_out(['ok' => false, 'error' => 'Нет корректных номеров.']);
+        if (empty($body['emergency']) && opt('messaging_hours_enabled', '1') !== '0') {
+            $tz = new DateTimeZone('Europe/Moscow'); $now = new DateTimeImmutable('now', $tz);
+            $from = opt('messaging_hours_from', '06:30'); $to = opt('messaging_hours_to', '21:00');
+            $start = new DateTimeImmutable($now->format('Y-m-d').' '.$from, $tz); $end = new DateTimeImmutable($now->format('Y-m-d').' '.$to, $tz);
+            if ($now < $start || $now >= $end) json_out(['ok'=>false,'error'=>'Отправка доступна с '.$from.' до '.$to.' по Москве. Для экстренной отправки включите флаг.'], 409);
+        }
         $unsub = 0; // исключаем отписавшихся («стоп»)
         $phones = array_values(array_filter($phones, function ($p) use (&$unsub) { if (is_unsubscribed($p)) { $unsub++; return false; } return true; }));
 

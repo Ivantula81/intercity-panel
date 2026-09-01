@@ -58,6 +58,25 @@ try {
     fwrite(STDERR, "job read failed\n"); exit(1);
 }
 
+// Рабочее окно отправки по Москве. Экстренные задания могут явно передать
+// emergency=true в payload и обходят ограничение.
+$emergency = !empty($payload['emergency']);
+if (!$emergency && opt('messaging_hours_enabled', '1') !== '0') {
+    $tz = new DateTimeZone('Europe/Moscow');
+    $now = new DateTimeImmutable('now', $tz);
+    $from = preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', opt('messaging_hours_from', '06:30')) ? opt('messaging_hours_from', '06:30') : '06:30';
+    $to = preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', opt('messaging_hours_to', '21:00')) ? opt('messaging_hours_to', '21:00') : '21:00';
+    $start = new DateTimeImmutable($now->format('Y-m-d') . ' ' . $from, $tz);
+    $end = new DateTimeImmutable($now->format('Y-m-d') . ' ' . $to, $tz);
+    if ($now < $start || $now >= $end) {
+        $next = $now < $start ? $start : new DateTimeImmutable('tomorrow ' . $from, $tz);
+        $delay = max(60, $next->getTimestamp() - $now->getTimestamp());
+        BroadcastQueue::finishDelivery((int)$delivery['id'], 'failed', '', 'Вне рабочего времени, перенос на ' . $next->format('d.m.Y H:i') . ' МСК', $delay);
+        echo "deferred {$delivery['id']} until " . $next->format('Y-m-d H:i:s') . " MSK\n";
+        exit(0);
+    }
+}
+
 if ($dryRun) { BroadcastQueue::finishDelivery((int)$delivery['id'], 'skipped', '', 'dry-run'); echo "dry-run delivery {$delivery['id']}\n"; exit(0); }
 
 $hash = (string)$delivery['body_hash'];
