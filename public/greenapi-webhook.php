@@ -58,7 +58,20 @@ switch ($type) {
                     try { require_once PANEL_ROOT.'/app/conversations.php'; $account=$messenger==='telegram'?'greenapi_tg':'greenapi'; $cid=conversation_ensure(['channel'=>$messenger,'account'=>$account,'external_chat_id'=>(string)($payload['targets'][$delivery['body_hash']] ?? $delivery['recipient']),'phone'=>(string)$delivery['recipient'],'name'=>$name,'manifest_id'=>(int)$delivery['manifest_id']]); conversation_append_legacy('messages',$mid,$cid); } catch(Throwable $e) {}
                 }
             } elseif ($delivery && in_array($status, ['failed','noaccount','notinwhitelist'], true)) {
-                db()->prepare("UPDATE broadcast_deliveries SET status='failed',last_error=? WHERE id=?")->execute(['Green API: '.$status,(int)$delivery['id']]);
+                $description = trim((string)($p['description'] ?? ''));
+                $reason = 'Green API: ' . $status . ($description !== '' ? ' — ' . $description : '');
+                // Лимит проверки контактов временный: возвращаем доставку
+                // в outbox, чтобы worker повторил её позже. Финальные noAccount
+                // и notInWhitelist остаются ошибками без создания чата.
+                if ($status === 'failed' && preg_match('/limit reached|лимит/i', $description)) {
+                    $delay = min(1800, max(300, 300 * max(1, (int)$delivery['attempts'])));
+                    $available = date('Y-m-d H:i:s', time() + $delay);
+                    db()->prepare("UPDATE broadcast_deliveries SET status='queued',last_error=?,available_at=? WHERE id=?")
+                        ->execute([$reason, $available, (int)$delivery['id']]);
+                } else {
+                    db()->prepare("UPDATE broadcast_deliveries SET status='failed',last_error=? WHERE id=?")
+                        ->execute([$reason,(int)$delivery['id']]);
+                }
             }
             if ($status === 'delivered') {
                 db()->prepare('UPDATE messages SET delivered_at = COALESCE(delivered_at, NOW()) WHERE wa_id = ? AND channel=?')->execute([$waId,$messenger]);
