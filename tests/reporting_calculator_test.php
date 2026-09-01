@@ -77,13 +77,25 @@ $overrideAgents = [
     10 => ['name'=>'Терра','side'=>'us','rate'=>0,'alias'=>'Сайт, ТЕРРА','src'=>'raw'],
     11 => ['name'=>'GoBus Ванюк','side'=>'carrier','rate'=>0,'alias'=>'GoBus Ванюк','src'=>'comment'],
 ];
+// Оператор выбрал агента вручную — комментарий его НЕ перебивает. Правило «комментарий
+// сильнее» действует для автозаполненного поля «Агент/кассир», а не для решения человека
+// (в прототипе: `if (r.agent) return;`). Пересобрать назначения можно кнопкой
+// «Подставить агентов по совпадению» — это осознанное действие оператора.
 $override = ReportingCalculator::calculate([[
-    'id'=>8,'name'=>'Ручная пометка','attendance'=>'present','refund_status'=>'none',
+    'id'=>8,'name'=>'Ручное назначение','attendance'=>'present','refund_status'=>'none',
     'manifest_price'=>3500,'our_price'=>3500,'agent_contract_id'=>10,
     'agent_raw'=>'Сайт','pay_note'=>'GoBus Ванюк',
 ]], $overrideAgents);
-expectSameValue('carrier', $override['passengers'][0]['settlement_side'], 'Комментарий переопределяет старое назначение агента');
-expectSameValue(3500.0, $override['totals']['carrier_sales'], 'Переопределённая продажа попадает в канал перевозчика');
+expectSameValue('us', $override['passengers'][0]['settlement_side'], 'Ручное назначение агента не перебивается комментарием');
+expectSameValue(3500.0, $override['totals']['our_sales'], 'Продажа остаётся в нашем канале');
+
+// А без ручного назначения комментарий действительно сильнее поля «Агент/кассир».
+$autoNote = ReportingCalculator::calculate([[
+    'id'=>12,'name'=>'Автоподбор по пометке','attendance'=>'present','refund_status'=>'none',
+    'manifest_price'=>3500,'our_price'=>3500,'agent_contract_id'=>0,
+    'agent_raw'=>'Сайт','pay_note'=>'GoBus Ванюк',
+]], $overrideAgents);
+expectSameValue('carrier', $autoNote['passengers'][0]['settlement_side'], 'Без назначения комментарий сильнее поля');
 
 $commaAlias = ReportingCalculator::calculate([[
     'id'=>9,'name'=>'Алиас через запятую','attendance'=>'present','refund_status'=>'none',

@@ -215,35 +215,64 @@ function reporting_calculate_manifest(int $manifestId): array
     return ReportingCalculator::calculate($passengers, $contracts, $opts);
 }
 
-function reporting_match_imported_agents(int $manifestId): void
+// Автоподбор агентов по ведомости и комментариям.
+// $force = false — заполняем ТОЛЬКО пустые назначения (ручной выбор оператора не трогаем).
+// $force = true  — пересобираем все (кнопка «Подставить агентов по совпадению»):
+//                  это осознанное действие оператора, поэтому перезапись допустима.
+// Возвращает, сколько строк назначено.
+function reporting_match_imported_agents(int $manifestId, bool $force = false): int
 {
-    $agents = db()->query("SELECT c.id contract_id,c.agent_id,a.name,a.aliases,c.settlement_side,
-        c.agent_commission_rate,c.match_src,
-        (SELECT COUNT(*) FROM report_agent_contracts c2 WHERE c2.agent_id=c.agent_id AND c2.active=1) contract_count
-        FROM report_agent_contracts c JOIN report_agents a ON a.id=c.agent_id
-        WHERE c.active=1 AND a.active=1 ORDER BY c.id")->fetchAll();
+    $scenarioId = reporting_scenario_for($manifestId);
+    // ⚠️ Договоры считаем В ПРЕДЕЛАХ СЦЕНАРИЯ. Иначе после копирования сценария у каждого
+    // агента становится 2+ договора, срабатывает защита ниже — и автоподбор молча умирает.
+    try {
+        $st = db()->prepare("SELECT c.id contract_id,c.agent_id,a.name,a.aliases,c.settlement_side,
+            c.agent_commission_rate,c.match_src,
+            (SELECT COUNT(*) FROM report_agent_contracts c2
+              WHERE c2.agent_id=c.agent_id AND c2.active=1 AND c2.scenario_id<=>c.scenario_id) contract_count
+            FROM report_agent_contracts c JOIN report_agents a ON a.id=c.agent_id
+            WHERE c.active=1 AND a.active=1 AND (c.scenario_id = ? OR (c.scenario_id IS NULL AND ? = 0))
+            ORDER BY c.id");
+        $st->execute([$scenarioId, $scenarioId]);
+        $agents = $st->fetchAll();
+    } catch (Throwable $e) { // до применения schema22
+        $agents = db()->query("SELECT c.id contract_id,c.agent_id,a.name,a.aliases,c.settlement_side,
+            c.agent_commission_rate,c.match_src,
+            (SELECT COUNT(*) FROM report_agent_contracts c2 WHERE c2.agent_id=c.agent_id AND c2.active=1) contract_count
+            FROM report_agent_contracts c JOIN report_agents a ON a.id=c.agent_id
+            WHERE c.active=1 AND a.active=1 ORDER BY c.id")->fetchAll();
+    }
+
     $matchAgents = [];
     foreach ($agents as $agent) {
-        // При нескольких договорах одного бренда автоназначение небезопасно — оператор
-        // выберет договор вручную, но уникальный ручной комментарий всё равно применяем.
+        // Несколько договоров у одного бренда в одном сценарии — выбор за оператором:
+        // по имени нельзя понять, по какому договору фактически прошли деньги.
         if ((int) $agent['contract_count'] !== 1) continue;
         $matchAgents[(int) $agent['contract_id']] = [
             'id' => (int) $agent['contract_id'], 'name' => $agent['name'],
-            'alias' => trim((string) $agent['aliases'] . '|' . (string) $agent['name']), 'side' => $agent['settlement_side'],
-            'rate' => $agent['agent_commission_rate'], 'src' => $agent['match_src'] ?? '',
+            'alias' => trim((string) $agent['aliases'] . '|' . (string) $agent['name'], '| '),
+            'side' => $agent['settlement_side'], 'rate' => $agent['agent_commission_rate'],
+            'src' => $agent['match_src'] ?? '',
         ];
     }
-    $st = db()->prepare("SELECT id,agent_raw,pay_note,agent_contract_id FROM passengers WHERE manifest_id=?");
+    if (!$matchAgents) return 0;
+
+    $sql = 'SELECT id,agent_raw,pay_note,agent_contract_id FROM passengers WHERE manifest_id=?'
+        . ($force ? '' : ' AND agent_contract_id IS NULL');
+    $st = db()->prepare($sql);
     $st->execute([$manifestId]);
     $up = db()->prepare('UPDATE passengers SET agent_contract_id=? WHERE id=?');
+    $n = 0;
     foreach ($st->fetchAll() as $passenger) {
-        $commentMatch = ReportingCalculator::matchAgent('', (string) ($passenger['pay_note'] ?? ''), $matchAgents);
-        $agentId = $commentMatch ?: (int) ($passenger['agent_contract_id'] ?? 0);
-        if (!$agentId) {
-            $agentId = ReportingCalculator::matchAgent((string) ($passenger['agent_raw'] ?? ''), '', $matchAgents);
+        // Внутри matchAgent комментарий уже сильнее поля «Агент/кассир».
+        $agentId = ReportingCalculator::matchAgent(
+            (string) ($passenger['agent_raw'] ?? ''), (string) ($passenger['pay_note'] ?? ''), $matchAgents);
+        if ($agentId && $agentId !== (int) ($passenger['agent_contract_id'] ?? 0)) {
+            $up->execute([$agentId, (int) $passenger['id']]);
+            $n++;
         }
-        if ($agentId) $up->execute([$agentId, (int) $passenger['id']]);
     }
+    return $n;
 }
 
 function reporting_storage_dir(): string

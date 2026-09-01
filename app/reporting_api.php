@@ -28,6 +28,14 @@ try {
             if ($field === 'manifest_price') db()->prepare('UPDATE passengers SET price=? WHERE id=?')->execute([$value,$id]);
             json_out(['ok'=>true]);
 
+        // «Подставить агентов по совпадению» — осознанное действие оператора: пересобрать
+        // назначения по текущим комментариям и полю «Агент/кассир». Только здесь автоподбор
+        // имеет право перезаписать ручной выбор — в самом расчёте он неприкосновенен.
+        case 'agents.rematch':
+            $manifestId = (int) ($body['manifest_id'] ?? 0);
+            $n = reporting_match_imported_agents($manifestId, true);
+            json_out(['ok'=>true,'matched'=>$n]);
+
         case 'passenger.add':
             $manifestId = (int) ($body['manifest_id'] ?? 0);
             db()->prepare("INSERT INTO passengers (manifest_id,name,sort,attendance,refund_status)

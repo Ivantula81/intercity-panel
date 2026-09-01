@@ -55,15 +55,12 @@ final class ReportingCalculator
             if ($refunded) $counts['refunds']++;
 
             $agentId = (int) ($p['agent_contract_id'] ?? 0);
-            $rawAgent = (string) ($p['agent_raw'] ?? '');
-            $payNote = (string) ($p['pay_note'] ?? '');
-            // Ручная пометка кассира сильнее старого автоприсвоения: это позволяет
-            // исправить строку «Агент/кассир» без отдельного сброса назначения.
-            $commentMatch = self::matchAgent('', $payNote, $agents);
-            if ($commentMatch) {
-                $agentId = $commentMatch;
-            } elseif (!isset($agents[$agentId])) {
-                $agentId = self::matchAgent($rawAgent, $payNote, $agents);
+            // ⚠️ Ручное назначение оператора НЕПРИКОСНОВЕННО — автоподбор только для пустых.
+            // Правило «комментарий сильнее» относится к автозаполненному полю «Агент/кассир»
+            // из ведомости, а не к решению человека (в прототипе: `if (r.agent) return;`).
+            // Пересобрать назначения по свежим комментариям можно кнопкой «Подставить агентов».
+            if (!isset($agents[$agentId])) {
+                $agentId = self::matchAgent((string) ($p['agent_raw'] ?? ''), (string) ($p['pay_note'] ?? ''), $agents);
             }
             $agent = $agents[$agentId] ?? null;
             $side = $agent ? $agent['side'] : 'none';

@@ -90,7 +90,7 @@ $isFiles = $activeTab === 'files';
 </div>
 
 <div class="card report-passengers">
-    <div class="row report-card-head"><div><h2>Пассажиры <span class="badge muted" id="reportPassengerCount"><?= count($passengers) ?></span></h2><div class="small muted">Неизвестная явка считается предварительно как поездка. Перед финальным расчётом отметьте всех.</div></div><button class="btn sm" onclick="reportAddPassenger(<?= (int)$manifest['id'] ?>)"><?= icon('plus') ?> Добавить пассажира</button></div>
+    <div class="row report-card-head"><div><h2>Пассажиры <span class="badge muted" id="reportPassengerCount"><?= count($passengers) ?></span></h2><div class="small muted">Неизвестная явка считается предварительно как поездка. Перед финальным расчётом отметьте всех.</div></div><div class="row" style="gap:8px"><button class="btn ghost sm" onclick="reportRematchAgents(<?= (int)$manifest['id'] ?>)" title="Пересобрать назначения по комментариям и полю «Агент/кассир». Перезапишет ручные назначения.">Подставить агентов по совпадению</button><button class="btn sm" onclick="reportAddPassenger(<?= (int)$manifest['id'] ?>)"><?= icon('plus') ?> Добавить пассажира</button></div></div>
     <div class="table-wrap"><table class="t report-passenger-table"><thead><tr>
         <th style="width:56px">Место</th><th>Пассажир</th>
         <th style="width:210px">Откуда → куда</th><th style="width:220px">Агент / кассир</th>
