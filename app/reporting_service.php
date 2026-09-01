@@ -88,14 +88,14 @@ function reporting_contracts(?int $scenarioId = null): array
 {
     $scenarioId = $scenarioId ?: reporting_default_scenario_id();
     try {
-        $st = db()->prepare("SELECT c.*, a.name agent_name FROM report_agent_contracts c
+        $st = db()->prepare("SELECT c.*, a.name agent_name, a.aliases FROM report_agent_contracts c
             JOIN report_agents a ON a.id=c.agent_id
             WHERE c.active=1 AND a.active=1 AND (c.scenario_id = ? OR (c.scenario_id IS NULL AND ? = 0))
             ORDER BY a.name,c.title,c.id");
         $st->execute([$scenarioId, $scenarioId]);
         $rows = $st->fetchAll();
     } catch (Throwable $e) { // до применения schema22
-        $rows = db()->query("SELECT c.*, a.name agent_name FROM report_agent_contracts c
+        $rows = db()->query("SELECT c.*, a.name agent_name, a.aliases FROM report_agent_contracts c
             JOIN report_agents a ON a.id=c.agent_id WHERE c.active=1 AND a.active=1 ORDER BY a.name,c.title,c.id")->fetchAll();
     }
     $result = [];
