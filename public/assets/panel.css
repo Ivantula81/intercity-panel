@@ -869,9 +869,12 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 .report-dialog input, .report-dialog select { font: inherit; font-size: 14px; }
 .report-rate-field { width: 94px !important; min-width: 94px; }
 .report-trip-head h1 { margin-top: 5px; }
-.report-tabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
-.report-tabs a { padding: 10px 14px; color: var(--muted); font-weight: 700; font-size: 13px; border-bottom: 2px solid transparent; }
+.report-tabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.report-tabs::-webkit-scrollbar { display: none; }
+.report-tabs a { padding: 10px 14px; color: var(--muted); font-weight: 700; font-size: 13px; border-bottom: 2px solid transparent; white-space: nowrap; }
 .report-tabs a.active { color: var(--brand); border-color: var(--brand); }
+.report-tabs a:not(.active):hover { color: var(--ink); background: var(--surface-2); text-decoration: none; }
+#reportPassengers, #reportCalculation, #reportControl { scroll-margin-top: 18px; }
 .report-facts { display: grid; grid-template-columns: repeat(3,minmax(180px,1fr)); gap: 12px; }
 .report-facts.compact { grid-template-columns: 1fr; }
 .report-facts input:disabled { color: var(--muted); background: var(--surface-2); }
