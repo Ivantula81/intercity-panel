@@ -6,6 +6,29 @@
 require dirname(__DIR__) . '/app/bootstrap.php';
 require PANEL_ROOT . '/app/broadcast_queue.php';
 require PANEL_ROOT . '/lib/Channels.php';
+require PANEL_ROOT . '/app/conversations.php';
+
+function worker_record_message(array $delivery, array $job, string $providerId, string $body): void {
+    $pdo = db();
+    $name = '';
+    if (!empty($delivery['passenger_id'])) {
+        $st = $pdo->prepare('SELECT name FROM passengers WHERE id=?'); $st->execute([(int)$delivery['passenger_id']]);
+        $name = (string)($st->fetchColumn() ?: '');
+    }
+    $st = $pdo->prepare('SELECT id FROM messages WHERE wa_id=? AND channel=? LIMIT 1');
+    $st->execute([$providerId, (string)$delivery['channel']]);
+    $mid = (int)($st->fetchColumn() ?: 0);
+    if (!$mid) {
+        $st = $pdo->prepare('INSERT INTO messages (manifest_id,channel,recipient,passenger_name,body,actor,status,sent_at,wa_id) VALUES (?,?,?,?,?,? ,"sent",NOW(),?)');
+        $st->execute([(int)($job['manifest_id'] ?? 0), (string)$delivery['channel'], (string)$delivery['recipient'], $name, $body, 'Очередь рассылок', $providerId]);
+        $mid = (int)$pdo->lastInsertId();
+    }
+    $account = (string)$delivery['channel'] === 'telegram' ? 'greenapi_tg' : 'greenapi';
+    $cid = conversation_ensure(['channel'=>(string)$delivery['channel'],'account'=>$account,
+        'external_chat_id'=>(string)$delivery['target'],'phone'=>(string)$delivery['recipient'],'name'=>$name,
+        'manifest_id'=>(int)($job['manifest_id'] ?? 0)]);
+    conversation_append_legacy('messages', $mid, $cid);
+}
 
 function worker_env(string $key): string {
     static $e = null;
@@ -26,7 +49,7 @@ if (!$delivery) { echo "empty\n"; exit(0); }
 
 $payload = [];
 try {
-    $st = db()->prepare('SELECT payload_json,status FROM broadcast_jobs WHERE id=?');
+    $st = db()->prepare('SELECT payload_json,status,manifest_id FROM broadcast_jobs WHERE id=?');
     $st->execute([(int)$delivery['job_id']]);
     $job = $st->fetch() ?: [];
     $payload = json_decode((string)($job['payload_json'] ?? ''), true) ?: [];
@@ -52,7 +75,10 @@ if (!$client || !$client->isConfigured() || empty(($state = $client->connectionS
 }
 $result = $client->sendText($target, $text);
 if (!empty($result['ok'])) {
-    BroadcastQueue::finishDelivery((int)$delivery['id'], 'accepted', (string)($result['data']['key']['id'] ?? ''));
+    $providerId = (string)($result['data']['key']['id'] ?? '');
+    BroadcastQueue::finishDelivery((int)$delivery['id'], 'accepted', $providerId);
+    $delivery['target'] = $target;
+    worker_record_message($delivery, $job, $providerId, $text);
     db()->prepare("UPDATE broadcast_jobs j SET status=IF(NOT EXISTS(SELECT 1 FROM broadcast_deliveries d WHERE d.job_id=j.id AND d.status IN ('queued','sending')), 'completed', 'running') WHERE j.id=?")->execute([(int)$delivery['job_id']]);
     echo "accepted {$delivery['id']}\n"; exit(0);
 }
