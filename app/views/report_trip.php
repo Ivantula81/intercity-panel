@@ -12,8 +12,8 @@ $isCarrierReport = $activeTab === 'carrier';
     <div><a class="small muted" href="/?p=reporting">← Все рейсы</a><h1>Рейс № <?= e($manifest['trip_number']) ?></h1><div class="sub"><?= e($manifest['route']) ?></div></div>
     <div class="head-actions">
     <?php if (!empty($scenarioList) && count($scenarioList) > 0): ?>
-        <label class="row small muted" style="gap:6px;margin:0" title="Набор настроек: свои перевозчики, агенты и проценты">Сценарий
-            <select id="tripScenario" onchange="reportApplyScenario(<?= (int)$manifest['id'] ?>, this.value)" style="max-width:170px">
+        <label class="row small muted report-scenario-label" title="Набор настроек: свои перевозчики, агенты и проценты">Сценарий
+            <select id="tripScenario" class="report-scenario-select" onchange="reportApplyScenario(<?= (int)$manifest['id'] ?>, this.value)">
                 <?php foreach ($scenarioList as $sc): ?>
                     <option value="<?= (int)$sc['id'] ?>" <?= (int)$sc['id'] === (int)($tripScenarioId ?? 0) ? 'selected' : '' ?>><?= e($sc['name']) ?></option>
                 <?php endforeach; ?>
@@ -189,14 +189,14 @@ $isCarrierReport = $activeTab === 'carrier';
     <?php endif; ?>
     </tbody></table></div>
     <?php if ($stationList): ?>
-    <div class="row mt" style="gap:8px;flex-wrap:wrap;align-items:center">
-        <select id="stationPick" style="max-width:230px">
+    <div class="row mt report-station-add">
+        <select id="stationPick" class="report-station-select">
             <option value="">— выбрать автовокзал —</option>
             <?php foreach ($stationList as $s): ?>
                 <option value="<?= (int)$s['id'] ?>"><?= e($s['name']) ?> · <?= e(rtrim(rtrim(number_format((float)$s['rate'], 2, '.', ''), '0'), '.')) ?>%</option>
             <?php endforeach; ?>
         </select>
-        <input type="number" step="0.01" min="0" id="stationAmount" class="money-input" placeholder="Сумма, ₽" style="max-width:150px">
+        <input type="number" step="0.01" min="0" id="stationAmount" class="money-input report-station-amount" placeholder="Сумма, ₽">
         <button class="btn sm" onclick="reportAddStationSale(<?= (int)$manifest['id'] ?>)"><?= icon('plus') ?> Добавить</button>
     </div>
     <?php else: ?>

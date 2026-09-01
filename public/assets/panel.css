@@ -859,6 +859,11 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 .report-drop input { max-width: 220px; }
 .report-card-head { justify-content: space-between; align-items: center; margin-bottom: 14px; }
 .report-passenger-actions { gap: 8px; flex-wrap: wrap; }
+.report-scenario-label { gap: 6px; margin: 0; }
+.report-scenario-select { width: 170px; }
+.report-station-add { gap: 8px; flex-wrap: wrap; align-items: center; }
+.report-station-select { max-width: 230px; }
+.report-station-amount { max-width: 150px; }
 .report-context-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -4px 0 14px; padding: 10px 12px; border: 1px solid var(--brand-100); border-radius: var(--r); background: var(--brand-50); color: var(--brand-700); font-size: 13px; }
 .report-list td { vertical-align: middle; }
 .report-agents summary { cursor: pointer; }
@@ -875,6 +880,7 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 .report-tabs a.active { color: var(--brand); border-color: var(--brand); }
 .report-tabs a:not(.active):hover { color: var(--ink); background: var(--surface-2); text-decoration: none; }
 #reportPassengers, #reportCalculation, #reportControl { scroll-margin-top: 18px; }
+.report-tabs a:focus-visible, .report-p-field:focus-visible, .report-context-bar .btn:focus-visible { outline: 3px solid var(--brand-100); outline-offset: 2px; }
 .report-facts { display: grid; grid-template-columns: repeat(3,minmax(180px,1fr)); gap: 12px; }
 .report-facts.compact { grid-template-columns: 1fr; }
 .report-facts input:disabled { color: var(--muted); background: var(--surface-2); }
@@ -1059,6 +1065,8 @@ select.attendance-unknown { color: var(--muted); }
     .report-passenger-table td .small { white-space: normal; }
     .report-passenger-actions { width: 100%; }
     .report-passenger-actions .btn { flex: 1 1 180px; }
+    .report-scenario-label { width: 100%; justify-content: space-between; }
+    .report-scenario-select, .report-station-select, .report-station-amount { max-width: none; width: 100%; }
 }
 
 /* ============================================================
