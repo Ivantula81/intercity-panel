@@ -114,6 +114,7 @@ $primaryCh = Channels::primary();
                 <button class="btn ghost sm" onclick="gdsTimes()" id="gdsBtn"><?= icon('chart') ?> Обновить времена из GDS</button>
                 <label class="row small muted" style="gap:7px;margin:0"><input type="checkbox" id="attachPhoto"> приложить фото автобуса</label>
                 <label class="row small muted" style="gap:7px;margin:0"><input type="checkbox" id="driverPhoneOn" checked onchange="refreshAllPreviews()"> указать телефон водителя</label>
+                <label class="row small muted" style="gap:7px;margin:0"><input type="checkbox" id="notificationEmergency"> экстренная отправка (обойти рабочее время)</label>
                 <span class="small muted" id="busPhotoHint"></span>
             </div>
             <div id="gdsInfo" class="mt"></div>

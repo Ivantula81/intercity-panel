@@ -1121,6 +1121,7 @@ async function sendGroup(btn, gi, silent = false) {
             attach_photo: document.getElementById('attachPhoto').checked ? 1 : 0,
             phone_on: document.getElementById('driverPhoneOn')?.checked ? 1 : 0,
             queue_mode: 1,
+            emergency: document.getElementById('notificationEmergency')?.checked ? 1 : 0,
         });
         if (!r.ok) { state.innerHTML = '<span class="badge err">' + esc(r.error) + '</span>'; return r; }
         if (r.queued) {

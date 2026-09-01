@@ -1096,7 +1096,7 @@ switch ($action) {
             if (!$deliveries) json_out(['ok'=>false,'error'=>'Нет получателей с доступным адресом канала.'],422);
             try {
                 $job = BroadcastQueue::enqueue('campaign', (int)$manifest['id'], ['deliveries'=>$deliveries,
-                    'manifest_id'=>(int)$manifest['id']], audit_actor_id());
+                    'manifest_id'=>(int)$manifest['id'], 'emergency'=>!empty($body['emergency'])], audit_actor_id());
                 BroadcastQueue::materializeDeliveries((int)$job['id'], $deliveries);
                 audit_event('campaign.enqueue', 'messaging', 'broadcast_job', $job['id'], 'success', ['kind'=>'campaign']);
                 json_out(['ok'=>true,'queued'=>true,'job'=>$job,'deliveries'=>count($deliveries),'skipped'=>$skipped,'unsubscribed'=>$unsub]);
