@@ -1660,6 +1660,29 @@ const chat = { conversationId: null, conversation: null, threads: [], poll: null
     queue: 'open', channelFilter: 'all', channelCounts: {}, counts: {}, users: [], currentUserId: 0,
     cursor: null, beforeCursor: null, hasOlder: false, messages: [], events: [], searchTimer: null };
 const $id = id => document.getElementById(id);
+
+// Безопасный сброс клиентского кеша: не трогаем cookies, сессию и localStorage
+// (там могут находиться несохранённые пользовательские сценарии).
+async function resetPanelClient() {
+    const state = $id('panelResetState');
+    if (state) state.textContent = 'Очищаю кеш приложения…';
+    try {
+        if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map(reg => reg.unregister()));
+        }
+        if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(key => caches.delete(key)));
+        }
+        if (state) state.textContent = 'Готово. Перезагружаю…';
+    } catch (e) {
+        if (state) state.textContent = 'Кеш браузера недоступен — выполняю принудительное обновление.';
+    }
+    const url = new URL(location.href);
+    url.searchParams.set('_refresh', String(Date.now()));
+    location.replace(url.toString());
+}
 const CHAN_META = {
     whatsapp: { name: 'WhatsApp', short: 'WA', color: '#0e7a44' },
     max:      { name: 'MAX', short: 'MAX', color: '#5b2bd6' },
@@ -1884,6 +1907,17 @@ function reportInit() {
             reportSetState('Все изменения сохранены');
         } catch (e) { reportSetState(e.message, true); }
     }));
+}
+
+// Пересобрать назначения агентов по текущим комментариям — по команде оператора.
+// В самом расчёте автоподбор ручной выбор не трогает, поэтому нужна явная кнопка.
+async function reportRematchAgents(manifestId) {
+    if (!confirm('Пересобрать агентов по комментариям и полю «Агент/кассир»?\nРучные назначения будут перезаписаны.')) return;
+    try {
+        const r = await reportApi('agents.rematch', {manifest_id: manifestId});
+        alert('Назначено строк: ' + (r.matched || 0));
+        location.reload();
+    } catch (e) { alert(e.message); }
 }
 
 async function reportAddPassenger(manifestId) {

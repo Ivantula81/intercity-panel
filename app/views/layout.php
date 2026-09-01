@@ -53,6 +53,7 @@ $sheetKeys = ['sales', 'reporting', 'contacts', 'broadcast', 'catalogs', 'logs',
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#5b50e0">
 <meta name="application-name" content="Интерсити Тур">
+<meta name="panel-build" content="<?= (int) max(@filemtime(PANEL_ROOT . '/public/assets/panel.css') ?: 0, @filemtime(PANEL_ROOT . '/public/assets/panel.js') ?: 0) ?>">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Интерсити Тур">
