@@ -1097,6 +1097,7 @@ switch ($action) {
             try {
                 $job = BroadcastQueue::enqueue('campaign', (int)$manifest['id'], ['deliveries'=>$deliveries,
                     'manifest_id'=>(int)$manifest['id']], audit_actor_id());
+                BroadcastQueue::materializeDeliveries((int)$job['id'], $deliveries);
                 audit_event('campaign.enqueue', 'messaging', 'broadcast_job', $job['id'], 'success', ['kind'=>'campaign']);
                 json_out(['ok'=>true,'queued'=>true,'job'=>$job,'deliveries'=>count($deliveries),'skipped'=>$skipped,'unsubscribed'=>$unsub]);
             } catch (Throwable $e) {
