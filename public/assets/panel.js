@@ -1623,6 +1623,8 @@ async function saveNotif() {
     await api('notif.save', {
         driver_phone_fallback: document.getElementById('msgDriverFallback').value,
         unsub_line: document.getElementById('msgUnsubLine') ? document.getElementById('msgUnsubLine').value : undefined,
+        stop_reply: document.getElementById('msgStopReply') ? document.getElementById('msgStopReply').value : undefined,
+        start_reply: document.getElementById('msgStartReply') ? document.getElementById('msgStartReply').value : undefined,
         daily_cap: document.getElementById('msgDailyCap') ? document.getElementById('msgDailyCap').value : undefined,
         primary_channel: document.getElementById('msgPrimaryChannel') ? document.getElementById('msgPrimaryChannel').value : undefined,
     });

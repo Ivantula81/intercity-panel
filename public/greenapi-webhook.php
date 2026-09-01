@@ -100,9 +100,23 @@ switch ($type) {
                 'whatsapp' => ['GREENAPI_WA_URL', 'GREENAPI_WA_ID', 'GREENAPI_WA_TOKEN'],
             ][$messenger];
             $cli = new GreenApiClient(gw_env($ek[0]) ?: gw_env('GREENAPI_URL'), gw_env($ek[1]), gw_env($ek[2]), $messenger);
-            $cli->sendText($chatId, $off
-                ? 'Вы отписаны от рассылки уведомлений. Чтобы снова получать сообщения о рейсах — напишите СТАРТ.'
-                : 'Вы снова подписаны на уведомления о рейсах. Чтобы отписаться — напишите СТОП.');
+            $reply = $off
+                ? opt('stop_reply', 'Вы отписаны от рассылки уведомлений. Чтобы снова получать сообщения о рейсах — напишите СТАРТ.')
+                : opt('start_reply', 'Вы снова подписаны на уведомления о рейсах. Чтобы отписаться — напишите СТОП.');
+            $sentReply = $cli->sendText($chatId, $reply);
+            // Автоответ должен быть виден оператору в том же диалоге, что и STOP/START.
+            if (!empty($sentReply['ok'])) {
+                $providerId = (string) ($sentReply['data']['key']['id'] ?? '');
+                $st = db()->prepare('INSERT INTO messages (manifest_id,channel,recipient,passenger_name,body,actor,status,sent_at,wa_id) VALUES (0,?,?,?,?,?,"sent",NOW(),?)');
+                $st->execute([$messenger, $phone, $name, $reply, 'Автоответ STOP/START', $providerId]);
+                $mid = (int) db()->lastInsertId();
+                try {
+                    require_once PANEL_ROOT . '/app/conversations.php';
+                    $account = $messenger === 'telegram' ? 'greenapi_tg' : 'greenapi';
+                    $cid = conversation_ensure(['channel'=>$messenger,'account'=>$account,'external_chat_id'=>$chatId,'phone'=>$phone,'name'=>$name]);
+                    conversation_append_legacy('messages', $mid, $cid);
+                } catch (Throwable $e) { /* входящий чат уже сохранён */ }
+            }
         }
         break;
 

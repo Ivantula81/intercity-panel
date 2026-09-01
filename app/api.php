@@ -1579,6 +1579,8 @@ switch ($action) {
         $fb = trim((string) ($body['driver_phone_fallback'] ?? ''));
         opt_set('driver_phone_fallback', $fb !== '' ? $fb : 'сообщим позднее');
         if (array_key_exists('unsub_line', $body)) opt_set('unsub_line', trim((string) $body['unsub_line']));
+        if (array_key_exists('stop_reply', $body)) opt_set('stop_reply', mb_substr(trim((string) $body['stop_reply']), 0, 1000));
+        if (array_key_exists('start_reply', $body)) opt_set('start_reply', mb_substr(trim((string) $body['start_reply']), 0, 1000));
         if (array_key_exists('daily_cap', $body)) opt_set('daily_soft_cap', (string) max(0, (int) $body['daily_cap']));
         // Основной канал: от него считается галочка по умолчанию, порядок каналов и «запасные».
         if (array_key_exists('primary_channel', $body)) {

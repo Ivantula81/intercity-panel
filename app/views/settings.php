@@ -107,6 +107,10 @@
         <label class="f">Строка отписки (в конце уведомлений; пусто = не добавлять)<input type="text" id="msgUnsubLine" value="<?= e(opt('unsub_line', 'Чтобы отписаться — напишите СТОП')) ?>" placeholder="Чтобы отписаться — напишите СТОП"></label>
         <label class="f">Дневной лимит на канал (предупреждение)<input type="number" id="msgDailyCap" min="0" step="10" value="<?= e(opt('daily_soft_cap', '200')) ?>" placeholder="200"></label>
     </div>
+    <div class="grid grid-2">
+        <label class="f">Автоответ на СТОП<textarea id="msgStopReply" rows="3"><?= e(opt('stop_reply', 'Вы отписаны от рассылки уведомлений. Чтобы снова получать сообщения о рейсах — напишите СТАРТ.')) ?></textarea></label>
+        <label class="f">Автоответ на СТАРТ<textarea id="msgStartReply" rows="3"><?= e(opt('start_reply', 'Вы снова подписаны на уведомления о рейсах. Чтобы отписаться — напишите СТОП.')) ?></textarea></label>
+    </div>
     <?php require_once PANEL_ROOT . '/lib/Channels.php'; $primary = Channels::primary(); ?>
     <div class="grid grid-3">
         <label class="f">Основной канал рассылки
