@@ -43,7 +43,7 @@ if (!function_exists('artmark_fetch_manifest')) {
 // Загрузка CSV-ведомости в БД + авто-подстановка водителя/телефона из справочника автобусов.
 // Возвращает id ведомости. Бросает Exception при ошибке.
 
-function import_manifest_csv(array $file, ?array $parsedData = null): int
+function import_manifest_csv_raw(array $file, ?array $parsedData = null): int
 {
     if ((int) $file['error'] !== UPLOAD_ERR_OK) {
         throw new RuntimeException('Не удалось загрузить файл (код ' . (int) $file['error'] . ').');
@@ -191,4 +191,24 @@ function import_manifest_csv(array $file, ?array $parsedData = null): int
     } catch (Exception $e) { /* не критично */ }
 
     return $manifestId;
+}
+
+/**
+ * Импорт ведомости как одна атомарная операция.
+ * Если вызывающий код уже открыл транзакцию (например, dry-run), не создаём
+ * вложенную транзакцию и оставляем управление commit/rollback ему.
+ */
+function import_manifest_csv(array $file, ?array $parsedData = null): int
+{
+    $pdo = db();
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) $pdo->beginTransaction();
+    try {
+        $id = import_manifest_csv_raw($file, $parsedData);
+        if ($ownsTransaction) $pdo->commit();
+        return $id;
+    } catch (Throwable $e) {
+        if ($ownsTransaction && $pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
 }
