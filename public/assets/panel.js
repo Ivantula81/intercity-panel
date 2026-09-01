@@ -1120,8 +1120,14 @@ async function sendGroup(btn, gi, silent = false) {
             time: card.querySelector('.g-time').value,
             attach_photo: document.getElementById('attachPhoto').checked ? 1 : 0,
             phone_on: document.getElementById('driverPhoneOn')?.checked ? 1 : 0,
+            queue_mode: 1,
         });
         if (!r.ok) { state.innerHTML = '<span class="badge err">' + esc(r.error) + '</span>'; return r; }
+        if (r.queued) {
+            state.innerHTML = `<span class="badge ok">поставлено в очередь: ${r.deliveries}</span>`;
+            if (!silent) loadCampaignOverview(true);
+            return r;
+        }
         state.innerHTML = `<span class="badge ${r.failed ? 'warn' : 'ok'}">сообщений отправлено ${r.sent}, ошибок ${r.failed}${r.duplicates ? ', без дубля ' + r.duplicates : ''}${r.rest ? ', в очереди ' + r.rest : ''}</span>`
             + (r.errors?.length ? `<div class="muted small">${r.errors.map(esc).join('<br>')}</div>` : '');
         const mon = card.querySelector('.g-monitor-wrap');
@@ -1146,16 +1152,18 @@ async function sendAllGroups(btn) {
     const sendButtons = [...document.querySelectorAll('[data-send-all]')];
     sendButtons.forEach(button => { button.disabled = true; button.setAttribute('aria-busy', 'true'); });
     const all = document.getElementById('allState');
-    let total = 0, failed = 0, duplicates = 0;
+    let total = 0, queued = 0, failed = 0, duplicates = 0;
     const cards = document.querySelectorAll('.gcard');
     for (let gi = 0; gi < cards.length; gi++) {
         all.innerHTML = `<div class="alert warn">Группа ${gi + 1} из ${cards.length}: ${esc(GROUPS[gi].station)}…</div>`;
         const r = await sendGroup(cards[gi].querySelector('.g-send'), gi, true) || {};
         total += r.sent || 0;
+        queued += r.queued ? (r.deliveries || 0) : 0;
         failed += r.failed || 0;
         duplicates += r.duplicates || 0;
     }
-    all.innerHTML = `<div class="alert ${failed ? 'warn' : 'ok'}">Готово: сообщений отправлено ${total}, ошибок ${failed}${duplicates ? ', повторов предотвращено ' + duplicates : ''}.</div>`;
+    all.innerHTML = queued ? `<div class="alert ok">Поставлено в очередь: ${queued}. Green API отправит постепенно.</div>`
+        : `<div class="alert ${failed ? 'warn' : 'ok'}">Готово: сообщений отправлено ${total}, ошибок ${failed}${duplicates ? ', повторов предотвращено ' + duplicates : ''}.</div>`;
     sendButtons.forEach(button => { button.disabled = false; button.removeAttribute('aria-busy'); });
     loadCampaignOverview(true);
 }

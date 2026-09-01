@@ -162,7 +162,7 @@ function link_outgoing_conv(int $mid, string $channel, string $phone, string $ch
 // ПЕРЕД каждой отправкой — и упирались в лимит мессенджера на просмотр контактов (HTTP 469),
 // после чего каждый номер помечался «У номера нет MAX», хотя MAX у него был.
 // ['ok'=>bool, 'target'=>string, 'error'=>string]
-function resolve_send_target(string $channel, string $phone): array
+function resolve_send_target(string $channel, string $phone, bool $allowLookup = true): array
 {
     require_once PANEL_ROOT . '/lib/Channels.php';
     if ($channel !== 'max' && $channel !== 'telegram') return ['ok' => true, 'target' => $phone, 'error' => ''];
@@ -175,6 +175,9 @@ function resolve_send_target(string $channel, string $phone): array
     // Точно знаем, что канала нет — не тратим лимит на повторную проверку.
     if (($row['has'] ?? null) !== null && !(int) $row['has']) {
         return ['ok' => false, 'error' => 'У номера нет ' . Channels::label($channel)];
+    }
+    if (!$allowLookup) {
+        return ['ok' => false, 'error' => Channels::label($channel) . ': адрес канала ещё не сохранён'];
     }
 
     // chatId неизвестен — придётся спросить провайдера (тратит лимит просмотра контактов).
@@ -1063,6 +1066,38 @@ switch ($action) {
         $ids = array_values(array_intersect(array_map('intval', (array) ($body['ids'] ?? [])), $groupIds));
         $tpl = (string) ($body['text'] ?? '');
         $sendOpts = send_opts($manifest, $body);
+        if (!empty($body['queue_mode'])) {
+            require_once PANEL_ROOT . '/app/broadcast_queue.php';
+            $deliveries = []; $seenPhones = []; $skipped = 0; $unsub = 0;
+            $unsubLine = trim((string) opt('unsub_line', 'Чтобы отписаться — напишите СТОП'));
+            foreach ($ids as $pid) {
+                $pst = db()->prepare('SELECT * FROM passengers WHERE id=? AND manifest_id=?');
+                $pst->execute([$pid, $manifest['id']]); $p = $pst->fetch();
+                if (!$p || !valid_phone($p['phone']) || isset($seenPhones[$p['phone']])) { $skipped++; continue; }
+                if (is_unsubscribed($p['phone'])) { $unsub++; continue; }
+                $seenPhones[$p['phone']] = true;
+                $msg = render_group_message($tpl, group_vars($manifest, $p, $group, $sendOpts), $manifest['extra_info']);
+                if ($unsubLine !== '') $msg .= "\n\n" . $unsubLine;
+                foreach ($channels as $channel) {
+                    // Для MAX/Telegram берём только сохранённый chatId; worker не должен
+                    // тратить лимит CheckAccount в фоне. WhatsApp использует номер.
+                    $resolved = resolve_send_target($channel, $p['phone'], false);
+                    if (empty($resolved['ok'])) { $skipped++; continue; }
+                    $deliveries[] = ['passenger_id'=>(int)$p['id'], 'channel'=>$channel,
+                        'recipient'=>$p['phone'], 'target'=>$resolved['target'], 'body'=>$msg];
+                }
+            }
+            if (!$deliveries) json_out(['ok'=>false,'error'=>'Нет получателей с доступным адресом канала.'],422);
+            try {
+                $job = BroadcastQueue::enqueue('campaign', (int)$manifest['id'], ['deliveries'=>$deliveries,
+                    'manifest_id'=>(int)$manifest['id']], audit_actor_id());
+                audit_event('campaign.enqueue', 'messaging', 'broadcast_job', $job['id'], 'success', ['kind'=>'campaign']);
+                json_out(['ok'=>true,'queued'=>true,'job'=>$job,'deliveries'=>count($deliveries),'skipped'=>$skipped,'unsubscribed'=>$unsub]);
+            } catch (Throwable $e) {
+                audit_event('campaign.enqueue', 'messaging', 'broadcast_job', null, 'failure');
+                json_out(['ok'=>false,'error'=>'Очередь рассылок не активирована. Примените schema24.'],503);
+            }
+        }
         if (!empty($body['dry_run'])) {
             $eligible = [];
             foreach ($group['recipients'] as $recipient) {
