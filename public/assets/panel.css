@@ -558,8 +558,8 @@ details summary::-webkit-details-marker { color: var(--muted); }
     .stat .num { font-size: 24px; }
     .stat .lbl { font-size: 12px; }
     .facts { grid-template-columns: 1fr; }
-    /* на мобильном панель отправки не липкая — иначе перекрывает форму и нижнюю навигацию */
-    .send-bar { position: static; bottom: auto; box-shadow: none; }
+    /* Главная команда остаётся рядом с итогом проверки, но не закрывает нижнюю навигацию. */
+    .send-bar { position: sticky; bottom: calc(70px + var(--safe-b)); z-index: 20; box-shadow: 0 8px 28px rgba(28,25,64,.14); background: rgba(255,255,255,.94); backdrop-filter: saturate(180%) blur(14px); }
     .notif-metrics, .notif-delivery-metrics { grid-template-columns: 1fr 1fr; }
     .notif-ready-top { display: block; }
     .notif-ready-top > .btn { width: 100%; margin-top: 12px; justify-content: center; }
@@ -793,6 +793,8 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
     .cm-bubble { max-width: 84%; }
     .chat-text { font-size: 16px; }   /* без зума iOS */
     .chat-search { font-size: 16px; }
+    .chat-pane { touch-action: pan-y; }
+    .chat-body { overscroll-behavior: contain; }
 }
 
 /* ============================================================

@@ -1827,6 +1827,22 @@ async function chatOpen(id) {
     const t=chat.threads.find(x=>Number(x.id)===chat.conversationId);if(t)t.unread_count=0;chatRenderThreads();$id('chatText').focus();
 }
 function chatCloseConv() { chat.conversationId=null;chat.conversation=null;$id('chatWrap').classList.remove('conv-open');$id('chatPane').hidden=true;$id('chatEmpty').hidden=false;history.replaceState(null,'','/?p=chats');chatRenderThreads(); }
+function bindChatSwipeBack() {
+    const pane = $id('chatPane');
+    if (!pane || !window.PointerEvent || !window.matchMedia('(max-width: 860px)').matches) return;
+    let sx = 0, sy = 0, active = false;
+    pane.addEventListener('pointerdown', e => {
+        if (e.target.closest('textarea, input, select, button, a')) return;
+        sx = e.clientX; sy = e.clientY; active = true; pane.setPointerCapture(e.pointerId);
+    });
+    pane.addEventListener('pointerup', e => {
+        if (!active) return; active = false;
+        const dx = e.clientX - sx, dy = e.clientY - sy;
+        if (dx > 84 && Math.abs(dx) > Math.abs(dy) * 1.25) chatCloseConv();
+        try { pane.releasePointerCapture(e.pointerId); } catch (_) {}
+    });
+    pane.addEventListener('pointercancel', () => { active = false; });
+}
 function chatMessageHtml(m){return `<div class="cm ${m.dir}${m.pending?' pending':''}"${m.pending?' data-pending="1"':''}><div class="cm-bubble">${chatMedia(m)}${chatText(m)}<span class="cm-meta">${chatChannelTag(m)}${m.pending?'отправляется…':esc(chatTime(m.ts))}${m.dir==='out'&&!m.pending?chatTicks(m):''}</span></div></div>`;}
 async function chatLoadMessages(force=false,before=false) {
     if(!chat.conversationId)return; const active=chat.conversationId;
@@ -1862,6 +1878,7 @@ async function chatSend(e){
     if(r.ok){ta.value='';ta.style.height='auto';await chatLoadMessages(true);chatLoadThreads();ta.focus();}else{$id('chatBody').querySelector('[data-pending="1"]')?.remove();$id('chatChannelNote').textContent='⚠ '+(r.error||'Не удалось отправить');}
 }
 async function chatInit(){
+    bindChatSwipeBack();
     try{const b=await chatInboxApi('bootstrap');chat.users=b.users||[];chat.currentUserId=Number(b.current_user_id||0);}catch(e){}
     await chatLoadThreads();const start=$id('chatWrap').dataset.start;if(start){const t=chat.threads.find(x=>x.contact_phone===start||String(x.id)===start);if(t)chatOpen(Number(t.id));}
     const ta=$id('chatText');if(ta){ta.addEventListener('input',()=>{ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,140)+'px';});ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();chatSend();}});}
