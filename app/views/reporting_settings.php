@@ -19,7 +19,7 @@ $agentRow = static function (array $c): void {
             <option value="comment" <?= $srcVal === 'comment' ? 'selected' : '' ?>>Комментарий</option>
             <option value="both" <?= $srcVal === 'both' ? 'selected' : '' ?>>Везде</option>
         </select></td>
-        <td class="ta-r"><input type="number" step="0.01" min="0" class="report-a-field money-input" data-field="agent_commission_rate" value="<?= e(rtrim(rtrim((string)$c['agent_commission_rate'],'0'),'.')) ?>" style="max-width:74px"></td>
+        <td class="ta-r"><input type="number" step="0.01" min="0" class="report-a-field report-rate-field money-input" data-field="agent_commission_rate" value="<?= e(rtrim(rtrim((string)$c['agent_commission_rate'],'0'),'.')) ?>"></td>
         <td><button class="icon-btn" onclick="reportDeleteAgent(this)" title="Удалить">×</button></td>
     </tr>
     <?php
@@ -81,8 +81,8 @@ $agentRow = static function (array $c): void {
     <?php foreach ($carriers as $c): ?>
         <tr data-carrier="<?= (int)$c['id'] ?>">
             <td><input class="report-c-field" data-field="name" value="<?= e($c['name']) ?>" placeholder="ИП Ванюк А.Н."></td>
-            <td class="ta-r"><input type="number" step="0.01" min="0" class="report-c-field money-input" data-field="disp_rate" value="<?= e($pc($c['disp_rate'])) ?>" style="max-width:74px"></td>
-            <td class="ta-r"><input type="number" step="0.01" min="0" class="report-c-field money-input" data-field="our_rate" value="<?= e($pc($c['our_rate'])) ?>" style="max-width:74px"></td>
+            <td class="ta-r"><input type="number" step="0.01" min="0" class="report-c-field report-rate-field money-input" data-field="disp_rate" value="<?= e($pc($c['disp_rate'])) ?>"></td>
+            <td class="ta-r"><input type="number" step="0.01" min="0" class="report-c-field report-rate-field money-input" data-field="our_rate" value="<?= e($pc($c['our_rate'])) ?>"></td>
             <td><button class="icon-btn" onclick="reportDeleteCarrier(this)" title="Удалить">×</button></td>
         </tr>
     <?php endforeach; ?>
@@ -121,7 +121,7 @@ $agentRow = static function (array $c): void {
     <?php foreach ($stations as $s): ?>
         <tr data-sid="<?= (int)$s['id'] ?>"<?= (int)$s['active'] ? '' : ' style="opacity:.55"' ?>>
             <td><input class="report-s-field" data-field="name" value="<?= e($s['name']) ?>"></td>
-            <td class="ta-r"><input type="number" step="0.01" min="0" class="report-s-field money-input" data-field="rate" value="<?= e($pc($s['rate'])) ?>" style="max-width:74px"></td>
+            <td class="ta-r"><input type="number" step="0.01" min="0" class="report-s-field report-rate-field money-input" data-field="rate" value="<?= e($pc($s['rate'])) ?>"></td>
             <td><input class="report-s-field" data-field="note" value="<?= e($s['note']) ?>" placeholder="напр. договор от 2026"></td>
             <td><?= (int) $s['sales_count'] ?></td>
             <td><span class="badge <?= (int)$s['active'] ? 'ok' : 'muted' ?>"><?= (int)$s['active'] ? 'активен' : 'скрыт' ?></span></td>

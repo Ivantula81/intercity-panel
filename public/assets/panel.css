@@ -220,8 +220,8 @@ h3 { margin: 0 0 6px; font-size: 15.5px; font-weight: 700; }
 /* ============================================================
    ФОРМЫ
    ============================================================ */
-input[type=text], input[type=password], input[type=date], input[type=number],
-input[type=url], input[type=email], select, textarea {
+input[type=text], input[type=password], input[type=date], input[type=datetime-local], input[type=number],
+input[type=url], input[type=email], input[type=file], select, textarea {
     width: 100%; padding: 11px 13px; min-height: 42px;
     border: 1.5px solid var(--line); border-radius: var(--r);
     background: var(--surface); color: var(--ink);
@@ -858,12 +858,16 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 .report-drop { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 13px; border: 1px dashed var(--brand); border-radius: 10px; background: var(--brand-50); color: var(--brand-700); font-size: 13px; font-weight: 700; }
 .report-drop input { max-width: 220px; }
 .report-card-head { justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.report-passenger-actions { gap: 8px; flex-wrap: wrap; }
 .report-context-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -4px 0 14px; padding: 10px 12px; border: 1px solid var(--brand-100); border-radius: var(--r); background: var(--brand-50); color: var(--brand-700); font-size: 13px; }
 .report-list td { vertical-align: middle; }
 .report-agents summary { cursor: pointer; }
 .report-agent-form { display: grid; grid-template-columns: repeat(3,minmax(180px,1fr)); gap: 12px; align-items: end; }
 .report-agent-form label, .report-facts label, .report-note { display: flex; flex-direction: column; gap: 5px; color: var(--muted); font-size: 12px; font-weight: 700; }
 .report-agent-form input, .report-agent-form select, .report-facts input, .report-facts select, .report-note textarea, .report-file-form input { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; background: var(--surface); color: var(--ink); }
+.report-agent-form input, .report-agent-form select, .report-facts input, .report-facts select, .report-note textarea, .report-file-form input,
+.report-dialog input, .report-dialog select { font: inherit; font-size: 14px; }
+.report-rate-field { width: 94px !important; min-width: 94px; }
 .report-trip-head h1 { margin-top: 5px; }
 .report-tabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
 .report-tabs a { padding: 10px 14px; color: var(--muted); font-weight: 700; font-size: 13px; border-bottom: 2px solid transparent; }
@@ -998,6 +1002,37 @@ select.attendance-unknown { color: var(--muted); }
     .report-guide { padding: 16px; }
     .guide-cases, .guide-schema { grid-template-columns: 1fr; }
     .guide-math { grid-template-columns: 1fr 1fr; }
+
+    /* На телефоне строка пассажира становится карточкой, без горизонтального скролла. */
+    .report-passenger-table { min-width: 0; display: block; }
+    .report-passenger-table thead { display: none; }
+    .report-passenger-table tbody, .report-passenger-table tr { display: block; }
+    .report-passenger-table tr { display: grid; grid-template-columns: 34px minmax(0, 1fr) 34px; grid-template-areas:
+        "seat passenger delete" "route route route" "agent agent agent" "manifest our our" "note note note" "noshow noshow noshow"; gap: 8px 10px; padding: 12px 10px; border-left-width: 4px; border-bottom: 1px solid var(--line); }
+    .report-passenger-table tr:last-child { border-bottom: 0; }
+    .report-passenger-table td { min-width: 0; padding: 0; border: 0; white-space: normal; }
+    .report-passenger-table td:nth-child(1) { grid-area: seat; }
+    .report-passenger-table td:nth-child(2) { grid-area: passenger; }
+    .report-passenger-table td:nth-child(3) { grid-area: route; padding-top: 1px; }
+    .report-passenger-table td:nth-child(4) { grid-area: agent; }
+    .report-passenger-table td:nth-child(5) { grid-area: manifest; }
+    .report-passenger-table td:nth-child(6) { grid-area: our; }
+    .report-passenger-table td:nth-child(7) { grid-area: note; }
+    .report-passenger-table td:nth-child(8) { grid-area: noshow; }
+    .report-passenger-table td:nth-child(9) { grid-area: delete; justify-self: end; }
+    .report-passenger-table td:nth-child(5)::before, .report-passenger-table td:nth-child(6)::before,
+    .report-passenger-table td:nth-child(7)::before, .report-passenger-table td:nth-child(8)::before { display: block; margin-bottom: 3px; color: var(--muted); font-size: 11px; font-weight: 650; }
+    .report-passenger-table td:nth-child(5)::before { content: "Ведомость"; }
+    .report-passenger-table td:nth-child(6)::before { content: "Наша стоимость"; }
+    .report-passenger-table td:nth-child(7)::before { content: "Комментарий"; }
+    .report-passenger-table td:nth-child(8)::before { content: "Посещаемость и возврат"; }
+    .report-passenger-table .report-p-field { min-height: 40px; padding: 8px 9px; border-color: var(--line); background: var(--surface); }
+    .report-passenger-table .seat-input { max-width: none; text-align: center; }
+    .report-passenger-table .p-noshow { min-height: 40px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+    .report-passenger-table .p-noshow select { flex: 1; max-width: none; }
+    .report-passenger-table td .small { white-space: normal; }
+    .report-passenger-actions { width: 100%; }
+    .report-passenger-actions .btn { flex: 1 1 180px; }
 }
 
 /* ============================================================
