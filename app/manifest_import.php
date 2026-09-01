@@ -203,11 +203,38 @@ function import_manifest_csv(array $file, ?array $parsedData = null): int
     $pdo = db();
     $ownsTransaction = !$pdo->inTransaction();
     if ($ownsTransaction) $pdo->beginTransaction();
+    $lockName = '';
+    $locked = false;
     try {
+        // Разбираем до записи и сериализуем импорт одного номера рейса.
+        // Это закрывает гонку двух одинаковых загрузок в разных HTTP-запросах.
+        if ($parsedData === null) {
+            require_once PANEL_ROOT . '/lib/ManifestParser.php';
+            $parsedData = (new ManifestParser())->parseFile($file['tmp_name'], $file['name']);
+        }
+        $tripNumber = trim((string) ($parsedData['trip']['id'] ?? ''));
+        if ($tripNumber !== '') {
+            $lockName = 'manifest-import:' . $tripNumber;
+            $lockSt = $pdo->prepare('SELECT GET_LOCK(?, 15)');
+            $lockSt->execute([$lockName]);
+            $locked = (int) $lockSt->fetchColumn() === 1;
+            if (!$locked) throw new RuntimeException('Импорт этого рейса уже выполняется. Повторите попытку через несколько секунд.');
+            $existing = $pdo->prepare('SELECT id FROM manifests WHERE trip_number=? ORDER BY id DESC LIMIT 1');
+            $existing->execute([$tripNumber]);
+            $existingId = (int) ($existing->fetchColumn() ?: 0);
+            if ($existingId > 0) {
+                $pdo->query('SELECT RELEASE_LOCK(' . $pdo->quote($lockName) . ')');
+                $locked = false;
+                if ($ownsTransaction) $pdo->commit();
+                return $existingId;
+            }
+        }
         $id = import_manifest_csv_raw($file, $parsedData);
+        if ($locked) { $pdo->query('SELECT RELEASE_LOCK(' . $pdo->quote($lockName) . ')'); $locked = false; }
         if ($ownsTransaction) $pdo->commit();
         return $id;
     } catch (Throwable $e) {
+        if ($locked) { try { $pdo->query('SELECT RELEASE_LOCK(' . $pdo->quote($lockName) . ')'); } catch (Throwable $ignored) {} }
         if ($ownsTransaction && $pdo->inTransaction()) $pdo->rollBack();
         throw $e;
     }
