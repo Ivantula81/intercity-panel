@@ -60,7 +60,10 @@ final class BroadcastQueue
             $recipient = trim((string)($item['recipient'] ?? ''));
             $body = (string)($item['body'] ?? '');
             if ($channel === '' || $recipient === '' || $body === '') continue;
-            $hash = hash('sha256', $body);
+            // Один и тот же текст бывает у многих пассажиров. Включаем
+            // получателя и target, иначе payload map перезапишет адрес и
+            // несколько сообщений уйдут одному человеку.
+            $hash = hash('sha256', $body . '|' . $recipient . '|' . (string)($item['target'] ?? ''));
             $st->execute([$jobId, !empty($item['passenger_id']) ? (int)$item['passenger_id'] : null,
                 $channel, $recipient, $hash]);
             $bodies[$hash] = $body;
