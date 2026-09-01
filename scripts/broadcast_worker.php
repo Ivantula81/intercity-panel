@@ -78,7 +78,8 @@ if (!empty($result['ok'])) {
     $providerId = (string)($result['data']['key']['id'] ?? '');
     BroadcastQueue::finishDelivery((int)$delivery['id'], 'accepted', $providerId);
     $delivery['target'] = $target;
-    worker_record_message($delivery, $job, $providerId, $text);
+    // Не создаём сообщение/чат на accepted: это лишь принятие запроса Green API.
+    // Запись появится после подтверждённой доставки из webhook.
     db()->prepare("UPDATE broadcast_jobs j SET status=IF(NOT EXISTS(SELECT 1 FROM broadcast_deliveries d WHERE d.job_id=j.id AND d.status IN ('queued','sending')), 'completed', 'running') WHERE j.id=?")->execute([(int)$delivery['job_id']]);
     echo "accepted {$delivery['id']}\n"; exit(0);
 }

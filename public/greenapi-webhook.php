@@ -37,6 +37,29 @@ switch ($type) {
         $waId = (string) ($p['idMessage'] ?? '');
         $status = strtolower((string) ($p['status'] ?? ''));
         if ($waId !== '') {
+            // Связываем финальный статус с outbox. Чат/сообщение материализуем
+            // только после delivered/read — accepted ещё не означает доставку.
+            $dst = db()->prepare('SELECT d.*, j.manifest_id, j.payload_json FROM broadcast_deliveries d JOIN broadcast_jobs j ON j.id=d.job_id WHERE d.provider_id=? AND d.channel=? LIMIT 1');
+            $dst->execute([$waId, $messenger]);
+            $delivery = $dst->fetch();
+            if ($delivery && in_array($status, ['delivered','read'], true)) {
+                db()->prepare("UPDATE broadcast_deliveries SET status=?, delivered_at=COALESCE(delivered_at,NOW()), read_at=IF(?='read',COALESCE(read_at,NOW()),read_at) WHERE id=?")
+                    ->execute([$status, $status, (int)$delivery['id']]);
+                $payload = json_decode((string)$delivery['payload_json'], true) ?: [];
+                $body = (string)(($payload['bodies'] ?? [])[$delivery['body_hash']] ?? '');
+                $exists = db()->prepare('SELECT id FROM messages WHERE wa_id=? AND channel=? LIMIT 1');
+                $exists->execute([$waId, $messenger]);
+                if (!$exists->fetchColumn() && $body !== '') {
+                    $name = '';
+                    if (!empty($delivery['passenger_id'])) { $ns=db()->prepare('SELECT name FROM passengers WHERE id=?'); $ns->execute([(int)$delivery['passenger_id']]); $name=(string)($ns->fetchColumn() ?: ''); }
+                    $ms = db()->prepare('INSERT INTO messages (manifest_id,channel,recipient,passenger_name,body,actor,status,sent_at,delivered_at,read_at,wa_id) VALUES (?,?,?,?,?,? ,"sent",NOW(),NOW(),IF(?="read",NOW(),NULL),?)');
+                    $ms->execute([(int)$delivery['manifest_id'],$messenger,(string)$delivery['recipient'],$name,$body,'Очередь рассылок',$status,$waId]);
+                    $mid=(int)db()->lastInsertId();
+                    try { require_once PANEL_ROOT.'/app/conversations.php'; $account=$messenger==='telegram'?'greenapi_tg':'greenapi'; $cid=conversation_ensure(['channel'=>$messenger,'account'=>$account,'external_chat_id'=>(string)($payload['targets'][$delivery['body_hash']] ?? $delivery['recipient']),'phone'=>(string)$delivery['recipient'],'name'=>$name,'manifest_id'=>(int)$delivery['manifest_id']]); conversation_append_legacy('messages',$mid,$cid); } catch(Throwable $e) {}
+                }
+            } elseif ($delivery && in_array($status, ['failed','noaccount','notinwhitelist'], true)) {
+                db()->prepare("UPDATE broadcast_deliveries SET status='failed',last_error=? WHERE id=?")->execute(['Green API: '.$status,(int)$delivery['id']]);
+            }
             if ($status === 'delivered') {
                 db()->prepare('UPDATE messages SET delivered_at = COALESCE(delivered_at, NOW()) WHERE wa_id = ? AND channel=?')->execute([$waId,$messenger]);
             } elseif ($status === 'read') {
