@@ -861,6 +861,8 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 .report-passenger-actions { gap: 8px; flex-wrap: wrap; }
 .report-scenario-label { gap: 6px; margin: 0; }
 .report-scenario-select { width: 170px; }
+.report-source-row { gap: 8px; }
+.report-source-input { flex: 1; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
 .report-station-add { gap: 8px; flex-wrap: wrap; align-items: center; }
 .report-station-select { max-width: 230px; }
 .report-station-amount { max-width: 150px; }
@@ -881,6 +883,7 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 .report-tabs a:not(.active):hover { color: var(--ink); background: var(--surface-2); text-decoration: none; }
 #reportPassengers, #reportCalculation, #reportControl { scroll-margin-top: 18px; }
 .report-tabs a:focus-visible, .report-p-field:focus-visible, .report-context-bar .btn:focus-visible { outline: 3px solid var(--brand-100); outline-offset: 2px; }
+button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid var(--brand-100); outline-offset: 2px; }
 .report-facts { display: grid; grid-template-columns: repeat(3,minmax(180px,1fr)); gap: 12px; }
 .report-facts.compact { grid-template-columns: 1fr; }
 .report-facts input:disabled { color: var(--muted); background: var(--surface-2); }
@@ -1067,6 +1070,8 @@ select.attendance-unknown { color: var(--muted); }
     .report-passenger-actions .btn { flex: 1 1 180px; }
     .report-scenario-label { width: 100%; justify-content: space-between; }
     .report-scenario-select, .report-station-select, .report-station-amount { max-width: none; width: 100%; }
+    .report-source-row { align-items: stretch; flex-direction: column; }
+    .report-source-row .btn { width: 100%; justify-content: center; }
 }
 
 /* ============================================================

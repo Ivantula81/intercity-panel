@@ -159,10 +159,10 @@ $isCarrierReport = $activeTab === 'carrier';
                 <option value="completed" <?= $p['refund_status']==='completed'?'selected':'' ?>>с возвратом</option>
             </select>
         </td>
-        <td><button class="icon-btn" onclick="reportDeletePassenger(this)" title="Удалить"><?= icon('trash') ?></button></td>
+        <td><button class="icon-btn" onclick="reportDeletePassenger(this)" title="Удалить пассажира" aria-label="Удалить пассажира"><?= icon('trash') ?></button></td>
     </tr><?php endforeach; ?>
     </tbody></table></div>
-    <div class="report-save-state muted small" id="reportSaveState">Все изменения сохранены</div>
+    <div class="report-save-state muted small" id="reportSaveState" role="status" aria-live="polite">Все изменения сохранены</div>
 </div>
 
 <div class="card report-stations">
@@ -179,7 +179,7 @@ $isCarrierReport = $activeTab === 'carrier';
             <td class="ta-r muted"><?= e(rtrim(rtrim(number_format((float)$s['rate'], 2, '.', ''), '0'), '.')) ?>%</td>
             <td class="ta-r money-cell"><?= $money($comm) ?></td>
             <td class="ta-r money-cell"><strong><?= $money((float)$s['amount'] - $comm) ?></strong></td>
-            <td><button class="icon-btn" onclick="reportDeleteStationSale(this)" title="Удалить"><?= icon('trash') ?></button></td>
+            <td><button class="icon-btn" onclick="reportDeleteStationSale(this)" title="Удалить продажу автовокзала" aria-label="Удалить продажу автовокзала"><?= icon('trash') ?></button></td>
         </tr>
     <?php endforeach; ?>
     <?php if ($stationSales): ?>
