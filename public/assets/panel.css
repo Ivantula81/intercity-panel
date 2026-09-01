@@ -858,6 +858,7 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 .report-drop { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 13px; border: 1px dashed var(--brand); border-radius: 10px; background: var(--brand-50); color: var(--brand-700); font-size: 13px; font-weight: 700; }
 .report-drop input { max-width: 220px; }
 .report-card-head { justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.report-context-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -4px 0 14px; padding: 10px 12px; border: 1px solid var(--brand-100); border-radius: var(--r); background: var(--brand-50); color: var(--brand-700); font-size: 13px; }
 .report-list td { vertical-align: middle; }
 .report-agents summary { cursor: pointer; }
 .report-agent-form { display: grid; grid-template-columns: repeat(3,minmax(180px,1fr)); gap: 12px; align-items: end; }
@@ -980,6 +981,8 @@ select.attendance-unknown { color: var(--muted); }
     .report-agent-form { grid-template-columns: repeat(2,1fr); }
 }
 @media (max-width: 700px) {
+    .report-context-bar { align-items: stretch; flex-direction: column; }
+    .report-context-bar .btn { width: 100%; justify-content: center; }
     .report-upload, .report-bottom-grid, .report-file-grid { grid-template-columns: 1fr; }
     .report-upload-form { align-items: stretch; flex-direction: column; }
     .report-drop { align-items: flex-start; flex-direction: column; }

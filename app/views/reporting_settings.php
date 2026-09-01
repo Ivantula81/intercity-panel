@@ -1,6 +1,8 @@
 <?php
 /** @var array $agentContracts @var array $stations @var array $carriers @var array $scenarios @var int $scenarioId @var string $sourceUrl @var string $tab */
 $pc = static fn($v) => rtrim(rtrim(number_format((float) $v, 2, '.', ''), '0'), '.');
+$returnManifestId = (int) ($returnManifestId ?? 0);
+$returnHref = $returnManifestId > 0 ? '/?p=report_trip&id=' . $returnManifestId : '';
 $ours = array_values(array_filter($agentContracts, fn($c) => $c['settlement_side'] === 'ours'));
 $carrierAgents = array_values(array_filter($agentContracts, fn($c) => $c['settlement_side'] === 'carrier'));
 
@@ -25,8 +27,12 @@ $agentRow = static function (array $c): void {
 ?>
 <div class="page-head">
     <div><h1>Отчётность</h1><div class="sub">настройки расчёта — их владелец задаёт сам, автоматика ничего не подставляет</div></div>
-    <div class="head-actions"><a class="btn ghost" href="/?p=reporting_help"><?= icon('doc') ?> Инструкция</a></div>
+    <div class="head-actions">
+        <?php if ($returnHref !== ''): ?><a class="btn ghost" href="<?= e($returnHref) ?>" title="Изменения сохраняются автоматически">← К рейсу №<?= e((string) $returnManifestId) ?></a><?php endif; ?>
+        <a class="btn ghost" href="/?p=reporting_help"><?= icon('doc') ?> Инструкция</a>
+    </div>
 </div>
+<?php if ($returnHref !== ''): ?><div class="report-context-bar"><span>Настройки открыты из рейса №<?= e((string) $returnManifestId) ?>. Поля сохраняются автоматически.</span><a class="btn sm" href="<?= e($returnHref) ?>">Сохранить и вернуться</a></div><?php endif; ?>
 
 <div class="report-tabs">
     <a href="/?p=reporting">Рейсы</a>

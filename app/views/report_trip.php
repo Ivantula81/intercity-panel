@@ -19,7 +19,7 @@ $isFiles = $activeTab === 'files';
             </select>
         </label>
     <?php endif; ?>
-    <a class="btn ghost" href="/?p=reporting_help" title="Инструкция"><?= icon('doc') ?></a><button class="btn ghost" type="button" onclick="reportAddCash()">+ Внести наличные</button>
+    <a class="btn ghost" href="/?p=reporting&tab=settings&scenario=<?= (int)($tripScenarioId ?? 0) ?>&return_manifest=<?= (int)$manifest['id'] ?>" title="Агенты, алиасы, перевозчики и ставки"><?= icon('settings') ?> Настройки</a><a class="btn ghost" href="/?p=reporting_help" title="Инструкция"><?= icon('doc') ?></a><button class="btn ghost" type="button" onclick="reportAddCash()">+ Внести наличные</button>
     <a class="btn<?= $hasCalc ? ' ghost' : '' ?>" href="/?p=report_trip&id=<?= (int)$manifest['id'] ?>&calc=1"><?= $hasCalc ? '↻ Пересчитать' : 'Рассчитать' ?></a>
     <?php if ($hasCalc): ?><button class="btn" type="button" onclick="reportSaveSnapshot(<?= (int)$manifest['id'] ?>)">Сохранить расчёт</button><?php endif; ?></div>
 </div>

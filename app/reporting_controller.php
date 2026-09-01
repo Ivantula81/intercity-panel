@@ -156,6 +156,7 @@ if ($tab === 'settings') {
         'content'=>fn()=>view('reporting_settings',[
             'agentContracts'=>$agentContracts, 'stations'=>$stations, 'carriers'=>$carriers,
             'scenarios'=>$scenarios, 'scenarioId'=>$scenarioId,
+            'returnManifestId'=>(int) ($_GET['return_manifest'] ?? 0),
             'sourceUrl'=>opt('artmark_url_template', 'http://213.226.126.81:8082//?S1=S3&Otch=1&csv=open&Id={id}'),
             'reportingError'=>$reportingError ?? '', 'tab'=>$tab])]);
     return;
