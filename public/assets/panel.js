@@ -2161,6 +2161,9 @@ document.addEventListener('DOMContentLoaded', () => {
     bindSheetGesture();
     bindCells();
     bindCatalog();
+    if (document.body.dataset.page === 'contacts') bindContacts();
+    if (document.body.dataset.page === 'contact') bindContactCard();
+    if (document.body.dataset.page === 'settings') { loadChannelDelays(); waAccounts(); }
     if (document.body.dataset.page === 'chats') chatInit();
     if (document.body.dataset.page === 'reporting') reportInit();
 });

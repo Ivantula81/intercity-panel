@@ -20,7 +20,7 @@ $agentRow = static function (array $c): void {
             <option value="both" <?= $srcVal === 'both' ? 'selected' : '' ?>>Везде</option>
         </select></td>
         <td class="ta-r"><input type="number" step="0.01" min="0" class="report-a-field report-rate-field money-input" data-field="agent_commission_rate" value="<?= e(rtrim(rtrim((string)$c['agent_commission_rate'],'0'),'.')) ?>"></td>
-        <td><button class="icon-btn" onclick="reportDeleteAgent(this)" title="Удалить">×</button></td>
+        <td><button class="icon-btn" onclick="reportDeleteAgent(this)" title="Удалить агента" aria-label="Удалить агента">×</button></td>
     </tr>
     <?php
 };
@@ -45,8 +45,8 @@ $agentRow = static function (array $c): void {
 <div class="card">
     <h2>Источник ведомостей</h2>
     <p class="muted small">Ссылка, по которой скачивается CSV. Вместо номера рейса подставьте <code>{id}</code>.</p>
-    <div class="row mt" style="gap:8px">
-        <input id="srcUrlInput" value="<?= e($sourceUrl) ?>" style="flex:1;font-family:ui-monospace,monospace;font-size:12px">
+    <div class="row mt report-source-row">
+        <input id="srcUrlInput" value="<?= e($sourceUrl) ?>" class="report-source-input">
         <button class="btn sm" onclick="reportSaveSourceUrl()">Сохранить</button>
     </div>
     <div class="small muted mt" id="srcUrlState"></div>
@@ -64,7 +64,7 @@ $agentRow = static function (array $c): void {
             <td><input class="report-sc-field" data-field="name" value="<?= e($sc['name']) ?>"></td>
             <td class="muted"><?= (int) db()->query('SELECT COUNT(*) FROM report_agent_contracts WHERE scenario_id='.(int)$sc['id'])->fetchColumn() ?></td>
             <td class="muted"><?= (int) db()->query('SELECT COUNT(*) FROM report_stations WHERE scenario_id='.(int)$sc['id'])->fetchColumn() ?></td>
-            <td><?php if (count($scenarios) > 1): ?><button class="icon-btn" onclick="reportDeleteScenario(this)" title="Удалить сценарий">×</button><?php endif; ?></td>
+            <td><?php if (count($scenarios) > 1): ?><button class="icon-btn" onclick="reportDeleteScenario(this)" title="Удалить сценарий" aria-label="Удалить сценарий">×</button><?php endif; ?></td>
         </tr>
     <?php endforeach; ?>
     <?php if (!$scenarios): ?><tr><td colspan="5" class="muted">Сценариев нет — применена ли schema22?</td></tr><?php endif; ?>
@@ -83,7 +83,7 @@ $agentRow = static function (array $c): void {
             <td><input class="report-c-field" data-field="name" value="<?= e($c['name']) ?>" placeholder="ИП Ванюк А.Н."></td>
             <td class="ta-r"><input type="number" step="0.01" min="0" class="report-c-field report-rate-field money-input" data-field="disp_rate" value="<?= e($pc($c['disp_rate'])) ?>"></td>
             <td class="ta-r"><input type="number" step="0.01" min="0" class="report-c-field report-rate-field money-input" data-field="our_rate" value="<?= e($pc($c['our_rate'])) ?>"></td>
-            <td><button class="icon-btn" onclick="reportDeleteCarrier(this)" title="Удалить">×</button></td>
+            <td><button class="icon-btn" onclick="reportDeleteCarrier(this)" title="Удалить перевозчика" aria-label="Удалить перевозчика">×</button></td>
         </tr>
     <?php endforeach; ?>
     <?php if (!$carriers): ?><tr><td colspan="4" class="muted">Пусто. Без перевозчика расчёт возьмёт ставки по умолчанию — 7% и 15%.</td></tr><?php endif; ?>

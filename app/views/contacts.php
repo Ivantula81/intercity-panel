@@ -72,4 +72,3 @@
     <?php endif; ?>
 </div>
 <p class="muted small">Имя, теги и заметки редактируются прямо в таблице (автосохранение). Эта база — задел под будущую связку с Планфиксом и сайтом.</p>
-<script>document.addEventListener('DOMContentLoaded', bindContacts);</script>

@@ -63,4 +63,3 @@
         </div>
     <?php endif; ?>
 </div>
-<script>document.addEventListener('DOMContentLoaded', bindContactCard);</script>
