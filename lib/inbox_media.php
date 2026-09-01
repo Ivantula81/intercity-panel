@@ -1,6 +1,6 @@
 <?php
 
-// Скачивание и кэширование входящих вложений (напр. Green API downloadUrl) в /public/uploads/inbox.
+// Скачивание и кэширование входящих вложений вне docroot.
 // Возвращаем локальный URL — чтобы лента чата не зависела от живущих недолго внешних ссылок.
 
 function inbox_media_label(string $mime, string $fileName = ''): string
@@ -23,6 +23,20 @@ function inbox_media_ext(string $mime, string $fileName): string
         'video/mp4' => 'mp4', 'video/quicktime' => 'mov',
     ];
     return $map[$mime] ?? 'bin';
+}
+
+function inbox_media_storage_dir(): string
+{
+    $configured = getenv('INBOX_MEDIA_DIR') ?: '';
+    if ($configured === '' && is_readable('/etc/panel.env')) {
+        foreach (file('/etc/panel.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+            if (str_starts_with($line, 'INBOX_MEDIA_DIR=')) {
+                $configured = substr($line, strlen('INBOX_MEDIA_DIR='));
+                break;
+            }
+        }
+    }
+    return rtrim($configured !== '' ? $configured : PANEL_ROOT . '/storage/inbox', '/');
 }
 
 // Защита от SSRF: только https и публичный (не внутренний) адрес назначения.
@@ -73,7 +87,7 @@ function inbox_media_fetch(string $url): string
 function inbox_save_media(string $url, string $mime = '', string $fileName = ''): array
 {
     if ($url === '') return ['', ''];
-    $dir = PANEL_ROOT . '/public/uploads/inbox';
+    $dir = inbox_media_storage_dir();
     if (!is_dir($dir)) @mkdir($dir, 0775, true);
     if (!is_dir($dir) || !is_writable($dir)) return ['', ''];
 
@@ -86,9 +100,10 @@ function inbox_save_media(string $url, string $mime = '', string $fileName = '')
     }
     $ext = inbox_media_ext($mime, $fileName);
     try { $name = bin2hex(random_bytes(8)) . '.' . $ext; }
-    catch (Exception $e) { $name = uniqid('m', true) . '.' . $ext; }
+    catch (Exception $e) { $name = 'm' . bin2hex((string) microtime(true)) . '.' . $ext; }
 
     if (@file_put_contents($dir . '/' . $name, $data) === false) return ['', ''];
     @chmod($dir . '/' . $name, 0644);
-    return ['/uploads/inbox/' . $name, $mime];
+    // Выдача только через авторизованный контроллер, без прямого URL из docroot.
+    return ['/?p=media&f=' . rawurlencode($name), $mime];
 }

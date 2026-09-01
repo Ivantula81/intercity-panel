@@ -40,6 +40,27 @@ if ($page === 'api') {
     exit;
 }
 
+if ($page === 'media') {
+    require_once PANEL_ROOT . '/lib/inbox_media.php';
+    $name = basename((string) ($_GET['f'] ?? ''));
+    if ($name === '' || $name !== (string) ($_GET['f'] ?? '') || !preg_match('/^[a-z0-9]{8,64}\.[a-z0-9]{1,5}$/i', $name)) {
+        http_response_code(404);
+        die('Файл не найден');
+    }
+    $base = realpath(inbox_media_storage_dir());
+    $path = realpath(inbox_media_storage_dir() . '/' . $name);
+    if (!$base || !$path || !str_starts_with($path, $base . DIRECTORY_SEPARATOR) || !is_file($path)) {
+        http_response_code(404);
+        die('Файл не найден');
+    }
+    $mime = (new finfo(FILEINFO_MIME_TYPE))->file($path) ?: 'application/octet-stream';
+    header('X-Content-Type-Options: nosniff');
+    header('Content-Type: ' . $mime);
+    header('Content-Length: ' . filesize($path));
+    readfile($path);
+    exit;
+}
+
 if ($page === 'chat_api') {
     require PANEL_ROOT . '/app/chat_api.php';
     exit;
