@@ -6,11 +6,12 @@ require PANEL_ROOT . '/app/broadcast_queue.php';
 $pdo = db();
 $admins = ['+79787720157', '+79112790467'];
 $jobs = $pdo->query("SELECT j.*, m.trip_number,m.route,m.departure_at FROM broadcast_jobs j JOIN manifests m ON m.id=j.manifest_id WHERE j.kind='campaign' AND j.created_at >= DATE_SUB(NOW(), INTERVAL 2 DAY) ORDER BY j.id")->fetchAll();
-foreach ($jobs as $j) {
+$groups=[]; foreach($jobs as $row){ $key=$row['manifest_id'].'|'.floor(strtotime($row['created_at'])/600); if(!isset($groups[$key])) $groups[$key]=['anchor'=>$row,'ids'=>[]]; $groups[$key]['ids'][]=(int)$row['id']; }
+foreach ($groups as $group) { $j=$group['anchor']; $jobIds=$group['ids'];
     $p = json_decode((string)$j['payload_json'], true) ?: [];
     if (empty($p['reporting_opt_in'])) continue;
     $age = time() - strtotime((string)$j['created_at']);
-    $st = $pdo->prepare("SELECT status,COUNT(*) n FROM broadcast_deliveries WHERE job_id=? GROUP BY status"); $st->execute([(int)$j['id']]);
+    $ph=implode(',',array_fill(0,count($jobIds),'?')); $st = $pdo->prepare("SELECT status,COUNT(*) n FROM broadcast_deliveries WHERE job_id IN ($ph) GROUP BY status"); $st->execute($jobIds);
     $counts=[]; foreach ($st->fetchAll() as $x) $counts[$x['status']]=(int)$x['n'];
     $total=array_sum($counts); $accepted=(int)($counts['accepted']??0); $queued=(int)($counts['queued']??0)+(int)($counts['sending']??0);
     $settled = $queued===0 && ($accepted===0 || $age >= 1200);
