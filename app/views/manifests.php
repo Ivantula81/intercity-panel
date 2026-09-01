@@ -18,6 +18,33 @@
     </label>
 </form>
 
+<div class="card step-card">
+    <div class="step-row">
+        <span class="step-num">1</span>
+        <div style="flex:1;min-width:0">
+            <div class="step-title">Загрузить ведомость по номеру рейса</div>
+            <div class="step-title-sub muted small">Введите номер — система покажет найденный рейс и подтянет пассажиров, места, цены и станции.</div>
+            <div class="pull-box mt">
+                <div class="pull-row">
+                    <input id="manifestPullTripId" class="pull-input" inputmode="numeric" placeholder="Номер рейса" onkeydown="if(event.key==='Enter')pullManifest('preview','manifests')">
+                    <button class="btn" id="manifestPullBtn" type="button" onclick="pullManifest('preview','manifests')"><?= icon('download') ?> Подтянуть из системы</button>
+                </div>
+                <div id="manifestPullResult" class="mt"></div>
+            </div>
+            <?php if ($manifests): ?>
+                <div class="row mt" style="gap:10px;flex-wrap:wrap">
+                    <select id="manifestPick" style="max-width:360px">
+                        <?php foreach ($manifests as $m): ?>
+                            <option value="<?= (int)$m['id'] ?>">№<?= e($m['trip_number']) ?> · <?= e($m['route']) ?> · <?= $m['departure_at'] ? date('d.m', strtotime($m['departure_at'])) : '' ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <button class="btn ghost sm" type="button" onclick="location='/?p=manifest&id='+document.getElementById('manifestPick').value">Открыть ранее загруженную</button>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+
 <div class="card">
     <h2>Все ведомости</h2>
     <?php if (empty($manifests)): ?>
