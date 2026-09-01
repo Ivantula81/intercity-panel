@@ -985,6 +985,7 @@ switch ($action) {
         $phone = normalize_phone((string) ($body['phone'] ?? ''));
         $channel = (string) ($body['channel'] ?? '');
         if (!valid_phone($phone)) json_out(['ok' => false, 'error' => 'Некорректный номер.']);
+        if (is_unsubscribed($phone)) json_out(['ok' => false, 'error' => 'Получатель отписался (STOP). Отправка заблокирована.'], 409);
         if (!isset(Channels::LABELS[$channel])) json_out(['ok' => false, 'error' => 'Неизвестный канал.']);
         if (!Channels::ready($channel)) {
             $st = Channels::state($channel);
@@ -1157,6 +1158,7 @@ switch ($action) {
         if (!isset(Channels::LABELS[$channel])) json_out(['ok' => false, 'error' => 'Неизвестный канал.']);
         $phone = normalize_phone((string) ($body['phone'] ?? ''));
         if (!valid_phone($phone)) json_out(['ok' => false, 'error' => 'Укажите корректный номер телефона.']);
+        if (is_unsubscribed($phone)) json_out(['ok' => false, 'error' => 'Получатель отписался (STOP). Отправка заблокирована.'], 409);
         if (!Channels::ready($channel)) {
             $st = Channels::state($channel);
             json_out(['ok' => false, 'error' => $st === 'unconfigured'
