@@ -1204,6 +1204,28 @@ async function broadcastLoadChannels() {
     }
     renderBroadcastChannels();
 }
+
+async function providerQueueLoad() {
+    const box = document.getElementById('providerQueueState');
+    if (!box) return;
+    try {
+        const r = await api('channels.queue', {});
+        if (!r || !r.ok) throw new Error(r?.error || 'ошибка');
+        const parts = Object.entries(r.queues || {}).filter(([, q]) => q.configured).map(([ch, q]) => {
+            const label = CHANNEL_LABELS[ch] || ch;
+            if (q.provider_count === null) return `${label}: нет ответа`;
+            return `${label}: ${q.provider_count} в очереди`;
+        });
+        const l = r.local || {};
+        if (l.available) parts.push(`панель: ${l.deliveries_queued || 0} ожидают`);
+        box.className = parts.some(x => /[1-9]/.test(x)) ? 'queue-warn' : 'queue-ok';
+        box.textContent = parts.length ? parts.join(' · ') : 'Нет активных очередей';
+        box.title = 'Проверено ' + new Date().toLocaleTimeString();
+    } catch (e) {
+        box.className = 'muted small';
+        box.textContent = 'Очередь временно недоступна';
+    }
+}
 function renderBroadcastChannels() {
     const box = document.getElementById('bChannels');
     if (!box) return;

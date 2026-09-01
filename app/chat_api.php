@@ -18,6 +18,7 @@ try {
                 'mine' => "c.status<>'resolved' AND c.assignee_user_id=?",
                 'unassigned' => "c.status<>'resolved' AND c.assignee_user_id IS NULL",
                 'pending' => "c.status='pending'",
+                'delivery_failed' => "c.status<>'resolved' AND EXISTS (SELECT 1 FROM conversation_messages cmf WHERE cmf.conversation_id=c.id AND cmf.direction='out' AND cmf.status='failed')",
                 'resolved' => "c.status='resolved'",
                 default => "c.status<>'resolved'",
             };
@@ -47,6 +48,7 @@ try {
                 SUM(status='pending') pending_count,SUM(status='resolved') resolved_count,
                 SUM(status<>'resolved' AND unread_count>0) unread_count
                 FROM conversations")->fetch();
+            $counts['delivery_failed_count']=(int)db()->query("SELECT COUNT(DISTINCT c.id) FROM conversations c JOIN conversation_messages cmf ON cmf.conversation_id=c.id WHERE c.status<>'resolved' AND cmf.direction='out' AND cmf.status='failed'")->fetchColumn();
             if($userId>0){$mine=db()->prepare("SELECT COUNT(*) FROM conversations WHERE status<>'resolved' AND assignee_user_id=?");$mine->execute([$userId]);$counts['mine_count']=(int)$mine->fetchColumn();}else{$counts['mine_count']=0;}
             $channelCounts=[];
             $channelSt=db()->prepare("SELECT channel,COUNT(*) c FROM conversations c WHERE $channelCountWhere GROUP BY channel");

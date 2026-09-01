@@ -7,6 +7,11 @@
     <div class="head-actions"><span id="channelStatus" class="badge muted">проверяю канал…</span></div>
 </div>
 
+<div class="card queue-monitor" id="providerQueue" aria-live="polite">
+    <div><h2>Очередь отправки</h2><div class="muted small">Green API принимает сообщения и отправляет их с настроенной паузой. Обновление каждые 10 секунд.</div></div>
+    <div id="providerQueueState" class="muted small">Проверяю…</div>
+</div>
+
 <div class="split">
     <div class="card">
         <h2>Получатели</h2>
@@ -48,4 +53,4 @@
         <div id="bResult" class="mt"></div>
     </div>
 </div>
-<script>document.addEventListener('DOMContentLoaded', () => { channelStatusBadge(); broadcastLoadChannels(); });</script>
+<script>document.addEventListener('DOMContentLoaded', () => { channelStatusBadge(); broadcastLoadChannels(); providerQueueLoad(); setInterval(providerQueueLoad, 10000); });</script>

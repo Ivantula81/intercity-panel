@@ -8,6 +8,7 @@
         <button class="cq" data-queue="mine" onclick="chatSetQueue('mine')"><span>Мои</span><b data-count="mine_count">0</b></button>
         <button class="cq" data-queue="unassigned" onclick="chatSetQueue('unassigned')"><span>Без оператора</span><b data-count="unassigned_count">0</b></button>
         <button class="cq" data-queue="pending" onclick="chatSetQueue('pending')"><span>Ждём пассажира</span><b data-count="pending_count">0</b></button>
+        <button class="cq" data-queue="delivery_failed" onclick="chatSetQueue('delivery_failed')"><span>Ошибки доставки</span><b data-count="delivery_failed_count">0</b></button>
         <button class="cq" data-queue="resolved" onclick="chatSetQueue('resolved')"><span>Закрытые</span><b data-count="resolved_count">0</b></button>
         <div class="chat-queues-title channels">Каналы</div>
         <div id="chatChannelTabs" class="chat-queue-channels"></div>

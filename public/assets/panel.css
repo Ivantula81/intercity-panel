@@ -649,6 +649,11 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 
 /* — очереди shared inbox — */
 .chat-queues { min-width: 0; padding: 14px 10px; border-right: 1px solid var(--line); background: var(--surface-2); overflow-y: auto; }
+.queue-monitor { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:16px; }
+.queue-monitor h2 { margin:0 0 4px; }
+.queue-monitor .queue-ok { color:var(--success,#16803c); }
+.queue-monitor .queue-warn { color:var(--warning,#9a6700); }
+@media (max-width: 700px) { .queue-monitor { align-items:flex-start; flex-direction:column; } }
 .chat-queues-title { padding: 4px 10px 8px; color: var(--ink); font-size: 15px; font-weight: 800; }
 .chat-queues-title.channels { margin-top: 15px; color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
 .cq { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }

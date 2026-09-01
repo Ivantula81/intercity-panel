@@ -132,6 +132,34 @@ class GreenApiClient
         return $this->post('setSettings', ['delaySendMessagesMilliseconds' => (int) $ms]);
     }
 
+    // Количество сообщений, которые Green API принял в свою исходящую очередь.
+    // Значение обновляется провайдером примерно раз в 10 секунд.
+    public function getMessagesCount(): array
+    {
+        $r = $this->get('getMessagesCount');
+        if (!$r['ok']) return $r;
+        $d = is_array($r['data'] ?? null) ? $r['data'] : [];
+        return ['ok' => true, 'count' => (int) ($d['count'] ?? $d['сount'] ?? 0)];
+    }
+
+    // Первые 500 элементов очереди. Возвращаем только технические поля,
+    // чтобы не выводить тексты и адресатов в панели мониторинга.
+    public function showMessagesQueue(): array
+    {
+        $r = $this->get('showMessagesQueue');
+        if (!$r['ok']) return $r;
+        $items = is_array($r['data'] ?? null) ? $r['data'] : [];
+        $out = [];
+        foreach (array_slice($items, 0, 500) as $item) {
+            if (!is_array($item)) continue;
+            $out[] = [
+                'id' => (string) ($item['messageID'] ?? $item['idMessage'] ?? ''),
+                'type' => (string) ($item['type'] ?? ''),
+            ];
+        }
+        return ['ok' => true, 'items' => $out];
+    }
+
     // Проверка наличия аккаунта у номера. Для WhatsApp-инстансов метод называется checkWhatsapp,
     // для MAX/Telegram — checkAccount. ['ok'=>bool, 'exists'=>bool, 'chatId'=>string]
     public function checkAccount($phone)

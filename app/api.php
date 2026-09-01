@@ -1194,6 +1194,36 @@ switch ($action) {
         }
         json_out(['ok' => true, 'delays' => $delays]);
 
+    case 'channels.queue':
+        // Наблюдение за очередью провайдера и локальным outbox. Никаких отправок,
+        // проверок номеров или иных побочных эффектов — только чтение состояния.
+        require_once PANEL_ROOT . '/lib/Channels.php';
+        $queues = [];
+        foreach (['whatsapp', 'max', 'telegram'] as $ch) {
+            $client = Channels::client($ch);
+            $item = ['configured' => false, 'state' => Channels::state($ch), 'provider_count' => null, 'error' => ''];
+            if ($client instanceof GreenApiClient && $client->isConfigured()) {
+                $item['configured'] = true;
+                $r = $client->getMessagesCount();
+                if (!empty($r['ok'])) $item['provider_count'] = (int) $r['count'];
+                else $item['error'] = (string) ($r['error'] ?? 'Green API недоступен');
+            }
+            $queues[$ch] = $item;
+        }
+        $local = ['jobs' => 0, 'deliveries_queued' => 0, 'deliveries_sending' => 0, 'deliveries_failed' => 0];
+        try {
+            $local['jobs'] = (int) db()->query("SELECT COUNT(*) FROM broadcast_jobs WHERE status IN ('queued','running','paused')")->fetchColumn();
+            $local['deliveries_queued'] = (int) db()->query("SELECT COUNT(*) FROM broadcast_deliveries WHERE status='queued'")->fetchColumn();
+            $local['deliveries_sending'] = (int) db()->query("SELECT COUNT(*) FROM broadcast_deliveries WHERE status='sending'")->fetchColumn();
+            $local['deliveries_failed'] = (int) db()->query("SELECT COUNT(*) FROM broadcast_deliveries WHERE status='failed'")->fetchColumn();
+        } catch (Throwable $e) {
+            // schema24 ещё может отсутствовать на конкретном окружении — UI получает null,
+            // а не ошибку 500 и не воспринимает отсутствие таблицы как пустую очередь.
+            $local['available'] = false;
+        }
+        $local['available'] = $local['available'] ?? true;
+        json_out(['ok' => true, 'queues' => $queues, 'local' => $local, 'at' => date('c')]);
+
     case 'channel.delay.save':
         require_once PANEL_ROOT . '/lib/Channels.php';
         $ch = (string) ($body['channel'] ?? '');
