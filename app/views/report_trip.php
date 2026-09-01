@@ -6,6 +6,7 @@ $t = $hasCalc ? $calculation['totals'] : [];
 $money = static fn($v) => number_format((float) $v, 0, ',', ' ') . ' ₽';
 $num = static fn($k, $d = 0) => (float) ($t[$k] ?? $d);
 $isFiles = $activeTab === 'files';
+$isCarrierReport = $activeTab === 'carrier';
 ?>
 <div class="page-head report-trip-head">
     <div><a class="small muted" href="/?p=reporting">← Все рейсы</a><h1>Рейс № <?= e($manifest['trip_number']) ?></h1><div class="sub"><?= e($manifest['route']) ?></div></div>
@@ -36,8 +37,9 @@ $isFiles = $activeTab === 'files';
 </dialog>
 
 <div class="report-tabs">
-    <a class="<?= !$isFiles?'active':'' ?>" href="/?p=report_trip&id=<?= (int)$manifest['id'] ?>#reportPassengers">Ведомость</a>
-    <?php if (!$isFiles): ?><a href="#reportCalculation">Расчёт</a><a href="#reportControl">Контроль</a><?php endif; ?>
+    <a class="<?= (!$isFiles && !$isCarrierReport)?'active':'' ?>" href="/?p=report_trip&id=<?= (int)$manifest['id'] ?>#reportPassengers">Ведомость</a>
+    <?php if (!$isFiles && !$isCarrierReport): ?><a href="#reportCalculation">Расчёт</a><a href="#reportControl">Контроль</a><?php endif; ?>
+    <a class="<?= $isCarrierReport?'active':'' ?>" href="/?p=report_trip&id=<?= (int)$manifest['id'] ?>&tab=carrier">Отчёт перевозчику</a>
     <a class="<?= $isFiles?'active':'' ?>" href="/?p=report_trip&id=<?= (int)$manifest['id'] ?>&tab=files">Файлы рейса <span class="badge muted"><?= count($files) ?></span></a>
     <a href="/?p=reporting&tab=settings&scenario=<?= (int)($tripScenarioId ?? 0) ?>&return_manifest=<?= (int)$manifest['id'] ?>">Настройки</a>
 </div>
@@ -64,6 +66,14 @@ $isFiles = $activeTab === 'files';
 <?php foreach ($files as $f): ?><a class="report-file" href="/?p=report_file&id=<?= (int)$f['id'] ?>"><span class="report-file-ic"><?= icon('doc') ?></span><span><strong><?= e($f['original_name']) ?></strong><small><?= e($typeNames[$f['file_type']] ?? $f['file_type']) ?> · версия <?= (int)$f['version'] ?> · <?= e(date('d.m.Y H:i',strtotime($f['created_at']))) ?></small><?php if($f['note']!==''):?><small><?= e($f['note']) ?></small><?php endif;?></span><span><?= icon('download') ?></span></a><?php endforeach; ?>
 <?php if(!$files): ?><p class="muted">Файлов пока нет.</p><?php endif; ?>
 </div></div>
+<?php elseif ($isCarrierReport): ?>
+<div class="report-carrier-report">
+    <div class="card report-carrier-report-head"><div><div class="eyebrow">Отчёт перевозчику</div><h2><?= e($manifest['carrier'] ?: 'Перевозчик не указан') ?></h2><p class="muted">Рейс №<?= e($manifest['trip_number']) ?> · <?= e($manifest['route']) ?> · <?= $manifest['departure_at'] ? e(date('d.m.Y H:i', strtotime($manifest['departure_at']))) : 'дата не указана' ?></p></div><button class="btn ghost no-print" type="button" onclick="window.print()">Печать / PDF</button></div>
+    <?php if (!$hasCalc): ?><div class="alert warn">Сначала выполните расчёт рейса, чтобы сформировать отчёт перевозчику.</div><?php else: ?>
+    <div class="report-carrier-kpis"><div><span>Пассажиров в расчёте</span><strong><?= (int)$num('pax') ?></strong></div><div><span>Сумма ведомости</span><strong><?= $money($num('manifest_total')) ?></strong></div><div><span>К перечислению</span><strong><?= $money($num('carrier_due')) ?></strong></div></div>
+    <div class="report-carrier-columns"><section class="card"><h2>Расчёт суммы</h2><div class="report-summary-lines"><div><span>Сумма ведомости</span><strong><?= $money($num('manifest_total')) ?></strong></div><div><span>− диспетчерское обслуживание <?= $num('disp_rate', 7) ?>%</span><strong class="negative">−<?= $money($num('dispatch_fee')) ?></strong></div><div><span>− комиссия за продажи Терры <?= $num('our_rate', 15) ?>%</span><strong class="negative">−<?= $money($num('our_commission')) ?></strong></div><?php if ($num('cash') != 0): ?><div><span>− получено наличными</span><strong class="negative">−<?= $money($num('cash')) ?></strong></div><?php endif; ?><?php if ($num('carrier_direct_sales') != 0): ?><div><span>− продажи собственных агентов</span><strong class="negative">−<?= $money($num('carrier_direct_sales')) ?></strong></div><?php endif; ?><?php if ($num('noshow_carrier') != 0): ?><div><span>− неявки без возврата</span><strong class="negative">−<?= $money($num('noshow_carrier')) ?></strong></div><?php endif; ?><div class="report-summary-total"><span>К перечислению перевозчику</span><strong><?= $money($num('carrier_due')) ?></strong></div></div></section><section class="card"><h2>Примечание</h2><p>Отчёт сформирован по отмеченным пассажирам и сохранённым условиям текущего сценария.</p><p class="muted small">Продажи через собственных агентов и наличные учтены в расчёте суммы к перечислению.</p><?php if ($lastCalculation): ?><div class="small muted report-carrier-version">Версия расчёта: <?= (int)$lastCalculation['version'] ?> · <?= e(date('d.m.Y H:i', strtotime($lastCalculation['created_at']))) ?></div><?php endif; ?></section></div>
+    <?php endif; ?>
+</div>
 <?php else: ?>
 
 <div class="card report-trip-card"><div class="report-facts">
