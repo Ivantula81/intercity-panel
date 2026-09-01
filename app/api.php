@@ -844,6 +844,24 @@ switch ($action) {
 
     /* ── Отправка ── */
 
+    case 'campaign.enqueue':
+        // Подготовка задания без вызова провайдера. Отправка выполняется worker-ом
+        // после отдельного smoke-теста и не допускает двойного запуска.
+        require_once PANEL_ROOT . '/app/broadcast_queue.php';
+        $kind = (string) ($body['kind'] ?? 'campaign');
+        $manifestId = (int) ($body['manifest_id'] ?? 0);
+        $payload = is_array($body['payload'] ?? null) ? $body['payload'] : [];
+        if ($kind === 'campaign' && $manifestId <= 0) json_out(['ok'=>false,'error'=>'Не указан рейс.'], 400);
+        if (!$payload) json_out(['ok'=>false,'error'=>'Пустые параметры кампании.'], 400);
+        try {
+            $job = BroadcastQueue::enqueue($kind, $manifestId, $payload, audit_actor_id());
+            audit_event('campaign.enqueue', 'messaging', 'broadcast_job', $job['id'], 'success', ['kind'=>$kind]);
+            json_out(['ok'=>true,'job'=>$job]);
+        } catch (Throwable $e) {
+            audit_event('campaign.enqueue', 'messaging', 'broadcast_job', null, 'failure');
+            json_out(['ok'=>false,'error'=>'Очередь рассылок ещё не активирована или недоступна.'], 503);
+        }
+
     case 'campaign.status':
         // Монитор доставки по группе: статус каждого получателя из messages + ответы из inbox + наличие каналов.
         require_once PANEL_ROOT . '/lib/Channels.php';
