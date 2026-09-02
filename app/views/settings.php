@@ -83,6 +83,14 @@
             <label class="btn ghost sm" style="cursor:pointer">📤 Загрузить подпись<input type="file" accept="image/png,image/*" style="display:none" onchange="uploadReq(this,'sign')"></label>
         </div>
     </div>
+    <div class="card-subsection mt">
+        <h3>Рабочее время рассылок (МСК)</h3>
+        <div class="grid grid-3">
+            <label class="f">Начало<input type="time" id="msgHoursFrom" value="<?= e(opt('messaging_hours_from','06:30')) ?>"></label>
+            <label class="f">Окончание<input type="time" id="msgHoursTo" value="<?= e(opt('messaging_hours_to','21:00')) ?>"></label>
+            <label class="row small" style="align-items:center;gap:8px"><input type="checkbox" id="msgHoursEnabled" <?= opt('messaging_hours_enabled','1') !== '0' ? 'checked' : '' ?>> ограничивать отправку рабочим временем</label>
+        </div>
+    </div>
 </div>
 
 <div class="card">

@@ -1628,6 +1628,9 @@ async function saveNotif() {
         start_reply: document.getElementById('msgStartReply') ? document.getElementById('msgStartReply').value : undefined,
         daily_cap: document.getElementById('msgDailyCap') ? document.getElementById('msgDailyCap').value : undefined,
         primary_channel: document.getElementById('msgPrimaryChannel') ? document.getElementById('msgPrimaryChannel').value : undefined,
+        messaging_hours_from: document.getElementById('msgHoursFrom')?.value,
+        messaging_hours_to: document.getElementById('msgHoursTo')?.value,
+        messaging_hours_enabled: document.getElementById('msgHoursEnabled')?.checked ? 1 : 0,
     });
     const s = document.getElementById('notifState');
     s.textContent = 'Сохранено ✓';

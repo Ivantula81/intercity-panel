@@ -1595,6 +1595,10 @@ switch ($action) {
         if (array_key_exists('stop_reply', $body)) opt_set('stop_reply', mb_substr(trim((string) $body['stop_reply']), 0, 1000));
         if (array_key_exists('start_reply', $body)) opt_set('start_reply', mb_substr(trim((string) $body['start_reply']), 0, 1000));
         if (array_key_exists('daily_cap', $body)) opt_set('daily_soft_cap', (string) max(0, (int) $body['daily_cap']));
+        if (array_key_exists('messaging_hours_enabled', $body)) opt_set('messaging_hours_enabled', !empty($body['messaging_hours_enabled']) ? '1' : '0');
+        foreach (['messaging_hours_from','messaging_hours_to'] as $hk) {
+            if (array_key_exists($hk, $body) && preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', (string)$body[$hk])) opt_set($hk, (string)$body[$hk]);
+        }
         // Основной канал: от него считается галочка по умолчанию, порядок каналов и «запасные».
         if (array_key_exists('primary_channel', $body)) {
             require_once PANEL_ROOT . '/lib/Channels.php';
