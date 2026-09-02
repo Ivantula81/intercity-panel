@@ -31,7 +31,7 @@ final class SalesInboxIngestor
         }
 
         try {
-            $status = @imap_status($imap, $mailbox, SA_UIDVALIDITY | SA_MESSAGES);
+            $status = @imap_status($imap, $mailbox, SA_UIDVALIDITY | SA_UIDNEXT | SA_MESSAGES);
             if (!$status) throw new RuntimeException('Не удалось получить состояние IMAP-папки.');
             $uidValidity = (int) ($status->uidvalidity ?? 0);
             $state = $this->state();
@@ -42,18 +42,35 @@ final class SalesInboxIngestor
                 $lastUid = 0;
             }
 
-            $criteria = 'UID ' . ($lastUid + 1) . ':*';
             if ($lastUid === 0) {
                 // Первый запуск не должен начинать обход многолетнего ящика с
                 // UID 1. Берём только согласованное окно свежих писем, затем
                 // продолжаем строго по UID из сохранённого курсора.
                 $lookbackDays = max(1, min(3650, (int) ($this->config['lookback_days'] ?? 30)));
                 $criteria = 'SINCE "' . date('d-M-Y', strtotime('-' . $lookbackDays . ' days')) . '"';
+                $uids = @imap_search($imap, $criteria, SE_UID) ?: [];
+                $uids = array_values(array_filter(array_map('intval', $uids), static fn(int $uid): bool => $uid > 0));
+                sort($uids, SORT_NUMERIC);
+                if (count($uids) > $limit) $uids = array_slice($uids, 0, $limit);
+            } else {
+                // libc-client, используемый PHP IMAP, не поддерживает критерий
+                // поиска `UID n:*`. Берём ограниченный UID-диапазон через
+                // overview и продвигаем курсор до конца проверенного диапазона,
+                // включая возможные разрывы от удалённых писем.
+                $uidNext = max($lastUid + 1, (int) ($status->uidnext ?? ($lastUid + 1)));
+                $rangeEnd = min($uidNext - 1, $lastUid + $limit);
+                $uids = [];
+                if ($rangeEnd >= $lastUid + 1) {
+                    $overview = @imap_fetch_overview($imap, ($lastUid + 1) . ':' . $rangeEnd, FT_UID);
+                    if ($overview === false) throw new RuntimeException('Не удалось получить следующий диапазон UID.');
+                    foreach ($overview as $item) {
+                        $uid = (int) ($item->uid ?? 0);
+                        if ($uid > $lastUid && $uid <= $rangeEnd) $uids[] = $uid;
+                    }
+                    $result['last_uid'] = $rangeEnd;
+                }
+                sort($uids, SORT_NUMERIC);
             }
-            $uids = @imap_search($imap, $criteria, SE_UID) ?: [];
-            $uids = array_values(array_filter(array_map('intval', $uids), static fn(int $uid): bool => $uid > $lastUid));
-            sort($uids, SORT_NUMERIC);
-            if (count($uids) > $limit) $uids = array_slice($uids, 0, $limit);
 
             foreach ($uids as $uid) {
                 $message = null;
