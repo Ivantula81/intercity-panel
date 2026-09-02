@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/SalesParser.php';
+require_once __DIR__ . '/SalesClassifier.php';
 
 /** Read-only IMAP importer for sales/refund notification emails. */
 final class SalesInboxIngestor
@@ -35,6 +36,7 @@ final class SalesInboxIngestor
             if (!$status) throw new RuntimeException('Не удалось получить состояние IMAP-папки.');
             $uidValidity = (int) ($status->uidvalidity ?? 0);
             $state = $this->state();
+            $classifier = new SalesClassifier($this->pdo);
             $lastUid = (int) ($state['last_uid'] ?? 0);
             if ((int) ($state['uid_validity'] ?? 0) !== 0 && (int) $state['uid_validity'] !== $uidValidity) {
                 // UID сбросились на стороне ящика. Перечитывание безопасно: запись
@@ -81,6 +83,12 @@ final class SalesInboxIngestor
                     $row = SalesParser::parse($message['sender'], $message['subject'], $message['body'],
                         $message['occurred_at'], $message['message_hash']);
                     $row['source_event_id'] = $message['source_event_id'];
+                    $row['sender_email'] = $message['sender'];
+                    $row['recipient_email'] = $message['recipient'];
+                    $row['recipient_header'] = $message['recipient_header'];
+                    $row += $classifier->classify(
+                        $message['sender'], $message['recipient'], $message['subject']
+                    );
                     if (!SalesParser::relevant($row)) {
                         $result['ignored']++;
                         if (!$dryRun) $this->recordIssue($message, $row['channel'] === 'other' ? 'unknown_sender' : 'unsupported_event',
@@ -141,7 +149,7 @@ final class SalesInboxIngestor
         return sprintf('{%s:%d/imap/ssl}%s', $host, $port, $folder);
     }
 
-    /** @return array{sender:string,subject:string,body:string,occurred_at:string,source_event_id:string,message_hash:string,snippet:string} */
+    /** @return array{sender:string,recipient:string,recipient_header:string,subject:string,body:string,occurred_at:string,source_event_id:string,message_hash:string,snippet:string} */
     private function readMessage($imap, int $uid, int $uidValidity): array
     {
         $msgNo = imap_msgno($imap, $uid);
@@ -149,7 +157,8 @@ final class SalesInboxIngestor
         $header = imap_headerinfo($imap, $msgNo);
         if (!$header) throw new RuntimeException('Не удалось прочитать заголовки письма.');
         $from = $header->from[0] ?? null;
-        $sender = $from ? (string) ($from->mailbox ?? '') . '@' . (string) ($from->host ?? '') : '';
+        $sender = SalesClassifier::normalizeEmail($from ? (string) ($from->mailbox ?? '') . '@' . (string) ($from->host ?? '') : '');
+        [$recipient, $recipientHeader] = $this->recipient($header, (string) imap_fetchheader($imap, $uid, FT_UID));
         $subject = $this->decodeHeader((string) ($header->subject ?? ''));
         $messageId = trim((string) ($header->message_id ?? ''), "<> \t\r\n");
         $sourceEventId = mb_substr($messageId !== '' ? $messageId : self::SOURCE . ':' . $uidValidity . ':' . $uid, 0, 191);
@@ -159,9 +168,44 @@ final class SalesInboxIngestor
         if (!$structure) throw new RuntimeException('Не удалось прочитать структуру письма.');
         $body = $this->messageBody($imap, $uid, $structure);
         if ($body === '') throw new RuntimeException('Письмо не содержит доступного текстового тела.');
-        return ['sender' => mb_substr($sender, 0, 255), 'subject' => mb_substr($subject, 0, 255),
+        return ['sender' => mb_substr($sender, 0, 255), 'recipient' => $recipient,
+            'recipient_header' => $recipientHeader, 'subject' => mb_substr($subject, 0, 255),
             'body' => $body, 'occurred_at' => $occurredAt, 'source_event_id' => $sourceEventId,
             'message_hash' => $messageHash, 'snippet' => mb_substr($body, 0, 512)];
+    }
+
+    /** @return array{string,string} */
+    private function recipient(object $header, string $rawHeader): array
+    {
+        foreach (['X-Original-To', 'Original-Recipient'] as $name) {
+            if (preg_match('/^' . preg_quote($name, '/') . ':\s*(.+(?:\r?\n[ \t].+)*)/mi', $rawHeader, $m)) {
+                $unfolded = preg_replace('/\r?\n[ \t]+/', ' ', $m[1]) ?? $m[1];
+                foreach (imap_rfc822_parse_adrlist($unfolded, '') ?: [] as $address) {
+                    $email = SalesClassifier::normalizeEmail((string) ($address->mailbox ?? '') . '@' . (string) ($address->host ?? ''));
+                    if ($email !== '') return [$email, $name];
+                }
+                $email = SalesClassifier::normalizeEmail($unfolded);
+                if ($email !== '') return [$email, $name];
+                if (preg_match('/[a-z0-9.!#$%&\'*+\/=?^_`{|}~-]+@[a-z0-9.-]+/i', $unfolded, $emailMatch)) {
+                    $email = SalesClassifier::normalizeEmail($emailMatch[0]);
+                    if ($email !== '') return [$email, $name];
+                }
+            }
+        }
+        foreach (($header->to ?? []) as $address) {
+            $email = SalesClassifier::normalizeEmail((string) ($address->mailbox ?? '') . '@' . (string) ($address->host ?? ''));
+            if ($email !== '') return [$email, 'To'];
+        }
+        // Envelope/Delivered-To часто указывают уже общий Gmail-пул. Используем
+        // их только если исходный To действительно отсутствует.
+        foreach (['Envelope-To', 'X-Forwarded-To', 'Delivered-To'] as $name) {
+            if (!preg_match('/^' . preg_quote($name, '/') . ':\s*(.+)$/mi', $rawHeader, $m)) continue;
+            if (preg_match('/[a-z0-9.!#$%&\'*+\/=?^_`{|}~-]+@[a-z0-9.-]+/i', $m[1], $emailMatch)) {
+                $email = SalesClassifier::normalizeEmail($emailMatch[0]);
+                if ($email !== '') return [$email, $name];
+            }
+        }
+        return ['', ''];
     }
 
     private function decodeHeader(string $value): string
@@ -235,27 +279,42 @@ final class SalesInboxIngestor
         if ($r['ticket_no'] !== '') {
             $existing = $this->pdo->prepare('SELECT id FROM sales WHERE channel=? AND kind=? AND ticket_no=? LIMIT 1');
             $existing->execute([$r['channel'], $r['kind'], $r['ticket_no']]);
-            if ($existing->fetchColumn()) return false;
+            if ($id = (int) $existing->fetchColumn()) { $this->updateClassification($id, $r); return false; }
         } elseif ($r['order_no'] !== '') {
             $existing = $this->pdo->prepare('SELECT id FROM sales WHERE channel=? AND kind=? AND order_no=? LIMIT 1');
             $existing->execute([$r['channel'], $r['kind'], $r['order_no']]);
-            if ($existing->fetchColumn()) return false;
+            if ($id = (int) $existing->fetchColumn()) { $this->updateClassification($id, $r); return false; }
         }
         $sql = 'INSERT INTO sales
-            (source,email_id,source_event_id,channel,kind,ticket_no,order_no,quantity,event_key,parse_version,
+            (source,email_id,source_event_id,sender_email,recipient_email,recipient_header,channel,
+             agent_rule_id,report_agent_id,agent_tag,owner_side,carrier_id,classified_at,
+             kind,ticket_no,order_no,quantity,event_key,parse_version,
              route,segment,depart_at,amount,passenger,occurred_at,subject,snippet)
-            VALUES (:source,:email_id,:source_event_id,:channel,:kind,:ticket_no,:order_no,:quantity,:event_key,:parse_version,
+            VALUES (:source,:email_id,:source_event_id,:sender_email,:recipient_email,:recipient_header,:channel,
+             :agent_rule_id,:report_agent_id,:agent_tag,:owner_side,:carrier_id,:classified_at,
+             :kind,:ticket_no,:order_no,:quantity,:event_key,:parse_version,
              :route,:segment,:depart_at,:amount,:passenger,:occurred_at,:subject,:snippet)
-            ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)';
+            ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id),sender_email=VALUES(sender_email),
+             recipient_email=VALUES(recipient_email),recipient_header=VALUES(recipient_header),
+             agent_rule_id=VALUES(agent_rule_id),report_agent_id=VALUES(report_agent_id),agent_tag=VALUES(agent_tag),
+             owner_side=VALUES(owner_side),carrier_id=VALUES(carrier_id),classified_at=VALUES(classified_at)';
         $st = $this->pdo->prepare($sql);
         $st->execute($r);
         return $st->rowCount() === 1;
     }
 
+    private function updateClassification(int $id, array $r): void
+    {
+        $this->pdo->prepare('UPDATE sales SET sender_email=?,recipient_email=?,recipient_header=?,
+            agent_rule_id=?,report_agent_id=?,agent_tag=?,owner_side=?,carrier_id=?,classified_at=? WHERE id=?')
+            ->execute([$r['sender_email'], $r['recipient_email'], $r['recipient_header'], $r['agent_rule_id'],
+                $r['report_agent_id'], $r['agent_tag'], $r['owner_side'], $r['carrier_id'], $r['classified_at'], $id]);
+    }
+
     private function state(): array
     {
         $st = $this->pdo->prepare('SELECT * FROM sales_sync_state WHERE source=?');
-        $st->execute([self::SOURCE]);
+        $st->execute([$this->stateSource()]);
         return $st->fetch() ?: [];
     }
 
@@ -263,7 +322,7 @@ final class SalesInboxIngestor
     {
         $this->pdo->prepare("INSERT INTO sales_sync_state (source,mailbox,status,last_started_at)
             VALUES (?,?,'running',NOW()) ON DUPLICATE KEY UPDATE mailbox=VALUES(mailbox),status='running',
-            last_started_at=NOW(),last_error=''")->execute([self::SOURCE, $mailbox]);
+            last_started_at=NOW(),last_error=''")->execute([$this->stateSource(), $mailbox]);
     }
 
     private function markFinished(string $mailbox, int $uidValidity, int $lastUid, array $r): void
@@ -273,7 +332,7 @@ final class SalesInboxIngestor
             last_finished_at=NOW(),last_success_at=NOW(),imported_count=imported_count+?,
             ignored_count=ignored_count+?,error_count=error_count+?,last_error=? WHERE source=?')
             ->execute([$mailbox, $uidValidity, $lastUid, $status, $r['imported'], $r['ignored'], $r['errors'],
-                $r['errors'] ? 'Часть писем не обработана; смотрите журнал импорта.' : '', self::SOURCE]);
+                $r['errors'] ? 'Часть писем не обработана; смотрите журнал импорта.' : '', $this->stateSource()]);
     }
 
     private function markFailed(string $error): void
@@ -281,7 +340,7 @@ final class SalesInboxIngestor
         try {
             $this->pdo->prepare("INSERT INTO sales_sync_state (source,status,last_started_at,last_finished_at,last_error,error_count)
                 VALUES (?,'failed',NOW(),NOW(),?,1) ON DUPLICATE KEY UPDATE status='failed',last_finished_at=NOW(),
-                last_error=VALUES(last_error),error_count=error_count+1")->execute([self::SOURCE, mb_substr($error, 0, 500)]);
+                last_error=VALUES(last_error),error_count=error_count+1")->execute([$this->stateSource(), mb_substr($error, 0, 500)]);
         } catch (Throwable $ignored) {
         }
     }
@@ -311,5 +370,11 @@ final class SalesInboxIngestor
         $password = (string) ($this->config['password'] ?? '');
         if ($password !== '') $error = str_replace($password, '[скрыто]', $error);
         return 'Не удалось открыть Gmail IMAP' . ($error !== '' ? ': ' . mb_substr($error, 0, 400) : '.');
+    }
+
+    private function stateSource(): string
+    {
+        $value = preg_replace('/[^a-z0-9_-]/i', '', (string) ($this->config['state_source'] ?? self::SOURCE));
+        return mb_substr($value !== '' ? $value : self::SOURCE, 0, 64);
     }
 }

@@ -18,6 +18,7 @@ function sales_ingest_env(string $key, string $default = ''): string
     return (string) ($env[$key] ?? $default);
 }
 $dryRun = in_array('--dry-run', $argv ?? [], true);
+$backfill = in_array('--backfill-classification', $argv ?? [], true);
 $limit = max(1, min(2000, (int) sales_ingest_env('SALES_IMAP_BATCH_SIZE', '200')));
 foreach ($argv ?? [] as $arg) {
     if (preg_match('/^--limit=(\d+)$/', $arg, $m)) $limit = max(1, min(2000, (int) $m[1]));
@@ -30,7 +31,11 @@ $config = [
     'user' => sales_ingest_env('SALES_IMAP_USERNAME', sales_ingest_env('SALES_IMAP_USER')),
     'password' => sales_ingest_env('SALES_IMAP_PASSWORD'),
     'lookback_days' => (int) sales_ingest_env('SALES_IMAP_LOOKBACK_DAYS', '30'),
+    'state_source' => $backfill ? 'gmail_sales_headers_backfill' : 'gmail_sales',
 ];
+if ($backfill) {
+    $config['lookback_days'] = max(1, (int) sales_ingest_env('SALES_CLASSIFICATION_BACKFILL_DAYS', '3650'));
+}
 
 try {
     $result = (new SalesInboxIngestor(db(), $config))->run($dryRun, $limit);

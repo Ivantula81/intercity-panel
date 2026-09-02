@@ -31,13 +31,14 @@ try { $carriers = db()->query('SELECT * FROM carriers ORDER BY id')->fetchAll();
     <p class="muted small">Выбираются при формировании ведомости для водителя/дорожной. Номер и дата договора попадают в шапку документа.</p>
     <div class="table-wrap mt">
         <table class="t cat" id="carriersTable" data-kind="carrier">
-            <thead><tr><th style="width:32%">Перевозчик (ATP)</th><th style="width:20%">№ договора</th><th style="width:28%">Дата договора</th><th>Прим.</th><th style="width:40px"></th></tr></thead>
+            <thead><tr><th style="width:24%">Перевозчик (ATP)</th><th style="width:15%">№ договора</th><th style="width:20%">Дата договора</th><th style="width:25%">Адреса уведомлений</th><th>Прим.</th><th style="width:40px"></th></tr></thead>
             <tbody>
             <?php foreach ($carriers as $c): ?>
                 <tr data-id="<?= $c['id'] ?>">
                     <td><input class="cell" data-f="atp" value="<?= e($c['atp']) ?>"></td>
                     <td><input class="cell" data-f="contract_no" value="<?= e($c['contract_no']) ?>"></td>
                     <td><input class="cell" data-f="contract_date" value="<?= e($c['contract_date']) ?>" placeholder="01 января 2026 года"></td>
+                    <td><input class="cell" data-f="notification_emails" value="<?= e($c['notification_emails'] ?? '') ?>" placeholder="sales@example.ru"></td>
                     <td><input class="cell" data-f="note" value="<?= e($c['note']) ?>"></td>
                     <td class="actions"><button class="icon-btn" onclick="delCatRow(this)"><?= icon('trash') ?></button></td>
                 </tr>

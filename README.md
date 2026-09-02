@@ -50,7 +50,7 @@ panel/
 │   ├── webhook.php             # приёмник Evolution
 │   ├── greenapi-webhook.php    # приёмник Green API
 │   └── assets/                 # panel.css, panel.js
-├── schema.sql … schema10.sql   # миграции БД (применять по порядку)
+├── schema.sql … schema26.sql   # миграции БД (применять по порядку)
 ├── seed_catalogs.sql, backfill_contacts.php
 └── docs/                       # спеки/дизайн-документы
 ```
@@ -80,7 +80,7 @@ ADMIN_FALLBACK_PASSWORD=          # пусто = аварийный вход в�
 ## Развёртывание (с нуля)
 1. nginx + PHP-FPM 8.3 + MariaDB. Создать БД `panel` и пользователя `panel`.
 2. Код — в `/var/www/panel` (корень сайта nginx — `/var/www/panel/public`).
-3. Применить схемы **по порядку**: `schema.sql`, затем `schema2.sql` … `schema10.sql`, плюс `seed_catalogs.sql`.
+3. Применить схемы **по порядку**: `schema.sql`, затем `schema2.sql` … `schema26.sql`, плюс `seed_catalogs.sql`.
 4. Заполнить `/etc/panel.env` (см. выше).
 5. Поднять Gotenberg (Docker) на `:3001` для генерации PDF.
 
