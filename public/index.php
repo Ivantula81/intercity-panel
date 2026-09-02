@@ -326,7 +326,8 @@ switch ($page) {
         } catch (Throwable $e) { $auditReady = false; }
         $users = db()->query('SELECT id,name FROM users ORDER BY name')->fetchAll();
         view('layout', ['title'=>'Журнал действий','page'=>'audit',
-            'content'=>fn()=>view('audit', compact('rows','top','users','auditReady','user','action','from','to'))]);
+            'content'=>fn()=>view('audit', ['rows'=>$rows,'top'=>$top,'users'=>$users,'auditReady'=>$auditReady,
+                'user'=>$user,'action'=>$action,'from'=>$from,'to'=>$to])]);
         break;
 
     case 'chats':
