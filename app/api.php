@@ -1565,15 +1565,123 @@ switch ($action) {
             @unlink($tmp);
         }
 
-    case 'carrier.save':
+    case 'sales.settings.save':
+        if (!is_admin()) json_out(['ok' => false, 'error' => 'Настройки продаж доступны только администратору'], 403);
+        require_once PANEL_ROOT . '/lib/SalesClassifier.php';
+        $ownRaw = (string) ($body['own_addresses'] ?? '');
+        $invalid = SalesClassifier::invalidAddressTokens($ownRaw);
+        if ($invalid) json_out(['ok' => false, 'error' => 'Некорректный email: ' . implode(', ', $invalid)], 422);
+        $own = SalesClassifier::splitAddresses($ownRaw);
+        $carrierInput = is_array($body['carriers'] ?? null) ? $body['carriers'] : [];
+        $knownCarrierRows = db()->query('SELECT id,atp,notification_emails FROM carriers ORDER BY id')->fetchAll();
+        $knownCarriers = [];
+        foreach ($knownCarrierRows as $row) $knownCarriers[(int) $row['id']] = $row;
+        $submitted = [];
+        foreach ($carrierInput as $item) {
+            $id = (int) ($item['id'] ?? 0);
+            if (!isset($knownCarriers[$id])) json_out(['ok' => false, 'error' => 'Перевозчик не найден'], 404);
+            $raw = (string) ($item['addresses'] ?? '');
+            $invalid = SalesClassifier::invalidAddressTokens($raw);
+            if ($invalid) json_out(['ok' => false, 'error' => 'Некорректный email у «' . $knownCarriers[$id]['atp'] . '»: ' . implode(', ', $invalid)], 422);
+            $submitted[$id] = SalesClassifier::splitAddresses($raw);
+        }
+        $carriers = [];
+        foreach ($knownCarriers as $id => $row) {
+            $carriers[] = ['id' => $id, 'name' => (string) $row['atp'],
+                'addresses' => $submitted[$id] ?? SalesClassifier::splitAddresses((string) $row['notification_emails'])];
+        }
+        $duplicates = SalesClassifier::duplicateOwners($own, $carriers);
+        if ($duplicates) {
+            json_out(['ok' => false, 'error' => 'Один адрес нельзя назначить двум владельцам: ' . implode(', ', array_keys($duplicates))], 409);
+        }
+        db()->beginTransaction();
+        try {
+            opt_set('sales_own_recipient_emails', implode("\n", $own));
+            $saveCarrier = db()->prepare('UPDATE carriers SET notification_emails=? WHERE id=?');
+            foreach ($submitted as $id => $addresses) $saveCarrier->execute([implode("\n", $addresses), $id]);
+            db()->commit();
+        } catch (Throwable $e) {
+            if (db()->inTransaction()) db()->rollBack();
+            throw $e;
+        }
+        json_out(['ok' => true]);
+
+    case 'sales.agent_rule.save':
+        if (!is_admin()) json_out(['ok' => false, 'error' => 'Настройки продаж доступны только администратору'], 403);
+        require_once PANEL_ROOT . '/lib/SalesClassifier.php';
         $id = (int) ($body['id'] ?? 0);
-        $vals = [trim((string) $body['atp']), trim((string) ($body['contract_no'] ?? '')),
-            trim((string) ($body['contract_date'] ?? '')), trim((string) ($body['note'] ?? ''))];
-        if ($vals[0] === '') json_out(['ok' => false, 'error' => 'Укажите перевозчика']);
+        $tag = mb_substr(trim((string) ($body['tag'] ?? '')), 0, 100);
+        $senderPattern = SalesClassifier::normalizeSenderPattern((string) ($body['sender_pattern'] ?? ''));
+        $subjectContains = mb_substr(trim((string) ($body['subject_contains'] ?? '')), 0, 255);
+        $reportAgentId = (int) ($body['report_agent_id'] ?? 0) ?: null;
+        $priority = max(-999, min(999, (int) ($body['priority'] ?? 100)));
+        $active = !empty($body['active']) ? 1 : 0;
+        if ($tag === '') json_out(['ok' => false, 'error' => 'Укажите название агента']);
+        if ($senderPattern === '') json_out(['ok' => false, 'error' => 'Укажите email отправителя или домен вида @example.ru']);
+        if ($reportAgentId !== null) {
+            $check = db()->prepare('SELECT id FROM report_agents WHERE id=?');
+            $check->execute([$reportAgentId]);
+            if (!$check->fetchColumn()) json_out(['ok' => false, 'error' => 'Агент отчётности не найден'], 404);
+        }
         if ($id > 0) {
-            db()->prepare('UPDATE carriers SET atp=?, contract_no=?, contract_date=?, note=? WHERE id=?')->execute([...$vals, $id]);
+            db()->prepare('UPDATE sales_agent_rules SET tag=?,sender_pattern=?,subject_contains=?,report_agent_id=?,
+                priority=?,active=? WHERE id=?')->execute([$tag, $senderPattern, $subjectContains, $reportAgentId, $priority, $active, $id]);
         } else {
-            db()->prepare('INSERT INTO carriers (atp, contract_no, contract_date, note) VALUES (?,?,?,?)')->execute($vals);
+            db()->prepare('INSERT INTO sales_agent_rules
+                (tag,sender_pattern,subject_contains,report_agent_id,priority,active) VALUES (?,?,?,?,?,?)')
+                ->execute([$tag, $senderPattern, $subjectContains, $reportAgentId, $priority, $active]);
+            $id = (int) db()->lastInsertId();
+        }
+        json_out(['ok' => true, 'id' => $id]);
+
+    case 'sales.agent_rule.delete':
+        if (!is_admin()) json_out(['ok' => false, 'error' => 'Настройки продаж доступны только администратору'], 403);
+        $id = (int) ($body['id'] ?? 0);
+        db()->prepare('UPDATE sales SET agent_rule_id=NULL,report_agent_id=NULL,agent_tag="" WHERE agent_rule_id=?')->execute([$id]);
+        db()->prepare('DELETE FROM sales_agent_rules WHERE id=?')->execute([$id]);
+        json_out(['ok' => true]);
+
+    case 'sales.reclassify':
+        if (!is_admin()) json_out(['ok' => false, 'error' => 'Настройки продаж доступны только администратору'], 403);
+        require_once PANEL_ROOT . '/lib/SalesClassifier.php';
+        $classifier = new SalesClassifier(db());
+        $rows = db()->query("SELECT id,sender_email,recipient_email,subject FROM sales
+            WHERE sender_email<>'' OR recipient_email<>'' ORDER BY id")->fetchAll();
+        $update = db()->prepare('UPDATE sales SET agent_rule_id=?,report_agent_id=?,agent_tag=?,owner_side=?,carrier_id=?,classified_at=? WHERE id=?');
+        foreach ($rows as $row) {
+            $c = $classifier->classify((string) $row['sender_email'], (string) $row['recipient_email'], (string) $row['subject']);
+            $update->execute([$c['agent_rule_id'], $c['report_agent_id'], $c['agent_tag'], $c['owner_side'],
+                $c['carrier_id'], $c['classified_at'], $row['id']]);
+        }
+        json_out(['ok' => true, 'updated' => count($rows)]);
+
+    case 'carrier.save':
+        require_once PANEL_ROOT . '/lib/SalesClassifier.php';
+        $id = (int) ($body['id'] ?? 0);
+        $notificationRaw = (string) ($body['notification_emails'] ?? '');
+        $invalid = SalesClassifier::invalidAddressTokens($notificationRaw);
+        if ($invalid) json_out(['ok' => false, 'error' => 'Некорректный email: ' . implode(', ', $invalid)], 422);
+        $notificationEmails = implode("\n", SalesClassifier::splitAddresses($notificationRaw));
+        $vals = [trim((string) $body['atp']), trim((string) ($body['contract_no'] ?? '')),
+            trim((string) ($body['contract_date'] ?? '')), $notificationEmails,
+            trim((string) ($body['note'] ?? ''))];
+        if ($vals[0] === '') json_out(['ok' => false, 'error' => 'Укажите перевозчика']);
+        $own = SalesClassifier::splitAddresses(opt('sales_own_recipient_emails'));
+        $carrierRows = db()->query('SELECT id,atp,notification_emails FROM carriers ORDER BY id')->fetchAll();
+        $carrierConfig = [];
+        foreach ($carrierRows as $row) {
+            $cid = (int) $row['id'];
+            $carrierConfig[] = ['id' => $cid ?: $id, 'name' => (string) $row['atp'],
+                'addresses' => $cid === $id ? SalesClassifier::splitAddresses($notificationEmails)
+                    : SalesClassifier::splitAddresses((string) $row['notification_emails'])];
+        }
+        if ($id === 0) $carrierConfig[] = ['id' => -1, 'name' => $vals[0], 'addresses' => SalesClassifier::splitAddresses($notificationEmails)];
+        $duplicates = SalesClassifier::duplicateOwners($own, $carrierConfig);
+        if ($duplicates) json_out(['ok' => false, 'error' => 'Адрес уже назначен другой стороне: ' . implode(', ', array_keys($duplicates))], 409);
+        if ($id > 0) {
+            db()->prepare('UPDATE carriers SET atp=?, contract_no=?, contract_date=?, notification_emails=?, note=? WHERE id=?')->execute([...$vals, $id]);
+        } else {
+            db()->prepare('INSERT INTO carriers (atp, contract_no, contract_date, notification_emails, note) VALUES (?,?,?,?,?)')->execute($vals);
             $id = (int) db()->lastInsertId();
         }
         json_out(['ok' => true, 'id' => $id]);

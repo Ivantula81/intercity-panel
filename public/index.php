@@ -339,35 +339,74 @@ switch ($page) {
     case 'sales':
         $period = $_GET['period'] ?? '7d';
         if (!in_array($period, ['today', '7d', '30d', 'all'], true)) $period = '7d';
-        $where = match ($period) {
-            'today' => 'occurred_at >= CURDATE()',
-            '7d'    => 'occurred_at >= (CURDATE() - INTERVAL 6 DAY)',
-            '30d'   => 'occurred_at >= (CURDATE() - INTERVAL 29 DAY)',
+        $salesTab = ($_GET['tab'] ?? '') === 'settings' ? 'settings' : 'overview';
+        $filters = [
+            'agent' => trim((string) ($_GET['agent'] ?? '')),
+            'owner' => trim((string) ($_GET['owner'] ?? '')),
+            'carrier' => max(0, (int) ($_GET['carrier'] ?? 0)),
+            'sender' => trim((string) ($_GET['sender'] ?? '')),
+            'recipient' => trim((string) ($_GET['recipient'] ?? '')),
+            'subject' => trim((string) ($_GET['subject'] ?? '')),
+        ];
+        if (!in_array($filters['owner'], ['', 'ours', 'carrier', 'unassigned'], true)) $filters['owner'] = '';
+        $whereParts = [match ($period) {
+            'today' => 's.occurred_at >= CURDATE()',
+            '7d'    => 's.occurred_at >= (CURDATE() - INTERVAL 6 DAY)',
+            '30d'   => 's.occurred_at >= (CURDATE() - INTERVAL 29 DAY)',
             default => '1',
-        };
+        }];
+        $whereArgs = [];
+        if ($filters['agent'] !== '') { $whereParts[] = 's.agent_tag=?'; $whereArgs[] = $filters['agent']; }
+        if ($filters['owner'] !== '') { $whereParts[] = 's.owner_side=?'; $whereArgs[] = $filters['owner']; }
+        if ($filters['carrier'] > 0) { $whereParts[] = 's.carrier_id=?'; $whereArgs[] = $filters['carrier']; }
+        foreach (['sender' => 'sender_email', 'recipient' => 'recipient_email', 'subject' => 'subject'] as $key => $column) {
+            if ($filters[$key] !== '') { $whereParts[] = "s.$column LIKE ?"; $whereArgs[] = '%' . $filters[$key] . '%'; }
+        }
+        $where = implode(' AND ', $whereParts);
         $syncState = null;
+        $salesReady = false;
+        $carriers = $agentRules = $reportAgents = $agentOptions = $unmatchedRecipients = $unmatchedSenders = $byOwner = [];
+        $ownAddresses = '';
         try {
             $hasQuantity = (bool) db()->query("SHOW COLUMNS FROM sales LIKE 'quantity'")->fetch();
+            $salesReady = (bool) db()->query("SHOW COLUMNS FROM sales LIKE 'owner_side'")->fetch();
+            if (!$salesReady) throw new RuntimeException('Примените schema26.sql');
             $saleUnits = $hasQuantity ? "CASE WHEN kind='sale' THEN quantity ELSE 0 END" : "kind='sale'";
-            $metrics = db()->query("SELECT
+            $run = static function (string $sql, array $args = []): PDOStatement {
+                $st = db()->prepare($sql); $st->execute($args); return $st;
+            };
+            $metrics = $run("SELECT
                     COALESCE(SUM($saleUnits),0) sales_cnt,
                     COALESCE(SUM(CASE WHEN kind='refund' THEN " . ($hasQuantity ? 'quantity' : '1') . " ELSE 0 END),0) refund_cnt,
                     COALESCE(SUM(CASE WHEN kind='cancel' THEN " . ($hasQuantity ? 'quantity' : '1') . " ELSE 0 END),0) cancel_cnt,
                     COALESCE(SUM(CASE WHEN kind='sale' THEN amount END),0) sales_sum,
                     COALESCE(SUM(CASE WHEN kind='refund' THEN amount END),0) refund_sum,
                     COUNT(*) total, MAX(occurred_at) latest_event_at
-                  FROM sales WHERE $where")->fetch();
-            $byChannel = db()->query("SELECT channel,
+                  FROM sales s WHERE $where", $whereArgs)->fetch();
+            $byChannel = $run("SELECT channel,
                     COALESCE(SUM($saleUnits),0) sales,
                     COALESCE(SUM(CASE WHEN kind='refund' THEN " . ($hasQuantity ? 'quantity' : '1') . " ELSE 0 END),0) refunds,
                     COALESCE(SUM(CASE WHEN kind='cancel' THEN " . ($hasQuantity ? 'quantity' : '1') . " ELSE 0 END),0) cancels,
                     COALESCE(SUM(CASE WHEN kind='sale' THEN amount END),0) sum
-                  FROM sales WHERE $where GROUP BY channel ORDER BY sales DESC, channel")->fetchAll();
-            $topDates = db()->query("SELECT DATE(depart_at) d, " . ($hasQuantity ? 'SUM(quantity)' : 'COUNT(*)') . " c FROM sales
+                  FROM sales s WHERE $where GROUP BY channel ORDER BY sales DESC, channel", $whereArgs)->fetchAll();
+            $topDates = $run("SELECT DATE(depart_at) d, " . ($hasQuantity ? 'SUM(quantity)' : 'COUNT(*)') . " c FROM sales s
                   WHERE $where AND kind='sale' AND depart_at IS NOT NULL
-                  GROUP BY DATE(depart_at) ORDER BY c DESC, d LIMIT 8")->fetchAll();
-            $feed = db()->query("SELECT * FROM sales WHERE $where ORDER BY occurred_at DESC LIMIT 60")->fetchAll();
-        } catch (Exception $e) {
+                  GROUP BY DATE(depart_at) ORDER BY c DESC, d LIMIT 8", $whereArgs)->fetchAll();
+            $feed = $run("SELECT s.*,c.atp carrier_name FROM sales s LEFT JOIN carriers c ON c.id=s.carrier_id
+                  WHERE $where ORDER BY s.occurred_at DESC LIMIT 80", $whereArgs)->fetchAll();
+            $byOwner = $run("SELECT owner_side,COALESCE(SUM($saleUnits),0) sales,COUNT(*) events
+                  FROM sales s WHERE $where GROUP BY owner_side", $whereArgs)->fetchAll();
+            $carriers = db()->query('SELECT id,atp,notification_emails FROM carriers ORDER BY atp')->fetchAll();
+            $agentRules = db()->query('SELECT r.*,a.name report_agent_name FROM sales_agent_rules r
+                LEFT JOIN report_agents a ON a.id=r.report_agent_id ORDER BY r.priority DESC,r.id')->fetchAll();
+            $reportAgents = db()->query('SELECT id,name FROM report_agents WHERE active=1 ORDER BY name')->fetchAll();
+            $agentOptions = db()->query("SELECT DISTINCT agent_tag FROM sales WHERE agent_tag<>'' ORDER BY agent_tag")->fetchAll(PDO::FETCH_COLUMN);
+            $ownAddresses = opt('sales_own_recipient_emails');
+            $unmatchedRecipients = db()->query("SELECT recipient_email value,COUNT(*) total FROM sales
+                WHERE recipient_email<>'' AND owner_side='unassigned' GROUP BY recipient_email ORDER BY total DESC LIMIT 20")->fetchAll();
+            $unmatchedSenders = db()->query("SELECT sender_email value,COUNT(*) total FROM sales
+                WHERE sender_email<>'' AND agent_tag='' GROUP BY sender_email ORDER BY total DESC LIMIT 20")->fetchAll();
+        } catch (Throwable $e) {
             $metrics = ['sales_cnt'=>0,'refund_cnt'=>0,'cancel_cnt'=>0,'sales_sum'=>0,'refund_sum'=>0,'total'=>0,'latest_event_at'=>null];
             $byChannel = $topDates = $feed = [];
         }
@@ -376,7 +415,11 @@ switch ($page) {
         } catch (Throwable $e) { $syncState = null; }
         view('layout', ['title' => 'Продажи', 'page' => 'sales',
             'content' => fn() => view('sales', ['period' => $period, 'metrics' => $metrics,
-                'byChannel' => $byChannel, 'topDates' => $topDates, 'feed' => $feed, 'syncState' => $syncState])]);
+                'byChannel' => $byChannel, 'topDates' => $topDates, 'feed' => $feed, 'syncState' => $syncState,
+                'salesTab' => $salesTab, 'filters' => $filters, 'salesReady' => $salesReady, 'carriers' => $carriers,
+                'agentRules' => $agentRules, 'reportAgents' => $reportAgents, 'agentOptions' => $agentOptions,
+                'ownAddresses' => $ownAddresses, 'unmatchedRecipients' => $unmatchedRecipients,
+                'unmatchedSenders' => $unmatchedSenders, 'byOwner' => $byOwner])]);
         break;
 
     case 'catalogs':

@@ -1354,12 +1354,63 @@ function showTab(name, btn) {
 }
 
 /* ── Справочники ── */
+async function saveSalesOwnership() {
+    const state = document.getElementById('salesOwnershipState');
+    const carriers = [...document.querySelectorAll('.sales-carrier-address')].map(row => ({
+        id: +row.dataset.id,
+        addresses: row.querySelector('textarea').value,
+    }));
+    state.textContent = 'Сохраняю…';
+    const r = await api('sales.settings.save', {
+        own_addresses: document.getElementById('salesOwnAddresses')?.value || '',
+        carriers,
+    });
+    state.textContent = r.ok ? 'Адреса сохранены ✓' : (r.error || 'Не удалось сохранить');
+    state.classList.toggle('invalid', !r.ok);
+}
+async function saveSalesAgentRule(btn) {
+    const tr = btn.closest('tr');
+    const data = { id: +tr.dataset.id || 0 };
+    tr.querySelectorAll('[data-f]').forEach(el => data[el.dataset.f] = el.type === 'checkbox' ? (el.checked ? 1 : 0) : el.value);
+    btn.disabled = true;
+    const r = await api('sales.agent_rule.save', data);
+    btn.disabled = false;
+    if (!r.ok) { alert(r.error || 'Не удалось сохранить правило'); return; }
+    tr.dataset.id = r.id;
+    btn.textContent = 'Сохранено ✓';
+    setTimeout(() => btn.textContent = 'Сохранить', 1500);
+}
+function addSalesAgentRule() {
+    const tbody = document.querySelector('#salesAgentRules tbody');
+    const template = document.getElementById('salesAgentRuleTemplate');
+    if (!tbody || !template) return;
+    tbody.prepend(template.content.cloneNode(true));
+    tbody.querySelector('tr').querySelector('input').focus();
+}
+async function deleteSalesAgentRule(btn) {
+    const tr = btn.closest('tr');
+    if (+tr.dataset.id && !confirm('Удалить правило агента? Уже загруженные продажи станут нераспределёнными по агенту.')) return;
+    if (+tr.dataset.id) {
+        const r = await api('sales.agent_rule.delete', { id: +tr.dataset.id });
+        if (!r.ok) { alert(r.error || 'Не удалось удалить правило'); return; }
+    }
+    tr.remove();
+}
+async function reclassifySales() {
+    const state = document.getElementById('salesReclassifyState');
+    state.textContent = 'Пересчитываю…';
+    const r = await api('sales.reclassify');
+    state.textContent = r.ok ? 'Пересчитано событий: ' + r.updated + '. Обновите страницу.' : (r.error || 'Ошибка пересчёта');
+    state.classList.toggle('invalid', !r.ok);
+}
+
+/* ── Справочники ── */
 const CAT_FIELDS = {
     stop: ['gds_id', 'station', 'city', 'address', 'map_url', 'note'],
     bus: ['code', 'plate', 'model', 'seats', 'driver_phone', 'note'],
     driver: ['name', 'phone', 'bus_id', 'note'],
     var: ['name', 'value', 'note'],
-    carrier: ['atp', 'contract_no', 'contract_date', 'note'],
+    carrier: ['atp', 'contract_no', 'contract_date', 'notification_emails', 'note'],
 };
 function bindCatalog() {
     document.querySelectorAll('table.cat').forEach(table => {

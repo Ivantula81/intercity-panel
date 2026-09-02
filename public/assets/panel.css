@@ -278,6 +278,7 @@ table.cat input.cell, table.cat select.cell { font-size: 13.5px; }
     font-size: 12px; font-weight: 650; white-space: nowrap;
 }
 .badge.ok { color: var(--ok); background: var(--ok-bg); }
+.badge.info { color: var(--info); background: var(--info-bg); }
 .badge.warn { color: var(--warn); background: var(--warn-bg); }
 .badge.err { color: var(--err); background: var(--err-bg); }
 .badge.muted { color: var(--muted); background: var(--line-soft); }
@@ -822,6 +823,28 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 
 .ch-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
 .sales-split > .card { min-width: 0; }
+.sales-page-head { align-items: center; }
+.sales-settings-grid { display: grid; grid-template-columns: minmax(0,1.5fr) minmax(280px,.8fr); gap: 18px; align-items: start; }
+.sales-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.sales-card-head h2, .sales-card-head p { margin-top: 0; }
+.sales-card-head p { margin-bottom: 0; }
+.sales-address-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 14px; }
+.sales-discovered { display: flex; flex-direction: column; gap: 7px; margin-bottom: 18px; }
+.sales-discovered > span { display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--surface-2); }
+.sales-discovered code { overflow-wrap: anywhere; }
+.sales-rules-table { min-width: 980px; }
+.sales-rules-table th:nth-child(1) { width: 16%; }
+.sales-rules-table th:nth-child(2) { width: 19%; }
+.sales-rules-table th:nth-child(3) { width: 17%; }
+.sales-rules-table th:nth-child(4) { width: 22%; }
+.sales-rules-table th:nth-child(5) { width: 90px; }
+.sales-rules-table td.actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.sales-filters { display: grid; grid-template-columns: repeat(3,minmax(150px,1fr)); gap: 12px; margin-bottom: 12px; }
+.sales-filters label { color: var(--muted); font-size: 12px; font-weight: 650; }
+.sales-filters input, .sales-filters select { margin-top: 5px; }
+.sales-filter-actions { display: flex; align-items: end; gap: 8px; }
+.sales-owner-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
+.sales-event-meta { display: block; margin-top: 3px; color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; }
 
 .topdates { display: flex; flex-direction: column; gap: 9px; }
 .td-row { display: grid; grid-template-columns: 78px 1fr 28px; align-items: center; gap: 10px; }
@@ -843,6 +866,20 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
     .split { grid-template-columns: 1fr !important; }
     .sf-row { grid-template-columns: 64px 84px 1fr auto; }
     .sf-kind { display: none; }
+    .sales-settings-grid, .sales-filters { grid-template-columns: 1fr; }
+    .sales-address-list { grid-template-columns: 1fr; }
+    .sales-card-head { align-items: stretch; flex-direction: column; }
+    .sales-card-head .btn { width: 100%; justify-content: center; }
+    .sales-filter-actions .btn { flex: 1; justify-content: center; }
+    .sales-rules-table { min-width: 0; }
+    .sales-rules-table thead { display: none; }
+    .sales-rules-table, .sales-rules-table tbody, .sales-rules-table tr, .sales-rules-table td { display: block; width: 100%; }
+    .sales-rules-table tr { margin-bottom: 12px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface-2); }
+    .sales-rules-table td { padding: 5px 0; border: 0; }
+    .sales-rules-table td::before { content: attr(data-label); display: block; margin: 0 0 3px; color: var(--muted); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+    .sales-rules-table td.actions { display: flex; margin-top: 6px; }
+    .sales-rules-table td.actions::before { display: none; }
+    .sales-rules-table td.actions .btn { flex: 1; justify-content: center; }
 }
 
 /* Логи */
