@@ -42,7 +42,15 @@ final class SalesInboxIngestor
                 $lastUid = 0;
             }
 
-            $uids = @imap_search($imap, 'UID ' . ($lastUid + 1) . ':*', SE_UID) ?: [];
+            $criteria = 'UID ' . ($lastUid + 1) . ':*';
+            if ($lastUid === 0) {
+                // Первый запуск не должен начинать обход многолетнего ящика с
+                // UID 1. Берём только согласованное окно свежих писем, затем
+                // продолжаем строго по UID из сохранённого курсора.
+                $lookbackDays = max(1, min(3650, (int) ($this->config['lookback_days'] ?? 30)));
+                $criteria = 'SINCE "' . date('d-M-Y', strtotime('-' . $lookbackDays . ' days')) . '"';
+            }
+            $uids = @imap_search($imap, $criteria, SE_UID) ?: [];
             $uids = array_values(array_filter(array_map('intval', $uids), static fn(int $uid): bool => $uid > $lastUid));
             sort($uids, SORT_NUMERIC);
             if (count($uids) > $limit) $uids = array_slice($uids, 0, $limit);
