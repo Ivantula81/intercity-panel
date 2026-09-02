@@ -2,6 +2,11 @@
 
 require dirname(__DIR__) . '/lib/SalesInboxIngestor.php';
 
+if (!in_array('sqlite', PDO::getAvailableDrivers(), true)) {
+    echo "SalesInboxIngestor metadata-only: SKIP (pdo_sqlite unavailable)\n";
+    exit(0);
+}
+
 $pdo = new PDO('sqlite::memory:');
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $pdo->exec('CREATE TABLE sales (
