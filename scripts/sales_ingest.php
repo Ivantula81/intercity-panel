@@ -18,7 +18,7 @@ function sales_ingest_env(string $key, string $default = ''): string
     return (string) ($env[$key] ?? $default);
 }
 $dryRun = in_array('--dry-run', $argv ?? [], true);
-$limit = 250;
+$limit = max(1, min(2000, (int) sales_ingest_env('SALES_IMAP_BATCH_SIZE', '200')));
 foreach ($argv ?? [] as $arg) {
     if (preg_match('/^--limit=(\d+)$/', $arg, $m)) $limit = max(1, min(2000, (int) $m[1]));
 }
@@ -26,9 +26,10 @@ foreach ($argv ?? [] as $arg) {
 $config = [
     'host' => sales_ingest_env('SALES_IMAP_HOST', 'imap.gmail.com'),
     'port' => (int) sales_ingest_env('SALES_IMAP_PORT', '993'),
-    'folder' => sales_ingest_env('SALES_IMAP_FOLDER', 'INBOX'),
-    'user' => sales_ingest_env('SALES_IMAP_USER'),
+    'folder' => sales_ingest_env('SALES_IMAP_MAILBOX', sales_ingest_env('SALES_IMAP_FOLDER', 'INBOX')),
+    'user' => sales_ingest_env('SALES_IMAP_USERNAME', sales_ingest_env('SALES_IMAP_USER')),
     'password' => sales_ingest_env('SALES_IMAP_PASSWORD'),
+    'lookback_days' => (int) sales_ingest_env('SALES_IMAP_LOOKBACK_DAYS', '30'),
 ];
 
 try {
