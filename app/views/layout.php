@@ -46,7 +46,7 @@ $nav = [
     'settings'      => ['/?p=settings', 'Настройки', 'settings'],
 ];
 $bottom = ['dashboard', 'notifications', 'chats', 'manifests'];
-$sheetKeys = ['sales', 'reporting', 'contacts', 'broadcast', 'catalogs', 'logs', 'settings'];
+$sheetKeys = ['sales', 'reporting', 'contacts', 'broadcast', 'catalogs', 'logs', 'audit', 'settings'];
 ?><!doctype html>
 <html lang="ru">
 <head>
