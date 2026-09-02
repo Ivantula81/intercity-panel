@@ -177,6 +177,8 @@ h3 { margin: 0 0 6px; font-size: 15.5px; font-weight: 700; }
 }
 .card + .card { margin-top: 16px; }
 .grid { display: grid; gap: 16px; }
+.grid-3, .grid-4 { display: grid; gap: 16px; }
+.grid-3 > .card + .card, .grid-4 > .card + .card { margin-top: 0; }
 .grid-3 { grid-template-columns: repeat(3, 1fr); }
 .grid-4 { grid-template-columns: repeat(4, 1fr); }
 
@@ -300,6 +302,8 @@ table.cat input.cell, table.cat select.cell { font-size: 13.5px; }
 .alert.warn { color: var(--warn); background: var(--warn-bg); }
 .alert a { color: inherit; font-weight: 700; }
 .alert ul { margin: 7px 0 0; padding-left: 20px; }
+.sales-source-status { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.sales-source-status span { font-weight: 500; text-align: right; }
 
 .empty-state { padding: 34px; border: 1.5px dashed var(--line); border-radius: var(--r-lg); color: var(--muted); text-align: center; }
 
@@ -579,6 +583,8 @@ details summary::-webkit-details-marker { color: var(--muted); }
     .btn, .btn-link { min-height: 46px; }
     input, select, textarea, .cell { font-size: 16px; min-height: 46px; }  /* 16px = без зума iOS */
     .cell { min-height: 40px; }
+    .sales-source-status { display: block; line-height: 1.45; }
+    .sales-source-status span { display: block; margin-top: 4px; text-align: left; }
 
     .dropdown-menu { position: fixed; left: 12px; right: 12px; top: auto; bottom: calc(86px + var(--safe-b)); min-width: 0; }
 
@@ -815,6 +821,7 @@ body[data-page="chats"] .main { padding: 22px 26px; height: 100vh; max-width: 14
 .seg-item.active { background: var(--surface); color: var(--brand-700); box-shadow: var(--sh-1); }
 
 .ch-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+.sales-split > .card { min-width: 0; }
 
 .topdates { display: flex; flex-direction: column; gap: 9px; }
 .td-row { display: grid; grid-template-columns: 78px 1fr 28px; align-items: center; gap: 10px; }

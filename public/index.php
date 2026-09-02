@@ -345,30 +345,38 @@ switch ($page) {
             '30d'   => 'occurred_at >= (CURDATE() - INTERVAL 29 DAY)',
             default => '1',
         };
+        $syncState = null;
         try {
+            $hasQuantity = (bool) db()->query("SHOW COLUMNS FROM sales LIKE 'quantity'")->fetch();
+            $saleUnits = $hasQuantity ? "CASE WHEN kind='sale' THEN quantity ELSE 0 END" : "kind='sale'";
             $metrics = db()->query("SELECT
-                    SUM(kind='sale') sales_cnt,
-                    SUM(kind='refund') refund_cnt,
-                    SUM(kind='cancel') cancel_cnt,
-                    COALESCE(SUM(CASE WHEN kind IN ('sale','payment') THEN amount END),0) sales_sum,
+                    COALESCE(SUM($saleUnits),0) sales_cnt,
+                    COALESCE(SUM(CASE WHEN kind='refund' THEN " . ($hasQuantity ? 'quantity' : '1') . " ELSE 0 END),0) refund_cnt,
+                    COALESCE(SUM(CASE WHEN kind='cancel' THEN " . ($hasQuantity ? 'quantity' : '1') . " ELSE 0 END),0) cancel_cnt,
+                    COALESCE(SUM(CASE WHEN kind='sale' THEN amount END),0) sales_sum,
                     COALESCE(SUM(CASE WHEN kind='refund' THEN amount END),0) refund_sum,
-                    COUNT(*) total
+                    COUNT(*) total, MAX(occurred_at) latest_event_at
                   FROM sales WHERE $where")->fetch();
             $byChannel = db()->query("SELECT channel,
-                    SUM(kind='sale') sales, SUM(kind='refund') refunds, SUM(kind='cancel') cancels,
-                    COALESCE(SUM(CASE WHEN kind IN ('sale','payment') THEN amount END),0) sum
+                    COALESCE(SUM($saleUnits),0) sales,
+                    COALESCE(SUM(CASE WHEN kind='refund' THEN " . ($hasQuantity ? 'quantity' : '1') . " ELSE 0 END),0) refunds,
+                    COALESCE(SUM(CASE WHEN kind='cancel' THEN " . ($hasQuantity ? 'quantity' : '1') . " ELSE 0 END),0) cancels,
+                    COALESCE(SUM(CASE WHEN kind='sale' THEN amount END),0) sum
                   FROM sales WHERE $where GROUP BY channel ORDER BY sales DESC, channel")->fetchAll();
-            $topDates = db()->query("SELECT DATE(depart_at) d, COUNT(*) c FROM sales
+            $topDates = db()->query("SELECT DATE(depart_at) d, " . ($hasQuantity ? 'SUM(quantity)' : 'COUNT(*)') . " c FROM sales
                   WHERE $where AND kind='sale' AND depart_at IS NOT NULL
                   GROUP BY DATE(depart_at) ORDER BY c DESC, d LIMIT 8")->fetchAll();
             $feed = db()->query("SELECT * FROM sales WHERE $where ORDER BY occurred_at DESC LIMIT 60")->fetchAll();
         } catch (Exception $e) {
-            $metrics = ['sales_cnt'=>0,'refund_cnt'=>0,'cancel_cnt'=>0,'sales_sum'=>0,'refund_sum'=>0,'total'=>0];
+            $metrics = ['sales_cnt'=>0,'refund_cnt'=>0,'cancel_cnt'=>0,'sales_sum'=>0,'refund_sum'=>0,'total'=>0,'latest_event_at'=>null];
             $byChannel = $topDates = $feed = [];
         }
+        try {
+            $syncState = db()->query("SELECT * FROM sales_sync_state WHERE source='gmail_sales' LIMIT 1")->fetch() ?: null;
+        } catch (Throwable $e) { $syncState = null; }
         view('layout', ['title' => 'Продажи', 'page' => 'sales',
             'content' => fn() => view('sales', ['period' => $period, 'metrics' => $metrics,
-                'byChannel' => $byChannel, 'topDates' => $topDates, 'feed' => $feed])]);
+                'byChannel' => $byChannel, 'topDates' => $topDates, 'feed' => $feed, 'syncState' => $syncState])]);
         break;
 
     case 'catalogs':
