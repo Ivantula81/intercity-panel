@@ -69,6 +69,8 @@ try {
                 LEFT JOIN manifests m ON m.id=c.manifest_id LEFT JOIN passengers p ON p.id=c.passenger_id WHERE c.id=?');
             $cv->execute([$conversationId]);$conversation=$cv->fetch();
             if(!$conversation) json_out(['ok'=>false,'error'=>'Разговор не найден'],404);
+            $mx=db()->prepare("SELECT COUNT(DISTINCT m.recipient) FROM conversation_messages cm JOIN messages m ON m.id=cm.legacy_id WHERE cm.conversation_id=? AND cm.legacy_source='messages'"); $mx->execute([$conversationId]);
+            $conversation['mixed_history']=(int)$mx->fetchColumn()>1;
             $events=db()->prepare("SELECT * FROM conversation_events WHERE conversation_id=? AND event_type IN ('note','status','priority','assigned') ORDER BY id DESC LIMIT 30");
             $events->execute([$conversationId]);
             json_out(['ok'=>true,'conversation'=>$conversation,'messages'=>$messages,'events'=>$events->fetchAll(),

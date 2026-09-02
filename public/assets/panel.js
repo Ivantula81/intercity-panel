@@ -1888,7 +1888,8 @@ async function chatLoadMessages(force=false,before=false) {
         chat.messages=before?(r.messages||[]).concat(chat.messages):(r.messages||[]);
         chatRenderHeader();chatRenderNotes();
         const body=$id('chatBody');const atBottom=body.scrollHeight-body.scrollTop-body.clientHeight<90;
-        const html=(chat.hasOlder?'<button class="chat-load-older" onclick="chatLoadOlder()">Показать предыдущие сообщения</button>':'')+(chat.messages.length?chat.messages.map(chatMessageHtml).join(''):'<div class="chat-hint">Сообщений пока нет — напишите первым.</div>');
+        const mixed=chat.conversation?.mixed_history?'<div class="alert warn chat-mixed-warning">⚠ В истории есть сообщения других получателей. Проверяйте номер перед ответом.</div>':'';
+        const html=mixed+(chat.hasOlder?'<button class="chat-load-older" onclick="chatLoadOlder()">Показать предыдущие сообщения</button>':'')+(chat.messages.length?chat.messages.map(chatMessageHtml).join(''):'<div class="chat-hint">Сообщений пока нет — напишите первым.</div>');
         if(before){const oldHeight=body.scrollHeight;body.innerHTML=html;body.scrollTop=body.scrollHeight-oldHeight;}
         else {body.innerHTML=html;if(force||atBottom)body.scrollTop=body.scrollHeight;}
     }catch(e){$id('chatBody').innerHTML=`<div class="chat-hint error">${esc(e.message)}</div>`;}
