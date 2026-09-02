@@ -5,6 +5,8 @@
 // сумма и дата рейса извлекаются best-effort (в осн. свой сайт + GoBus).
 class SalesParser
 {
+    public const VERSION = 2;
+
     public static function channel(string $sender): string
     {
         $s = mb_strtolower($sender, 'UTF-8');
@@ -35,9 +37,27 @@ class SalesParser
     {
         if (preg_match('/\[#\s*([0-9]+)/u', $subject, $m)) return $m[1];
         if (preg_match('/Билет\s*№\s*([0-9]+)/u', $body, $m)) return $m[1];
+        if (preg_match('/\bБилет\s+([0-9]{4,})\b/u', $subject . ' ' . $body, $m)) return $m[1];
         if (preg_match('/заказ\s*#\s*([0-9]+)/u', $subject . ' ' . $body, $m)) return $m[1];
         if (preg_match('/#\s*([0-9]{5,})/u', $subject, $m)) return $m[1];
         return '';
+    }
+
+    public static function order(string $subject, string $body): string
+    {
+        $text = $subject . ' ' . $body;
+        if (preg_match('/\b(SO-\d{8}-\d{6}-[A-Z0-9]+)\b/ui', $text, $m)) return strtoupper($m[1]);
+        if (preg_match('/заказ(?:а)?\s*#\s*([0-9]+)/ui', $text, $m)) return $m[1];
+        if (preg_match('/покупка через сайт\s*#\s*([0-9]+)/ui', $text, $m)) return $m[1];
+        return '';
+    }
+
+    public static function quantity(string $subject, string $body): int
+    {
+        $text = $subject . ' ' . $body;
+        if (preg_match('/Билетов:\s*(\d{1,3})/ui', $text, $m)) return max(1, min(999, (int) $m[1]));
+        if (preg_match('/\b(\d{1,3})\s+билет(?:а|ов)?\b/ui', $text, $m)) return max(1, min(999, (int) $m[1]));
+        return 1;
     }
 
     public static function route(string $channel, string $subject, string $body): string
@@ -63,7 +83,7 @@ class SalesParser
     }
 
     // Дата/время рейса (Y-m-d H:i:s) или null
-    public static function departAt(string $body): ?string
+    public static function departAt(string $body, string $occurredAt = ''): ?string
     {
         if (preg_match('/(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})/u', $body, $m)) {
             return "$m[3]-$m[2]-$m[1] $m[4]:$m[5]:00";
@@ -75,9 +95,11 @@ class SalesParser
             $mon = $months[mb_strtolower($m[2], 'UTF-8')] ?? null;
             if ($mon) {
                 $day = str_pad($m[1], 2, '0', STR_PAD_LEFT);
-                $year = (int) date('Y');
-                // если месяц уже прошёл в этом году — считаем следующий год
-                if ((int) $mon < (int) date('m')) $year++;
+                $reference = strtotime($occurredAt) ?: time();
+                $year = (int) date('Y', $reference);
+                // Год без года определяем относительно даты самого письма, а не
+                // даты запуска повторного импорта исторического ящика.
+                if ((int) $mon < (int) date('m', $reference)) $year++;
                 return sprintf('%d-%s-%s %02d:%s:00', $year, $mon, $day, (int) $m[3], $m[4]);
             }
         }
@@ -108,19 +130,40 @@ class SalesParser
         return '';
     }
 
+    public static function eventKey(string $channel, string $kind, string $ticket, string $order): ?string
+    {
+        $businessId = $ticket !== '' ? 'ticket:' . $ticket : ($order !== '' ? 'order:' . $order : '');
+        if ($businessId === '') return null;
+        return hash('sha256', mb_strtolower($channel . '|' . $kind . '|' . $businessId, 'UTF-8'));
+    }
+
+    public static function relevant(array $row): bool
+    {
+        return ($row['channel'] ?? 'other') !== 'other'
+            && in_array($row['kind'] ?? 'other', ['sale', 'payment', 'refund', 'cancel', 'manifest'], true);
+    }
+
     /** @return array<string,mixed> */
     public static function parse(string $sender, string $subject, string $body, string $occurredAt, string $emailId): array
     {
         $channel = self::channel($sender);
         $kind = self::kind($subject, $body);
+        $ticket = self::ticket($subject, $body);
+        $order = self::order($subject, $body);
         return [
             'email_id'    => $emailId,
+            'source'      => 'email',
+            'source_event_id' => $emailId,
             'channel'     => $channel,
             'kind'        => $kind,
-            'ticket_no'   => self::ticket($subject, $body),
+            'ticket_no'   => $ticket,
+            'order_no'    => $order,
+            'quantity'    => self::quantity($subject, $body),
+            'event_key'   => self::eventKey($channel, $kind, $ticket, $order),
+            'parse_version' => self::VERSION,
             'route'       => mb_substr(self::route($channel, $subject, $body), 0, 255),
             'segment'     => mb_substr(self::segment($body), 0, 255),
-            'depart_at'   => self::departAt($body),
+            'depart_at'   => self::departAt($body, $occurredAt),
             'amount'      => self::amount($kind, $body),
             'passenger'   => mb_substr(self::passenger($body), 0, 255),
             'occurred_at' => $occurredAt,

@@ -80,11 +80,11 @@ $content = match ($page) {
     'dashboard' => fn()=>view('dashboard',['links'=>[
         ['id'=>1,'url'=>'#','color'=>'purple','icon'=>'briefcase','title'=>'Планфикс'],['id'=>2,'url'=>'#','color'=>'blue','icon'=>'chart','title'=>'GDS Автовокзалы'],['id'=>3,'url'=>'#','color'=>'green','icon'=>'mail','title'=>'Почта'],
     ],'stats'=>['manifests'=>126,'sent_today'=>84,'failed'=>3],'recentManifests'=>$manifests]),
-    'sales' => fn()=>view('sales',['period'=>'7d','metrics'=>['sales_cnt'=>146,'refund_cnt'=>4,'cancel_cnt'=>7,'sales_sum'=>482700,'refund_sum'=>12900,'total'=>168], 'byChannel'=>[
+    'sales' => fn()=>view('sales',['period'=>'7d','metrics'=>['sales_cnt'=>146,'refund_cnt'=>4,'cancel_cnt'=>7,'sales_sum'=>482700,'refund_sum'=>12900,'total'=>168,'latest_event_at'=>'2026-09-02 12:51:00'], 'byChannel'=>[
         ['channel'=>'site','sales'=>58,'refunds'=>2,'cancels'=>1,'sum'=>482700],['channel'=>'avtovokzaly','sales'=>42,'refunds'=>1,'cancels'=>2,'sum'=>0],['channel'=>'blablacar','sales'=>31,'refunds'=>1,'cancels'=>3,'sum'=>0],
     ],'topDates'=>[['d'=>'2026-06-22','c'=>43],['d'=>'2026-06-25','c'=>32],['d'=>'2026-06-28','c'=>21]],'feed'=>[
-        ['occurred_at'=>'2026-06-21 13:51:00','channel'=>'site','kind'=>'sale','route'=>'Москва — Симферополь','segment'=>'','depart_at'=>'2026-06-22','amount'=>4200],['occurred_at'=>'2026-06-21 13:43:00','channel'=>'avtovokzaly','kind'=>'sale','route'=>'Симферополь — Москва','segment'=>'','depart_at'=>'2026-06-23','amount'=>null],['occurred_at'=>'2026-06-21 13:08:00','channel'=>'blablacar','kind'=>'cancel','route'=>'Москва — Ялта','segment'=>'','depart_at'=>'2026-06-24','amount'=>null],
-    ]]),
+        ['occurred_at'=>'2026-09-02 12:51:00','channel'=>'site','kind'=>'sale','quantity'=>2,'route'=>'Москва — Симферополь','segment'=>'','depart_at'=>'2026-09-22','amount'=>8400],['occurred_at'=>'2026-09-02 12:43:00','channel'=>'avtovokzaly','kind'=>'sale','quantity'=>1,'route'=>'Симферополь — Москва','segment'=>'','depart_at'=>'2026-09-23','amount'=>null],['occurred_at'=>'2026-09-02 12:08:00','channel'=>'blablacar','kind'=>'cancel','quantity'=>1,'route'=>'Москва — Ялта','segment'=>'','depart_at'=>'2026-09-24','amount'=>null],
+    ],'syncState'=>['status'=>'ok','last_success_at'=>date('Y-m-d H:i:s'),'imported_count'=>168,'ignored_count'=>2,'error_count'=>0,'last_error'=>'']]),
     'notifications' => fn()=>view('notifications',['manifests'=>$manifests,'selectedId'=>42,'selected'=>$manifest,'journal'=>$messages,'inbox'=>[],'buses'=>db()->query('FROM buses')->fetchAll(),'drivers'=>db()->query('FROM drivers')->fetchAll(),'uploadError'=>'']),
     'chats' => fn()=>view('chats',['startPhone'=>'']),
     'manifests' => fn()=>view('manifests',['manifests'=>$manifests,'uploadError'=>'']),
