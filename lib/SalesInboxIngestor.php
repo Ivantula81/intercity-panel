@@ -285,6 +285,18 @@ final class SalesInboxIngestor
             $existing->execute([$r['channel'], $r['kind'], $r['order_no']]);
             if ($id = (int) $existing->fetchColumn()) { $this->updateClassification($id, $r); return false; }
         }
+        if (!empty($this->config['metadata_only'])) {
+            // Исторический проход существует только для дополнения уже
+            // импортированных строк. Письма вне рабочего окна продаж он не
+            // добавляет в управленческие показатели.
+            $where = ['source_event_id=?', 'email_id=?'];
+            $args = [$r['source_event_id'], $r['email_id']];
+            if ($r['event_key'] !== null) { $where[] = 'event_key=?'; $args[] = $r['event_key']; }
+            $existing = $this->pdo->prepare('SELECT id FROM sales WHERE ' . implode(' OR ', $where) . ' LIMIT 1');
+            $existing->execute($args);
+            if ($id = (int) $existing->fetchColumn()) $this->updateClassification($id, $r);
+            return false;
+        }
         $sql = 'INSERT INTO sales
             (source,email_id,source_event_id,sender_email,recipient_email,recipient_header,channel,
              agent_rule_id,report_agent_id,agent_tag,owner_side,carrier_id,classified_at,

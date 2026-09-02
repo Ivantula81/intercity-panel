@@ -32,6 +32,7 @@ $config = [
     'password' => sales_ingest_env('SALES_IMAP_PASSWORD'),
     'lookback_days' => (int) sales_ingest_env('SALES_IMAP_LOOKBACK_DAYS', '30'),
     'state_source' => $backfill ? 'gmail_sales_headers_backfill' : 'gmail_sales',
+    'metadata_only' => $backfill,
 ];
 if ($backfill) {
     $config['lookback_days'] = max(1, (int) sales_ingest_env('SALES_CLASSIFICATION_BACKFILL_DAYS', '3650'));

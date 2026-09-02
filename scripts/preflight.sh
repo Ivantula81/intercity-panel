@@ -18,6 +18,7 @@ php tests/notification_groups_test.php
 php tests/conversations_test.php
 php tests/sales_parser_test.php
 php tests/sales_classifier_test.php
+php tests/sales_ingestor_test.php
 php tests/reporting_calculator_test.php
 php scripts/test_reporting_calc.php
 
