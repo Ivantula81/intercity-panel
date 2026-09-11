@@ -30,7 +30,7 @@ function ncDeliveryError(channel,error) {
  if(/no[_ ]?account/i.test(error))return 'Нет аккаунта в '+name;
  return name+': '+error;
 }
-function ncUndeliveredText(recipients) {
+function ncUndeliveredText(recipients, trip={}) {
  const clean=value=>String(value||'').replace(/\s+/g,' ').trim();
  const rows=recipients.filter(p=>!p.covered).map(p=>{
   const phone=clean(p.phone), number=phone.replace(/[\s()\-]/g,'');
@@ -38,11 +38,13 @@ function ncUndeliveredText(recipients) {
   const reason=!phone?'Телефон не указан':!/^\+?[1-9]\d{9,14}$/.test(number)?'Некорректный телефон':errors.join('; ')||(p.state==='skipped'?'Отправка пропущена':p.state==='failed'?'Ошибка отправки':'Не отправлено');
   return clean(p.name||'Пассажир')+' · '+(phone||'телефон не указан')+' · '+clean(p.from_stop||'Не указано')+' → '+clean(p.to_stop||'Не указано')+' (причина: '+reason+')';
  });
- return rows.length?'Не доставлено\n\n'+rows.join('\n\n'):'';
+ const heading=['Не доставлено','Рейс №'+clean(trip.number||'не указан')+' · '+clean(trip.date||'Дата не указана'),clean(trip.route||'Маршрут не указан')];
+ return rows.length?heading.join('\n')+'\n\n'+rows.join('\n\n'):'';
 }
 async function ncCopyUndelivered(button) {
  const status=button.parentElement.querySelector('[role="status"]');
- const text=ncUndeliveredText(NC.overview?.recipients||[]);
+ const header=document.querySelector('.nc-trip');
+ const text=ncUndeliveredText(NC.overview?.recipients||[],{number:header?.dataset.tripNumber,date:header?.dataset.tripDate,route:header?.querySelector('p')?.textContent});
  if(!text){status.textContent='Нет неуведомлённых пассажиров';return;}
  try {await navigator.clipboard.writeText(text);status.textContent='Список скопирован — можно вставить в мессенджер';}
  catch {status.textContent='Не удалось скопировать автоматически';ncDialog('<h2>Не доставлено</h2><p>Выделите и скопируйте текст вручную.</p><textarea readonly aria-label="Список неуведомлённых" style="width:100%;min-height:260px">'+esc(text)+'</textarea><footer><button class="btn" onclick="document.getElementById(\'ncDialog\').close()">Закрыть</button></footer>');}
