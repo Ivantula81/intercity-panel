@@ -30,7 +30,9 @@ function notification_prepare(array $request): array {
             if(!valid_phone($ph))$why='Некорректный телефон';elseif(is_unsubscribed($ph))$why='Отписка';elseif($purpose==='reminder'&&isset($covered[$ph]))$why='Уже уведомлён или в очереди';elseif(isset($seen[$ph]))$why='Один телефон в нескольких билетах';
             if($why!==''){$exclusions[]=['passenger_id'=>$pid,'reason'=>$why];continue;}$seen[$ph]=true;
             $vars=group_vars($manifest,$p,$g,$opts);if(MessageTemplate::unknownVars($text,$vars))throw new InvalidArgumentException('В шаблоне есть неизвестные переменные.');
-            $message=render_group_message($text,$vars,$manifest['extra_info']);$line=trim((string)opt('unsub_line','Чтобы отписаться — напишите СТОП'));if($line!=='')$message.="\n\n".$line;
+            $message=render_group_message($text,$vars,$manifest['extra_info']);
+            if($purpose==='change')$message="Уточнение по вашему рейсу. Актуальная информация ниже.\n\n".$message;
+            $line=trim((string)opt('unsub_line','Чтобы отписаться — напишите СТОП'));if($line!=='')$message.="\n\n".$line;
             foreach($channels as $ch){
                 if(isset($contacts[$ph]['has_'.$ch])&&!(bool)$contacts[$ph]['has_'.$ch]){$exclusions[]=['passenger_id'=>$pid,'channel'=>$ch,'reason'=>'Нет аккаунта'];continue;}
                 $resolved=resolve_send_target($ch,$ph,false);

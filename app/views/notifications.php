@@ -159,6 +159,10 @@ $primaryCh = Channels::primary();
             <button class="btn" data-send-all onclick="sendAllGroups(this)"><?= icon('send') ?> Подтвердить и отправить</button>
         </div>
     </div>
+    <div class="nc-run-action">
+        <button type="button" class="btn ghost" data-send-correction onclick="ncSend(null,'change')" disabled>Отправить исправление</button>
+        <span class="small muted">Новое сообщение выбранным пассажирам, включая уже уведомлённых. Сначала исправьте данные рейса и проверьте текст.</span>
+    </div>
     <div id="allState" class="mt"></div>
 </div>
 
