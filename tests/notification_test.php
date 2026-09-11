@@ -24,13 +24,18 @@ $r2=$center->launch($req,$prepare,42,'Тест');check($r2['duplicate']&&$r2['ru
 check($pdo->query('SELECT COUNT(*) FROM broadcast_deliveries')->fetchColumn()==1,'no duplicate delivery');
 $s=$center->overview(1)['summary'];check($s['queued']===1&&$s['recipients']===2&&$s['passengers']===3,'queue visible and phones deduplicated');
 check($s['state']==='running'&&$s['attention']===1,'uncovered passenger visible while queue active');
+check($s['lifecycle']==='running'&&!$s['all_notified'],'active queue remains in progress');
 try{$req['request_key']='test-request-000002';$center->launch($req,$prepare,42,'Тест');check(false,'stale preview');}catch(DomainException $e){check(true,'stale concurrent preview rejected');}
 check($pdo->query('SELECT COUNT(*) FROM notification_runs')->fetchColumn()==1,'rollback on conflict');
 $pdo->exec("UPDATE broadcast_deliveries SET status='accepted',provider_id='test-provider'");check($center->overview(1)['summary']['delivered']===0,'accepted is not delivered');
+check($center->overview(1)['summary']['lifecycle']==='running','provider acceptance is still in progress');
 $pdo->exec("UPDATE broadcast_deliveries SET status='read',delivered_at=CURRENT_TIMESTAMP,read_at=CURRENT_TIMESTAMP");
 $pdo->exec("INSERT INTO messages(manifest_id,recipient,channel,wa_id,status,body,read_at,delivered_at) VALUES(1,'+70000000001','max','test-provider','sent','Тест',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)");
 $s=$center->overview(1)['summary'];check($s['attempts']===1&&$s['delivered']===1&&$s['read']===1,'webhook and legacy row not double counted');check($s['state']==='attention','remaining passenger prevents green complete');
+check($s['lifecycle']==='completed'&&!$s['all_notified'],'completed processing can have unresolved passengers');
+check($center->list(['state'=>'completed'])['total']===1,'completed filter includes partial result');
 $pdo->exec("INSERT INTO notification_calls(manifest_id,passenger_id,recipient,actor_name) VALUES(1,2,'+70000000002','Тест')");check($center->overview(1)['summary']['state']==='done','called passenger completes coverage');
+check($center->overview(1)['summary']['all_notified'],'full coverage is separate from lifecycle');
 check(count($center->history(1)['runs'])===1,'run history');check($center->detail(1)['snapshot']['items'][0]['body']==='Тестовый текст','immutable exact body');
 check($center->list(['date'=>'2026-09-12'])['total']===1,'departure date filter');check($center->list(['search'=>'101'])['total']===1,'number search');
 // Simulated storage failure happens after run insertion: all writes must roll back.

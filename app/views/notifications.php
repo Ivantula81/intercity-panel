@@ -10,7 +10,7 @@
 <button type="button" class="btn ghost" onclick="ncDay(1)" aria-label="Следующий день">→</button>
 <button type="button" class="btn ghost" onclick="ncDay(0)">Сегодня</button>
 <label>Номер рейса<input type="search" id="ncSearch" placeholder="Найти рейс"></label>
-<label>Состояние<select id="ncFilterState"><option value="">Все</option><option value="new">Не запускалась</option><option value="running">В работе</option><option value="attention">Требует внимания</option><option value="done">Обработана</option></select></label>
+<label>Состояние<select id="ncFilterState"><option value="">Все</option><option value="new">Не запускалась</option><option value="running">В работе</option><option value="completed">Завершена</option></select></label>
 <button class="btn">Показать</button><button type="button" class="btn ghost" onclick="document.getElementById('ncDate').value='';ncList(1)">Все даты</button></form>
 <div id="ncTrips" aria-live="polite"></div></div>
 <?php return; endif; ?>
