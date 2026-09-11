@@ -14,6 +14,7 @@ try { $carriers = db()->query('SELECT * FROM carriers ORDER BY id')->fetchAll();
 </div>
 
 <div class="tabs">
+    <a class="tab" href="/?p=schedules">Расписание</a>
     <button class="tab active" onclick="showTab('stops', this)"><?= icon('link') ?> Посадки <span class="badge muted"><?= count($stops) ?></span></button>
     <button class="tab" onclick="showTab('buses', this)"><?= icon('briefcase') ?> Автобусы <span class="badge muted"><?= count($buses) ?></span></button>
     <button class="tab" onclick="showTab('drivers', this)">Водители <span class="badge muted"><?= count($drivers) ?></span></button>

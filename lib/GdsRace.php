@@ -9,6 +9,44 @@ require_once __DIR__ . '/GdsLookup.php';
 
 class GdsRace
 {
+    /** Read-only proposal for the editor: no options/cache or manifest writes. */
+    public static function scheduleProposal(array $manifest, string $start): array
+    {
+        require_once __DIR__ . '/RouteSchedule.php';
+        $parts = preg_split('/\s+[—–-]\s+/u', trim($manifest['route']), 2);
+        if (count($parts) !== 2) throw new InvalidArgumentException('Не удалось определить начало и конец маршрута.');
+        $lookup = new GdsLookup();
+        $result = $lookup->search(substr($manifest['departure_at'], 0, 10), $parts[0], $parts[1]);
+        $race = self::selectScheduleRace($result['races'], $manifest, $start);
+        global $server;
+        $raw = $server->get_race_stops($race['uid']);
+        $uid = explode(':', $race['uid']);
+        $stops = [['name' => trim($race['dispatch_station']), 'code' => (int) $uid[3],
+            'arrival' => $race['dispatch_at'], 'dispatch' => $race['dispatch_at'], 'terminal' => false]];
+        foreach (is_array($raw) ? $raw : [$raw] as $s) {
+            if (!is_object($s) || !isset($s->name)) continue;
+            $code = isset($s->code) && ctype_digit((string) $s->code) ? (int) $s->code : null;
+            $stops[] = ['name' => (string) $s->name, 'code' => $code,
+                'arrival' => (string) ($s->arrivalDate ?? ''), 'dispatch' => (string) ($s->dispatchDate ?? ''),
+                'terminal' => $code !== null && $code === (int) $uid[4]];
+        }
+        return ['stops' => RouteSchedule::fromGds(['stops' => $stops], substr($manifest['departure_at'], 0, 10)),
+            'race_start' => $race['dispatch_at'], 'statement_match' => true];
+    }
+
+    public static function selectScheduleRace(array $races, array $manifest, string $start): array
+    {
+        require_once __DIR__ . '/RouteSchedule.php';
+        $matches = array_values(array_filter($races, fn($r) =>
+            (string) ($r['statement_number'] ?? '') === (string) $manifest['trip_number']
+            && RouteSchedule::norm($r['name']) === RouteSchedule::norm($manifest['route'])
+            && substr($r['dispatch_at'], 0, 10) === substr($manifest['departure_at'], 0, 10)
+            && substr($r['dispatch_at'], 11, 5) === $start));
+        if (count($matches) !== 1) throw new RuntimeException('ГДС не подтвердила одновременно номер рейса, маршрут, дату и плановый старт. Автоматическая подстановка отменена.');
+        if (count(explode(':', $matches[0]['uid'])) < 5) throw new RuntimeException('ГДС вернула неполный идентификатор рейса.');
+        return $matches[0];
+    }
+
     // Живой запрос в GDS. Бросает Exception при недоступности/ненайденном рейсе.
     public static function stopsForManifest(array $manifest): array
     {

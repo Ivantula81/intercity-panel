@@ -458,8 +458,8 @@ function build_groups(array $manifest): array
                 'address' => $cat['address'] ?? '',
                 'map_url' => $cat['map_url'] ?? '',
                 'in_catalog' => $cat !== null && trim((string) ($cat['address'] ?? '')) !== '',
-                'date' => $draft['boarding_date'] ?? $legacyDraft['boarding_date'] ?? '',
-                'time' => $draft['boarding_time'] ?? $legacyDraft['boarding_time'] ?? '',
+                'date' => ($draft['boarding_date'] ?? '') ?: ($legacyDraft['boarding_date'] ?? ''),
+                'time' => ($draft['boarding_time'] ?? '') ?: ($legacyDraft['boarding_time'] ?? ''),
                 'time_warning' => (int) ($draft['time_warning'] ?? $legacyDraft['time_warning'] ?? 0),
                 'body' => $draft['body'] ?? null,
                 'recipients' => [],
@@ -477,6 +477,12 @@ function build_groups(array $manifest): array
         ];
     }
 
+    require_once PANEL_ROOT . '/lib/RouteScheduleStore.php';
+    $store = new RouteScheduleStore(db());
+    if ($store->available() && !empty($manifest['departure_at'])) {
+        $context = $store->context($manifest);
+        $groups = RouteSchedule::overlay($groups, $context['state'], $context['base_date']);
+    }
     return NotificationGroups::sortByRoute(array_values($groups));
 }
 
@@ -545,6 +551,11 @@ function monitor_aggregate(array $byChan): array
 
 const P_FIELDS = ['seat', 'name', 'phone', 'doc', 'ticket', 'from_stop', 'to_stop', 'note', 'pay_note', 'citizenship'];
 const M_FIELDS = ['route', 'carrier', 'bus', 'drivers', 'trip_number', 'driver_phone', 'extra_info'];
+
+if (str_starts_with($action, 'schedule.') || $action === 'gds.times') {
+    require PANEL_ROOT . '/app/schedule_api.php';
+    exit;
+}
 
 switch ($action) {
 
@@ -698,106 +709,33 @@ switch ($action) {
         // limited → фронт скажет «лимит MAX исчерпан, проверено X из N», а не «канала нет».
         json_out(['ok' => true, 'presence' => $out, 'limited' => array_keys($limited), 'checked' => $checked]);
 
-    case 'gds.times':
-        require_once PANEL_ROOT . '/lib/GdsRace.php';
-        $manifest = get_manifest((int) $body['manifest_id']);
-        if (!empty($body['refresh'])) opt_set('gds_stops_' . $manifest['id'], '');
-
-        $gdsError = '';
-        try {
-            $gds = GdsRace::stopsForManifest($manifest);
-        } catch (Exception $e) {
-            $gdsError = $e->getMessage();
-            $gds = GdsRace::cachedStopsForManifest($manifest); // резерв из справочника расписаний
-            if ($gds === null) {
-                json_out(['ok' => false, 'error' => $gdsError . ' Сохранённого расписания по этому маршруту пока нет.']);
-            }
-        }
-
-        $fromCache = !empty($gds['from_cache']);
-        $raceStartTime = $gds['race_start'] ? date('H:i', strtotime($gds['race_start'])) : '';
-        $updated = 0;
-        $unmatched = [];
-        $kept = 0;
-        $processedStations = [];
-        foreach (build_groups($manifest) as $g) {
-            $stationKey = $g['station_id'] !== null
-                ? 'id' . $g['station_id']
-                : mb_strtolower(trim($g['station']), 'UTF-8');
-            // Время посадки едино для всех направлений с этой станции.
-            if (isset($processedStations[$stationKey])) continue;
-            $processedStations[$stationKey] = true;
-            // ГДС — ПЕРВИЧНЫЙ источник времени: если рейс найден в ГДС, время станции
-            // ПЕРЕЗАПИСЫВАЕТСЯ значением из ГДС (даже если оно пришло из ведомости).
-            // Время из файла остаётся только там, где ГДС не знает станцию или не даёт по ней времени.
-            $stop = GdsRace::matchStop($gds, $g['station'], $g['station_id'] ?? null);
-
-            $time = '';
-            $date = '';
-            if ($stop !== null) {
-                $when = $stop['arrival'] !== '' ? $stop['arrival'] : $stop['dispatch'];
-                $ts = strtotime($when);
-                if ($ts) {
-                    $time = date('H:i', $ts);
-                    $date = date('d.m.Y', $ts);
-                }
-            }
-
-            if ($time !== '') {
-                // станция отправления — совпадение со стартом это норма; для остальных — предупреждение
-                $isStart = GdsRace::norm($g['station']) === GdsRace::norm(explode('-', $manifest['route'])[0] ?? '');
-                $warning = (int) (!$isStart && $time === $raceStartTime);
-                db()->prepare("INSERT INTO manifest_groups (manifest_id, station, station_id, destination, boarding_date, boarding_time, time_warning)
-                    VALUES (?,?,?, '',?,?,?)
-                    ON DUPLICATE KEY UPDATE station_id = VALUES(station_id), boarding_date = VALUES(boarding_date), boarding_time = VALUES(boarding_time), time_warning = VALUES(time_warning)")
-                    ->execute([$manifest['id'], $g['station'], $g['station_id'] ?? null, $date, $time, $warning]);
-                // Уже сохранённые тексты остаются раздельными, обновляется только общее время посадки.
-                db()->prepare('UPDATE manifest_groups SET station_id = ?, boarding_date = ?, boarding_time = ?, time_warning = ?
-                    WHERE manifest_id = ? AND station = ? AND destination <> ?')
-                    ->execute([$g['station_id'] ?? null, $date, $time, $warning, $manifest['id'], $g['station'], '']);
-                $updated++;
-                continue;
-            }
-
-            // ГДС времени по станции не дал — оставляем то, что было в ведомости (если было)
-            $exq = db()->prepare("SELECT boarding_time FROM manifest_groups
-                WHERE manifest_id = ? AND station = ? ORDER BY (destination = '') DESC LIMIT 1");
-            $exq->execute([$manifest['id'], $g['station']]);
-            $hasFileTime = trim((string) $exq->fetchColumn()) !== '';
-            if ($stop !== null) {
-                // станция в рейсе есть, но без времени — хотя бы уточняем привязку station_id
-                db()->prepare('UPDATE manifest_groups SET station_id = ? WHERE manifest_id = ? AND station = ?')
-                    ->execute([$g['station_id'] ?? null, $manifest['id'], $g['station']]);
-            }
-            if ($hasFileTime) {
-                $kept++;
-            } else {
-                $unmatched[] = $g['station'];
-            }
-        }
-        json_out(['ok' => true, 'race_uid' => $gds['race_uid'], 'race_start' => $gds['race_start'],
-            'statement_match' => $gds['statement_match'], 'updated' => $updated, 'kept_from_file' => $kept, 'unmatched' => $unmatched,
-            'from_cache' => $fromCache, 'cached_at' => $gds['cached_at'] ?? '', 'gds_error' => $gdsError]);
-
     case 'group.save':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_out(['ok' => false, 'error' => 'Используйте POST.'], 405);
         $manifest = get_manifest((int) $body['manifest_id']);
         $group = find_notification_group($manifest, $body);
-        if ($group === null) json_out(['ok' => false, 'error' => 'Группа маршрута не найдена. Обновите страницу.']);
-        $gd = trim((string) ($body['date'] ?? ''));
-        $gt = trim((string) ($body['time'] ?? ''));
-        if (!empty($body['save_body'])) { // ручная правка текста города: пишем body (null = вернуть к общему)
-            $bodyVal = ($body['body'] ?? null) === null ? null : (string) $body['body'];
-            db()->prepare('INSERT INTO manifest_groups (manifest_id, station, station_id, destination, destination_id, boarding_date, boarding_time, body)
-                VALUES (?,?,?,?,?,?,?,?)
-                ON DUPLICATE KEY UPDATE boarding_date = VALUES(boarding_date), boarding_time = VALUES(boarding_time), body = VALUES(body)')
-                ->execute([$manifest['id'], $group['station'], $group['station_id'], $group['destination'], $group['destination_id'], $gd, $gt, $bodyVal]);
-        } else { // правка только даты/времени — текст города не трогаем
-            db()->prepare('INSERT INTO manifest_groups (manifest_id, station, station_id, destination, destination_id, boarding_date, boarding_time)
-                VALUES (?,?,?,?,?,?,?)
-                ON DUPLICATE KEY UPDATE boarding_date = VALUES(boarding_date), boarding_time = VALUES(boarding_time)')
-                ->execute([$manifest['id'], $group['station'], $group['station_id'], $group['destination'], $group['destination_id'], $gd, $gt]);
+        if ($group === null) json_out(['ok' => false, 'error' => 'Группа не найдена.'], 404);
+        require_once PANEL_ROOT . '/lib/RouteScheduleStore.php';
+        $pdo = db();
+        try {
+            $pdo->beginTransaction();
+            if (!empty($body['time_changed'])) {
+                $store = new RouteScheduleStore($pdo);
+                if (!$store->available()) throw new RuntimeException('Сначала установите справочник расписаний (schema28).');
+                $store->override($manifest, $group, trim((string) ($body['date'] ?? '')), trim((string) ($body['time'] ?? '')),
+                    (int) ($body['revision'] ?? -1), audit_actor_id());
+            }
+            if (!empty($body['save_body'])) {
+                $pdo->prepare('INSERT INTO manifest_groups (manifest_id,station,station_id,destination,destination_id,body) VALUES (?,?,?,?,?,?)
+                    ON DUPLICATE KEY UPDATE body=VALUES(body)')->execute([$manifest['id'], $group['station'], $group['station_id'],
+                        $group['destination'], $group['destination_id'], $body['body'] ?? null]);
+            }
+            $pdo->commit();
+            json_out(['ok' => true, 'groups' => build_groups($manifest)]);
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            json_out(['ok' => false, 'error' => $e instanceof InvalidArgumentException || $e instanceof ScheduleConflict
+                ? $e->getMessage() : 'Не удалось сохранить правку. Повторите запрос.'], $e instanceof ScheduleConflict ? 409 : 422);
         }
-        json_out(['ok' => true]);
 
     case 'group.preview':
         $manifest = get_manifest((int) $body['manifest_id']);
@@ -1049,8 +987,11 @@ switch ($action) {
 
         $group = find_notification_group($manifest, $body);
         if ($group === null) json_out(['ok' => false, 'error' => 'Группа не найдена']);
-        $group['date'] = trim((string) ($body['date'] ?? $group['date']));
-        $group['time'] = trim((string) ($body['time'] ?? $group['time']));
+        if (trim((string) ($body['date'] ?? $group['date'])) !== $group['date']
+            || trim((string) ($body['time'] ?? $group['time'])) !== $group['time']) {
+            json_out(['ok' => false, 'error' => 'Время изменилось или ещё не сохранено. Обновите группы и проверьте предпросмотр.'], 409);
+        }
+
 
         $busPhoto = '';
         if (!empty($body['attach_photo'])) {

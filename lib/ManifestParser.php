@@ -100,6 +100,8 @@ class ManifestParser
             'id' => $this->first($record, array('ID', 'ID1')),
             'route' => $this->first($record, array('Маршрут', 'Рейс')),
             'departure_at' => $this->tripDeparture($record),
+            'planned_start' => preg_match('/(\d{1,2}):(\d{2})/', $this->first($record, array('Время_отпр.')), $start)
+                ? sprintf('%02d:%02d', $start[1], $start[2]) : null,
             'carrier' => $this->first($record, array('ATP')),
             // номер автобуса — только из «Номер_авт.» (госномер). «Транспорт» — это места/категория, не номер
             'bus' => $this->first($record, array('Номер_авт.', 'Transport')),
