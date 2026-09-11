@@ -13,8 +13,27 @@ async function ncList(page=1){
  }catch(e){box.innerHTML=`<p class="alert warn">${esc(e.message)}</p><button class="btn ghost" onclick="ncList(${page})">Повторить</button>`;}finally{box.removeAttribute('aria-busy');}
 }
 function ncTab(tab){NC.tab=tab;for(const [key,id]of Object.entries({prepare:'ncPrepare',result:'ncResult',history:'ncHistory'})){const el=document.getElementById(id);if(el)el.hidden=key!==tab;}document.querySelectorAll('[data-nc-tab]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.ncTab===tab));if(tab==='history')ncHistory(1);}
-async function ncOverview(){if(!manifestId()||NC.overviewBusy)return;NC.overviewBusy=true;try{const r=await ncApi('notification.overview',{manifest_id:manifestId()});NC.overview=r;ncRenderOutcome(r);if(!NC.tab)ncTab(r.launched?'result':'prepare');ncSelectionSummary();ncBlockBadges();}catch(e){const box=document.getElementById('ncOutcome');if(box)box.innerHTML=`<p class="alert warn">${esc(e.message)}</p><button class="btn ghost" onclick="ncOverview()">Повторить</button>`;}finally{NC.overviewBusy=false;}}
-function ncPerson(p){const errors=Object.values(p.channel_states).filter(x=>x.error).map(x=>x.error).join('; ');return `<article class="nc-recipient"><div><b>${esc(p.name||'Пассажир')}</b><small>${esc(p.from_stop)} → ${esc(p.to_stop)}</small><small>${esc(errors)}</small>${p.call?`<small>${esc(p.call.actor_name)} · ${esc(p.call.created_at)}</small>`:''}</div><div>${ncBadge(p.state)} ${!p.covered?`<button class="btn ghost sm" onclick="ncCall(${p.id})">Уведомлён звонком</button>`:''}</div></article>`;}
+async function ncOverview(){if(!manifestId()||NC.overviewBusy)return;NC.overviewBusy=true;try{const r=await ncApi('notification.overview',{manifest_id:manifestId()});const changed=JSON.stringify(NC.overview)!==JSON.stringify(r);NC.overview=r;if(changed)ncRenderOutcome(r);if(!NC.tab)ncTab(r.launched?'result':'prepare');ncSelectionSummary();ncBlockBadges();}catch(e){const box=document.getElementById('ncOutcome');if(box)box.innerHTML=`<p class="alert warn">${esc(e.message)}</p><button class="btn ghost" onclick="ncOverview()">Повторить</button>`;}finally{NC.overviewBusy=false;}}
+function ncPhone(phone) {
+ const raw=String(phone||'').trim(), number=raw.replace(/[\s()\-]/g,'');
+ if(!raw)return '<small class="nc-stale">Телефон не указан</small>';
+ if(!/^\+?[1-9]\d{9,14}$/.test(number))return '<small class="nc-stale">Некорректный телефон: '+esc(raw)+'</small>';
+ return '<div class="nc-phone"><a href="tel:'+esc(number)+'" aria-label="Позвонить: '+esc(raw)+'">'+esc(raw)+'</a><button type="button" class="btn ghost sm" data-phone="'+esc(number)+'" onclick="ncCopyPhone(this)" aria-label="Скопировать номер телефона">Копировать</button><span class="small muted" role="status"></span></div>';
+}
+async function ncCopyPhone(button) {
+ const status=button.parentElement.querySelector('[role="status"]');
+ try { await navigator.clipboard.writeText(button.dataset.phone); status.textContent='Номер скопирован'; }
+ catch { status.textContent='Не удалось скопировать. Выделите номер и скопируйте вручную.'; }
+}
+function ncDeliveryError(channel,error) {
+ const name={max:'MAX',telegram:'Telegram',whatsapp:'WhatsApp',sms:'SMS'}[channel]||channel;
+ if(/no[_ ]?account/i.test(error))return 'Нет аккаунта в '+name;
+ return name+': '+error;
+}
+function ncPerson(p) {
+ const errors=Object.entries(p.channel_states||{}).filter(([,x])=>x.error).map(([ch,x])=>ncDeliveryError(ch,x.error)).join('; ');
+ return `<article class="nc-recipient"><div><b>${esc(p.name||'Пассажир')}</b>${ncPhone(p.phone)}<small>${esc(p.from_stop)} → ${esc(p.to_stop)}</small><small>${esc(errors)}</small>${p.call?`<small>Уведомил(а): ${esc(p.call.actor_name)} · ${esc(p.call.created_at)} МСК</small>`:''}</div><div>${ncBadge(p.state)} ${!p.covered?`<button class="btn ghost sm" onclick="ncCall(${p.id})">Уведомлён звонком</button>`:''}</div></article>`;
+}
 function ncRenderOutcome(r){const s=r.summary,box=document.getElementById('ncOutcome');if(!box)return;const unresolved=r.recipients.filter(p=>!p.covered);box.innerHTML=`<h2>Результат уведомлений</h2>${ncBadge(s.state)}<div class="nc-metrics"><div><b>${s.delivered}</b><span>доставлено · из них ${s.read} прочитано</span></div><div><b>${s.queued}</b><span>ожидают в панели</span></div><div><b>${s.accepted}</b><span>передано провайдеру</span></div><div><b>${s.attention}</b><span>не уведомлены</span></div></div><p class="small muted">${s.passengers} пассажиров · ${s.recipients} получателей · ${s.attempts} попыток по каналам · ${s.called} уведомлены звонком</p>
  ${!r.launched?'<p>Уведомления ещё не запускались.</p>':''}
  <details><summary>Не уведомлены · ${s.attention}</summary>${unresolved.map(ncPerson).join('')||'<p>Нет неуведомлённых получателей.</p>'}</details><details class="mt"><summary>Все пассажиры и статусы</summary>${r.recipients.map(ncPerson).join('')}</details><div class="nc-run-action"><button class="btn" onclick="ncTab('prepare')">Подготовить / дослать</button><button class="btn ghost" onclick="ncTab('history')">История запусков</button></div>`;}
