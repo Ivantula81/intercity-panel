@@ -271,10 +271,11 @@ switch ($page) {
         }
         $manifests = db()->query('SELECT * FROM manifests ORDER BY id DESC LIMIT 30')->fetchAll();
         $fresh = !empty($_GET['fresh']);
-        $selectedId = $fresh ? 0 : (int) ($_GET['manifest_id'] ?? ($manifests[0]['id'] ?? 0));
+        $selectedId = $fresh ? 0 : (int) ($_GET['manifest_id'] ?? 0);
         $selected = null;
-        foreach ($manifests as $mRow) {
-            if ((int) $mRow['id'] === $selectedId) { $selected = $mRow; break; }
+        if ($selectedId > 0) {
+            $q = db()->prepare('SELECT * FROM manifests WHERE id=?');
+            $q->execute([$selectedId]); $selected = $q->fetch() ?: null;
         }
         $buses = db()->query('SELECT * FROM buses ORDER BY code, model')->fetchAll();
         $drivers = db()->query('SELECT * FROM drivers ORDER BY name')->fetchAll();

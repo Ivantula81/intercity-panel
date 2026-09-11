@@ -10,11 +10,12 @@ final class BroadcastQueue
         $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         $key = hash('sha256', $kind . '|' . $manifestId . '|' . $json);
         $pdo = db();
+        $conflict = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite' ? 'ON CONFLICT DO NOTHING' : 'ON DUPLICATE KEY UPDATE id=id';
         $st = $pdo->prepare('INSERT INTO broadcast_jobs
             (idempotency_key,kind,manifest_id,payload_json,created_by)
-            VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id');
+            VALUES (?,?,?,?,?) ' . $conflict);
         $st->execute([$key, $kind, $manifestId, $json, $userId]);
-        $id = (int) $pdo->lastInsertId();
+        $id = $st->rowCount() > 0 ? (int) $pdo->lastInsertId() : 0;
         if ($id === 0) {
             $q = $pdo->prepare('SELECT id,status FROM broadcast_jobs WHERE idempotency_key=?');
             $q->execute([$key]);
@@ -51,9 +52,11 @@ final class BroadcastQueue
     public static function materializeDeliveries(int $jobId, array $items): int
     {
         $pdo = db(); $n = 0; $bodies = []; $targets = [];
+        $conflict = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite' ? 'ON CONFLICT DO NOTHING' : 'ON DUPLICATE KEY UPDATE id=id';
+        $now = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite' ? 'CURRENT_TIMESTAMP' : 'NOW()';
         $st = $pdo->prepare('INSERT INTO broadcast_deliveries
             (job_id,passenger_id,channel,recipient,body_hash,status,available_at)
-            VALUES (?,?,?,?,?,"queued",NOW()) ON DUPLICATE KEY UPDATE id=id');
+            VALUES (?,?,?,?,?,"queued",' . $now . ') ' . $conflict);
         foreach ($items as $item) {
             if (!is_array($item)) continue;
             $channel = trim((string)($item['channel'] ?? ''));

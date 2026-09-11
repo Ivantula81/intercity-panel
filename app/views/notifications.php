@@ -1,18 +1,24 @@
 <?php /** @var array $manifests @var int $selectedId @var ?array $selected @var string $uploadError */ ?>
-<div class="page-head">
-    <div>
-        <h1>Уведомления</h1>
-        <div class="sub">загрузка → проверка данных → группы → отправка</div>
-    </div>
-    <div class="head-actions">
-        <?php if ($selected): ?>
-            <a class="btn ghost sm" href="/?p=notifications&fresh=1" title="Сбросить выбор и начать с новой ведомости">↺ Сбросить</a>
-            <button class="btn ghost sm" style="color:var(--err);margin-left:auto" onclick="deleteManifestFromNotif(<?= $selectedId ?>)" title="Удалить ведомость из системы (необратимо)">🗑 Удалить</button>
-        <?php endif; ?>
-        <span id="channelStatus" class="badge muted">проверяю канал…</span>
-    </div>
-</div>
-
+<div class="page-head"><div><h1>Уведомления</h1><div class="sub">Рейсы, отправки и результат · время московское</div></div>
+<a class="btn ghost" href="/?p=notifications&fresh=1">Подготовить другую ведомость</a></div>
+<?php require PANEL_ROOT . '/app/views/queue_monitor.php'; ?>
+<?php if (!$selected && empty($_GET['fresh'])): ?>
+<div class="card nc-list"><h2>Рейсы по дням</h2>
+<form id="ncFilters" class="nc-filters">
+<button type="button" class="btn ghost" onclick="ncDay(-1)" aria-label="Предыдущий день">←</button>
+<label>Дата отправления<input type="date" id="ncDate" value="<?= date('Y-m-d') ?>"></label>
+<button type="button" class="btn ghost" onclick="ncDay(1)" aria-label="Следующий день">→</button>
+<button type="button" class="btn ghost" onclick="ncDay(0)">Сегодня</button>
+<label>Номер рейса<input type="search" id="ncSearch" placeholder="Найти рейс"></label>
+<label>Состояние<select id="ncFilterState"><option value="">Все</option><option value="new">Не запускалась</option><option value="running">В работе</option><option value="attention">Требует внимания</option><option value="done">Обработана</option></select></label>
+<button class="btn">Показать</button><button type="button" class="btn ghost" onclick="document.getElementById('ncDate').value='';ncList(1)">Все даты</button></form>
+<div id="ncTrips" aria-live="polite"></div></div>
+<?php return; endif; ?>
+<?php if ($selected): ?>
+<header class="nc-trip"><a href="/?p=notifications">← Рейсы по дням</a><h2>№<?= e($selected['trip_number']) ?> · <?= $selected['departure_at'] ? date('d.m.Y H:i',strtotime($selected['departure_at'])) : 'Дата не указана' ?></h2><p><?= e($selected['route']) ?></p></header>
+<nav class="nc-tabs" aria-label="Разделы ведомости"><button type="button" data-nc-tab="prepare" onclick="ncTab('prepare')">Подготовка</button><button type="button" data-nc-tab="result" onclick="ncTab('result')">Результат</button><button type="button" data-nc-tab="history" onclick="ncTab('history')">История</button></nav>
+<div id="ncPrepare">
+<?php endif; ?>
 <?php
 require_once PANEL_ROOT . '/lib/Channels.php';
 $primaryCh = Channels::primary();
@@ -29,16 +35,7 @@ $primaryCh = Channels::primary();
         <div style="flex:1;min-width:0">
             <div class="step-title">Ведомость</div>
             <?php if ($selected): ?>
-                <div class="row" style="gap:10px;flex-wrap:wrap">
-                    <b>№<?= e($selected['trip_number']) ?> · <?= e($selected['route']) ?></b>
-                    <span class="muted small"><?= e($selected['file_name']) ?></span>
-                    <select id="cMan" onchange="location='/?p=notifications&manifest_id='+this.value" style="max-width:300px;margin-left:auto">
-                        <?php foreach ($manifests as $m): ?>
-                            <option value="<?= $m['id'] ?>" <?= $m['id'] == $selectedId ? 'selected' : '' ?>>№<?= e($m['trip_number']) ?> · <?= e($m['route']) ?> · <?= $m['departure_at'] ? date('d.m', strtotime($m['departure_at'])) : '' ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                    <label class="btn ghost sm" style="cursor:pointer">📂 Загрузить другую<input type="file" accept=".csv" style="display:none" onchange="this.closest('form')||0;uploadManifest(this)"></label>
-                </div>
+                <p class="muted small">Источник: <?= e($selected['file_name']) ?></p>
             <?php else: ?>
                 <div class="step-title-sub muted small">Введите номер рейса — ведомость подтянется из системы автовокзала: пассажиры, места, цены, агенты, станции.</div>
                 <div class="pull-box mt">
@@ -138,7 +135,7 @@ $primaryCh = Channels::primary();
         </div>
     </div>
     <div id="notificationReadiness" class="notif-readiness mt" aria-live="polite"><p class="muted">Проверяю пассажиров, время и каналы…</p></div>
-    <div id="notificationIssues"></div>
+    <details id="ncIssues"><summary id="ncIssuesCount">Требует внимания</summary><div id="notificationIssues"></div></details>
     <div class="group-template mt" id="groupTemplateBox" style="display:none">
         <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
             <div><b>Шаблон на всю ведомость</b><div class="muted small">Основной текст для всех городов. Ниже можно переопределить его по блоку отправления или вручную по городу; переменные (<span style="font-family:monospace">{город} {время} {адрес}</span>) подставятся свои.</div></div>
@@ -150,7 +147,7 @@ $primaryCh = Channels::primary();
         <textarea id="gtplText" class="template-box mt" rows="4"></textarea>
         <div class="g-saved small" id="gtplSaved" style="min-height:16px"></div>
     </div>
-    <div id="groupsBox" class="mt"><p class="muted">Загружаю группы…</p></div>
+    <div class="nc-selection"><button type="button" class="btn ghost sm" onclick="ncSelectAll(true)">Выбрать все</button><button type="button" class="btn ghost sm" onclick="ncSelectAll(false)">Снять все</button></div><div id="groupsBox" class="mt"><p class="muted">Загружаю группы…</p></div>
 </div>
 
 <!-- ШАГ 4 — отправка -->
@@ -165,8 +162,11 @@ $primaryCh = Channels::primary();
     <div id="allState" class="mt"></div>
 </div>
 
-<!-- Единый монитор текущей ведомости -->
-<div class="card step-card" id="campaignOverviewCard">
+</div><!-- preparation -->
+<div id="ncResult" hidden><div id="ncOutcome" class="card" aria-live="polite">Загружаю результат…</div></div>
+<div id="ncHistory" class="card" hidden><h2>История запусков</h2><label>Дата запуска <input type="date" id="ncHistoryDate" onchange="ncHistory(1)"></label><div id="ncHistoryItems"></div></div>
+<!-- Legacy monitor retained for compatibility; center owns visible read model. -->
+<div class="card step-card" id="campaignOverviewCard" hidden>
     <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
         <div>
             <div class="step-title">Доставка по этой ведомости</div>
@@ -190,6 +190,6 @@ window.HAS_MANIFEST = <?= $selected ? 'true' : 'false' ?>;
 document.addEventListener('DOMContentLoaded', () => {
     channelStatusBadge();
     bindTripFacts();
-    if (window.HAS_MANIFEST) { loadGroups(true); loadCampaignOverview(); }
+    if (window.HAS_MANIFEST) { loadGroups(true); }
 });
 </script>

@@ -1309,6 +1309,7 @@ async function uploadBroadcastImage(inp) {
         document.getElementById('bImgState').textContent = r.error || 'Ошибка загрузки';
     }
 }
+let broadcastRequest = null;
 async function sendBroadcast() {
     const phones = document.getElementById('bPhones').value;
     const text = document.getElementById('bText').value;
@@ -1322,8 +1323,13 @@ async function sendBroadcast() {
     btn.disabled = true;
     out.innerHTML = '<div class="alert warn">Отправляю… не закрывайте страницу</div>';
     try {
-        const r = await api('broadcast.send', { phones, text, image: BIMG, channels, emergency: document.getElementById('bEmergency')?.checked ? 1 : 0 });
+        const payload = { phones, text, image: BIMG, channels, emergency: document.getElementById('bEmergency')?.checked ? 1 : 0 };
+        const signature = JSON.stringify(payload);
+        if (!broadcastRequest || broadcastRequest.signature !== signature) broadcastRequest = {signature, key: crypto.randomUUID()};
+        const r = await api('broadcast.send', {...payload, request_key: broadcastRequest.key});
         if (!r.ok) { out.innerHTML = '<div class="alert err">' + esc(r.error) + '</div>'; return; }
+        broadcastRequest = null;
+        if (r.queued) { out.innerHTML = `<div class="alert ok">В очередь поставлено ${r.deliveries} сообщений. Можно перейти к другой ведомости.</div>`; providerQueueLoad(); return; }
         out.innerHTML = `<div class="alert ${r.failed ? 'warn' : 'ok'}">Отправлено сообщений: ${r.sent}, ошибок: ${r.failed}`
             + (r.rest ? `. В очереди ещё ${r.rest} номеров — нажмите «Отправить» снова.` : '.') + '</div>'
             + (r.errors?.length ? `<div class="muted small">${r.errors.map(esc).join('<br>')}</div>` : '');

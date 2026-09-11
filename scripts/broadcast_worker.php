@@ -43,6 +43,10 @@ function worker_client(string $channel) {
 }
 
 $dryRun = in_array('--dry-run', $argv ?? [], true);
+if ($dryRun) {
+    $n = db()->query("SELECT COUNT(*) FROM broadcast_deliveries WHERE status='queued'")->fetchColumn();
+    echo "dry-run queued {$n}; no changes\n"; exit(0);
+}
 $workerId = 'worker-' . getmypid();
 $delivery = BroadcastQueue::claimDelivery($workerId);
 if (!$delivery) { echo "empty\n"; exit(0); }
@@ -77,7 +81,11 @@ if (!$emergency && opt('messaging_hours_enabled', '1') !== '0') {
     }
 }
 
-if ($dryRun) { BroadcastQueue::finishDelivery((int)$delivery['id'], 'skipped', '', 'dry-run'); echo "dry-run delivery {$delivery['id']}\n"; exit(0); }
+$stop = db()->prepare('SELECT unsubscribed_at FROM contacts WHERE phone=?');
+$stop->execute([(string)$delivery['recipient']]);
+if ($stop->fetchColumn()) {
+    BroadcastQueue::finishDelivery((int)$delivery['id'], 'skipped', '', 'Отписка до отправки'); exit(0);
+}
 
 $hash = (string)$delivery['body_hash'];
 $target = trim((string)($payload['targets'][$hash] ?? $delivery['recipient']));
