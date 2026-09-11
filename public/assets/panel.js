@@ -222,7 +222,7 @@ async function loadGroups(autoGds) {
         gdsBadge.className = 'badge warn';
         gdsBadge.textContent = 'времена из ведомости';
     }
-    if (autoGds && !hasTimes && !GDS_LOADED) gdsTimes(true);
+    // GDS is fetched only on request in the schedule comparison editor.
 }
 
 function defaultBody() {
@@ -420,13 +420,14 @@ function renderGroups() {
         if (!g.in_catalog) badges.push('<span class="badge warn">нет в справочнике</span>');
         if (g.time_warning == 1) badges.push('<span class="badge err">⚠️ время = старту</span>');
         if (!g.time) badges.push('<span class="badge warn">нет времени</span>');
+        badges.push('<span class="badge muted g-time-source">' + ({schedule: 'по расписанию', override: 'только этот выезд'}[g.time_source] || 'время не проверено') + '</span>');
         const timeLabel = g.time ? `${esc((g.date ? g.date + ' ' : '') + g.time)}` : '<span style="color:var(--err)">время?</span>';
 
         card.innerHTML = `
         <div class="gcard-head" onclick="toggleGroup(this)">
             <div style="min-width:0">
                 <div class="gtitle">${esc(g.destination)} <span class="badge muted">${validCount}</span> <span class="g-tpl-badge${groupIsCustom(g) ? ' custom' : ''}">${groupIsCustom(g) ? '✏ изменён вручную' : 'общий шаблон'}</span></div>
-                <div class="gmeta">${timeLabel} · ${channelRouteSummary(g)} ${badges.join(' ')}</div>
+                <div class="gmeta"><span class="g-time-label">${timeLabel}</span> · ${channelRouteSummary(g)} ${badges.join(' ')}</div>
             </div>
             <span class="gchev">▾</span>
         </div>
@@ -434,8 +435,9 @@ function renderGroups() {
             <div class="row gcard-controls">
                 <label class="f" style="margin:0">Дата<input type="text" class="g-date" value="${esc(g.date)}" placeholder="дд.мм.гггг" style="width:120px"></label>
                 <label class="f" style="margin:0">Время<input type="text" class="g-time" value="${esc(g.time)}" placeholder="чч:мм" style="width:84px"></label>
-                <span class="muted small" style="align-self:flex-end;padding-bottom:8px">Текст — из общего шаблона; правка здесь отвяжет город от общего</span>
+                <span class="muted small" style="align-self:flex-end;padding-bottom:8px">Дата и время — только для этого выезда, для всех направлений со станции</span>
             </div>
+            <button type="button" class="btn ghost sm g-time-reset" onclick="resetStationTime(${gi})" ${g.time_source !== 'override' ? 'hidden' : ''}>Вернуть время по расписанию / ведомости</button>
             <textarea class="template-box g-body" rows="5">${esc(g.body ?? blockTemplate(g.station))}</textarea>
             <div class="g-saved small" style="min-height:16px;margin:3px 0"></div>
             <div class="msg-preview g-preview mt"></div>
@@ -829,22 +831,75 @@ function setSaved(card, state) {
 }
 
 let draftTimers = {};
+const pendingDrafts = new Map();
+let draftSaveChain = Promise.resolve();
 function scheduleDraft(card, gi, saveBody) {
     clearTimeout(draftTimers[gi]);
+    const previous = pendingDrafts.get(gi);
+    pendingDrafts.set(gi, { card, gi, body: saveBody || !!previous?.body, time: !saveBody || !!previous?.time });
     setSaved(card, 'dirty');
-    draftTimers[gi] = setTimeout(async () => {
+    draftTimers[gi] = setTimeout(() => persistNotificationDraft(gi), 900);
+}
+function syncSavedGroupTimes(groups) {
+    groups.forEach(saved => {
+        const gi = GROUPS.findIndex(g => g.route_key === saved.route_key);
+        if (gi < 0) return;
+        const g = GROUPS[gi];
+        g.schedule_revision = saved.schedule_revision;
+        if (pendingDrafts.get(gi)?.time) return;
+        Object.assign(g, {date: saved.date, time: saved.time, time_source: saved.time_source, time_warning: saved.time_warning});
+        const card = document.querySelector(`.gcard[data-gi="${gi}"]`);
+        if (card) {
+            card.querySelector('.g-date').value = saved.date;
+            card.querySelector('.g-time').value = saved.time;
+            const label = card.querySelector('.g-time-label');
+            if (label) label.textContent = (saved.date ? saved.date + ' ' : '') + (saved.time || 'время?');
+            const source = card.querySelector('.g-time-source');
+            if (source) source.textContent = ({schedule: 'по расписанию', override: 'только этот выезд'}[saved.time_source] || 'время не проверено');
+            const reset = card.querySelector('.g-time-reset');
+            if (reset) reset.hidden = saved.time_source !== 'override';
+            schedulePreview(card, gi, true);
+        }
+    });
+    renderPreparationSummary();
+}
+function persistNotificationDraft(gi) {
+    clearTimeout(draftTimers[gi]);
+    const operation = async () => {
+        const pending = pendingDrafts.get(gi);
+        if (!pending) return true;
+        const {card} = pending;
+        if (!card.isConnected) return false;
         setSaved(card, 'saving');
-        const payload = {
-            manifest_id: manifestId(),
-            station: GROUPS[gi].station,
-            destination: GROUPS[gi].destination,
-            date: card.querySelector('.g-date').value,
-            time: card.querySelector('.g-time').value,
-        };
-        if (saveBody) { payload.body = card.querySelector('.g-body').value; payload.save_body = 1; }
+        const payload = {manifest_id: manifestId(), station: GROUPS[gi].station, destination: GROUPS[gi].destination,
+            date: card.querySelector('.g-date').value, time: card.querySelector('.g-time').value,
+            time_changed: pending.time, revision: GROUPS[gi].schedule_revision ?? 0};
+        if (pending.body) {payload.body = card.querySelector('.g-body').value; payload.save_body = 1;}
         const r = await api('group.save', payload);
-        setSaved(card, r && r.ok ? 'saved' : 'error');
-    }, 900);
+        if (!r.ok) {
+            setSaved(card, 'error');
+            card.querySelector('.g-saved').textContent = r.error || 'Не удалось сохранить. Повторите правку.';
+            return false;
+        }
+        if (pendingDrafts.get(gi) === pending) {pendingDrafts.delete(gi); setSaved(card, 'saved');}
+        if (r.groups) syncSavedGroupTimes(r.groups);
+        return true;
+    };
+    const result = draftSaveChain.then(operation);
+    draftSaveChain = result.catch(() => false);
+    return result;
+}
+async function flushNotificationDrafts() {
+    for (const gi of [...pendingDrafts.keys()]) if (!await persistNotificationDraft(gi)) return false;
+    return (await draftSaveChain) !== false && pendingDrafts.size === 0;
+}
+async function resetStationTime(gi) {
+    if (!await flushNotificationDrafts()) { alert('Сначала сохраните введённые правки.'); return; }
+    const g = GROUPS[gi];
+    const r = await api('schedule.override.reset', {manifest_id: manifestId(), station: g.station,
+        destination: g.destination, revision: g.schedule_revision});
+    if (!r.ok) {alert(r.error); return;}
+    await loadGroups(false);
 }
 
 function monitorChip(rec) {
@@ -1024,43 +1079,8 @@ async function checkGroupChannels(btn, gi) {
     }
 }
 
-async function gdsTimes(silent) {
-    const btn = document.getElementById('gdsBtn');
-    const info = document.getElementById('gdsInfo');
-    const badge = document.getElementById('gdsBadge');
-    if (btn) btn.disabled = true;
-    if (badge) { badge.className = 'badge warn'; badge.textContent = 'запрашиваю GDS…'; }
-    try {
-        const r = await api('gds.times', { manifest_id: manifestId(), refresh: 1 });
-        GDS_LOADED = true;
-        if (!r.ok) {
-            if (badge) { badge.className = 'badge err'; badge.textContent = 'GDS: не найдено'; }
-            info.innerHTML = '<div class="alert warn">' + esc(r.error) + ' Время в группах заполните вручную.</div>';
-            return;
-        }
-        if (r.from_cache) {
-            if (badge) { badge.className = 'badge warn'; badge.textContent = '⚠️ времена из сохранённых (GDS не ответил)'; }
-            let html = `<div class="alert warn"><b>⚠️ GDS не ответил — времена взяты из сохранённого расписания`
-                + (r.cached_at ? ' от ' + esc(r.cached_at.slice(0, 16).replace('T', ' ')) : '') + '.</b> Обязательно проверьте время по станциям перед отправкой!';
-            if (r.gds_error) html += `<br><span class="small">Причина: ${esc(r.gds_error)}</span>`;
-            if (r.kept_from_file) html += `<br>Оставлено из ведомости (в ГДС нет): ${r.kept_from_file}.`;
-            if (r.unmatched.length) html += `<br>Без времени: ${r.unmatched.map(esc).join(', ')} — заполните вручную.`;
-            info.innerHTML = html + '</div>';
-        } else {
-            if (badge) {
-                badge.className = r.statement_match ? 'badge ok' : 'badge warn';
-                badge.textContent = r.statement_match ? 'времена из GDS ✓' : 'GDS: номер ведомости не совпал';
-            }
-            let html = `<div class="alert ${r.statement_match ? 'ok' : 'warn'}">Рейс найден, времена обновлены из ГДС для ${r.updated} групп.`
-                + (r.statement_match ? '' : ' <b>Номер ведомости НЕ совпадает — проверьте рейс!</b>');
-            if (r.kept_from_file) html += `<br>Оставлено из ведомости (в ГДС нет): ${r.kept_from_file}.`;
-            if (r.unmatched.length) html += `<br>Без времени остались: ${r.unmatched.map(esc).join(', ')} — заполните вручную.`;
-            info.innerHTML = html + '</div>';
-        }
-        await loadGroups(false);
-    } finally {
-        if (btn) btn.disabled = false;
-    }
+async function gdsTimes() {
+    location.href = '/?p=schedules&manifest_id=' + manifestId();
 }
 
 async function resetToGlobal(btn, gi) {
@@ -1096,6 +1116,10 @@ async function addGroupRecipient(btn, gi) {
 }
 
 async function sendGroup(btn, gi, silent = false) {
+    if (!await flushNotificationDrafts()) {
+        btn.closest('.gcard').querySelector('.g-state').textContent = 'Отправка остановлена: сначала сохраните правки.';
+        return {ok: false, failed: 1};
+    }
     const card = btn.closest('.gcard');
     const ids = [...card.querySelectorAll('.g-cb:checked')].map(c => +c.value);
     const state = card.querySelector('.g-state');
@@ -1123,7 +1147,7 @@ async function sendGroup(btn, gi, silent = false) {
             queue_mode: 1,
             emergency: document.getElementById('notificationEmergency')?.checked ? 1 : 0,
         });
-        if (!r.ok) { state.innerHTML = '<span class="badge err">' + esc(r.error) + '</span>'; return r; }
+        if (!r.ok) { state.innerHTML = '<span class="badge err">' + esc(r.error) + '</span>'; return {...r, failed: ids.length}; }
         if (r.queued) {
             state.innerHTML = `<span class="badge ok">поставлено в очередь: ${r.deliveries}</span>`;
             if (!silent) loadCampaignOverview(true);
@@ -1142,6 +1166,7 @@ async function sendGroup(btn, gi, silent = false) {
 }
 
 async function sendAllGroups(btn) {
+    if (!await flushNotificationDrafts()) { alert('Не все правки сохранены. Отправка остановлена.'); return; }
     const valid = manifestRecipients().filter(x => x.valid).length;
     const routeProblems = preparationIssues().filter(x => x.level === 'err' && x.type === 'route').length;
     if (routeProblems) { alert('Сначала исправьте критичные данные в блоке «Требует внимания».'); return; }

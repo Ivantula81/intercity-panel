@@ -111,13 +111,14 @@ $primaryCh = Channels::primary();
                 <div><span>Доп. информация <span class="muted" style="text-transform:none">(в сообщение, если заполнено)</span></span><input class="cell" data-f="extra_info" value="<?= e($selected['extra_info']) ?>" placeholder="напр. «при себе паспорт»"></div>
             </div>
             <div class="row mt" style="gap:14px">
-                <button class="btn ghost sm" onclick="gdsTimes()" id="gdsBtn"><?= icon('chart') ?> Обновить времена из GDS</button>
+                <a class="btn ghost sm" href="/?p=schedules&amp;manifest_id=<?= (int) $selected['id'] ?>" id="gdsBtn"><?= icon('chart') ?> Проверить расписание / ГДС</a>
                 <label class="row small muted" style="gap:7px;margin:0"><input type="checkbox" id="attachPhoto"> приложить фото автобуса</label>
                 <label class="row small muted" style="gap:7px;margin:0"><input type="checkbox" id="driverPhoneOn" checked onchange="refreshAllPreviews()"> указать телефон водителя</label>
                 <label class="row small muted" style="gap:7px;margin:0"><input type="checkbox" id="notificationEmergency"> экстренная отправка (обойти рабочее время)</label>
                 <span class="small muted" id="busPhotoHint"></span>
             </div>
             <div id="gdsInfo" class="mt"></div>
+            <div id="notificationSchedule" class="mt" data-manifest-id="<?= (int) $selected['id'] ?>" aria-live="polite"></div>
             <div class="send-channel-panel mt">
                 <div><b>Каналы отправки</b><div class="muted small">Отмеченные каналы работают параллельно. По умолчанию выбран основной — <?= e($primaryLabel) ?>.</div></div>
                 <div id="sendChannels" class="send-channel-choices"><span class="muted small">проверяю подключения…</span></div>

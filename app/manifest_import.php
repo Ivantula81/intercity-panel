@@ -230,6 +230,13 @@ function import_manifest_csv(array $file, ?array $parsedData = null): int
             }
         }
         $id = import_manifest_csv_raw($file, $parsedData);
+        require_once PANEL_ROOT . '/lib/RouteScheduleStore.php';
+        $scheduleManifest = $pdo->prepare('SELECT * FROM manifests WHERE id=?');
+        $scheduleManifest->execute([$id]);
+        $scheduleManifestRow = $scheduleManifest->fetch();
+        (new RouteScheduleStore($pdo))->initialize($scheduleManifestRow,
+            function_exists('audit_actor_id') ? audit_actor_id() : null, $parsedData['trip']['planned_start'] ?? null,
+            $scheduleManifestRow['departure_at'] ? RouteSchedule::fromPassengers($parsedData['passengers'], substr($scheduleManifestRow['departure_at'], 0, 10)) : null);
         if ($locked) { $pdo->query('SELECT RELEASE_LOCK(' . $pdo->quote($lockName) . ')'); $locked = false; }
         if ($ownsTransaction) $pdo->commit();
         return $id;

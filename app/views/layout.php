@@ -63,9 +63,10 @@ $sheetKeys = ['sales', 'reporting', 'contacts', 'broadcast', 'catalogs', 'logs',
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="/assets/icons/app-icon.svg">
 <link rel="stylesheet" href="/assets/panel.css?v=<?= @filemtime(PANEL_ROOT . '/public/assets/panel.css') ?>">
+<?php if (($_GET['p'] ?? '') === 'schedules'): ?><link rel="stylesheet" href="/assets/schedules.css?v=<?= @filemtime(PANEL_ROOT . '/public/assets/schedules.css') ?>"><?php endif; ?>
 <script>window.CSRF = <?= json_encode(csrf_token()) ?>;</script>
 </head>
-<body data-page="<?= e($page) ?>">
+<body data-page="<?= e($page) ?>" class="<?= ($_GET['p'] ?? '') === 'schedules' ? 'schedule-page' : '' ?>">
 
 <aside class="sidebar">
     <a href="/" class="brand"><span class="logo">ИТ</span><span class="brand-name">Интерсити&nbsp;Тур</span></a>
@@ -114,6 +115,7 @@ $sheetKeys = ['sales', 'reporting', 'contacts', 'broadcast', 'catalogs', 'logs',
 </div>
 
 <script src="/assets/panel.js?v=<?= @filemtime(PANEL_ROOT . '/public/assets/panel.js') ?>"></script>
+<script src="/assets/schedules.js?v=<?= @filemtime(PANEL_ROOT . '/public/assets/schedules.js') ?>"></script>
 <script>if('serviceWorker' in navigator){addEventListener('load',()=>navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{}));}</script>
 </body>
 </html>

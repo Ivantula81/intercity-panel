@@ -250,6 +250,11 @@ switch ($page) {
         view('boarding', ['manifest' => $manifest, 'passengers' => $passengers]);
         break;
 
+    case 'schedules':
+        view('layout', ['title' => 'Расписание', 'page' => 'catalogs',
+            'content' => fn() => view('schedules')]);
+        break;
+
     case 'notifications':
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['manifest'])) {
             csrf_check();
