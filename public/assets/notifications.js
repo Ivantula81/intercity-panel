@@ -30,13 +30,30 @@ function ncDeliveryError(channel,error) {
  if(/no[_ ]?account/i.test(error))return 'Нет аккаунта в '+name;
  return name+': '+error;
 }
+function ncUndeliveredText(recipients) {
+ const clean=value=>String(value||'').replace(/\s+/g,' ').trim();
+ const rows=recipients.filter(p=>!p.covered).map(p=>{
+  const phone=clean(p.phone), number=phone.replace(/[\s()\-]/g,'');
+  const errors=Object.entries(p.channel_states||{}).filter(([,x])=>x.error).map(([ch,x])=>ncDeliveryError(ch,clean(x.error)));
+  const reason=!phone?'Телефон не указан':!/^\+?[1-9]\d{9,14}$/.test(number)?'Некорректный телефон':errors.join('; ')||(p.state==='skipped'?'Отправка пропущена':p.state==='failed'?'Ошибка отправки':'Не отправлено');
+  return clean(p.name||'Пассажир')+' · '+(phone||'телефон не указан')+' · '+clean(p.from_stop||'Не указано')+' → '+clean(p.to_stop||'Не указано')+' (причина: '+reason+')';
+ });
+ return rows.length?'Не доставлено\n\n'+rows.join('\n\n'):'';
+}
+async function ncCopyUndelivered(button) {
+ const status=button.parentElement.querySelector('[role="status"]');
+ const text=ncUndeliveredText(NC.overview?.recipients||[]);
+ if(!text){status.textContent='Нет неуведомлённых пассажиров';return;}
+ try {await navigator.clipboard.writeText(text);status.textContent='Список скопирован — можно вставить в мессенджер';}
+ catch {status.textContent='Не удалось скопировать автоматически';ncDialog('<h2>Не доставлено</h2><p>Выделите и скопируйте текст вручную.</p><textarea readonly aria-label="Список неуведомлённых" style="width:100%;min-height:260px">'+esc(text)+'</textarea><footer><button class="btn" onclick="document.getElementById(\'ncDialog\').close()">Закрыть</button></footer>');}
+}
 function ncPerson(p) {
  const errors=Object.entries(p.channel_states||{}).filter(([,x])=>x.error).map(([ch,x])=>ncDeliveryError(ch,x.error)).join('; ');
  return `<article class="nc-recipient"><div><b>${esc(p.name||'Пассажир')}</b>${ncPhone(p.phone)}<small>${esc(p.from_stop)} → ${esc(p.to_stop)}</small><small>${esc(errors)}</small>${p.call?`<small>Уведомил(а): ${esc(p.call.actor_name)} · ${esc(p.call.created_at)} МСК</small>`:''}</div><div>${ncBadge(p.state)} ${!p.covered?`<button class="btn ghost sm" onclick="ncCall(${p.id})">Уведомлён звонком</button>`:''}</div></article>`;
 }
 function ncRenderOutcome(r){const s=r.summary,box=document.getElementById('ncOutcome');if(!box)return;const unresolved=r.recipients.filter(p=>!p.covered);box.innerHTML=`<h2>Результат уведомлений</h2>${ncBadge(s.state)}<div class="nc-metrics"><div><b>${s.delivered}</b><span>доставлено · из них ${s.read} прочитано</span></div><div><b>${s.queued}</b><span>ожидают в панели</span></div><div><b>${s.accepted}</b><span>передано провайдеру</span></div><div><b>${s.attention}</b><span>не уведомлены</span></div></div><p class="small muted">${s.passengers} пассажиров · ${s.recipients} получателей · ${s.attempts} попыток по каналам · ${s.called} уведомлены звонком</p>
  ${!r.launched?'<p>Уведомления ещё не запускались.</p>':''}
- <details><summary>Не уведомлены · ${s.attention}</summary>${unresolved.map(ncPerson).join('')||'<p>Нет неуведомлённых получателей.</p>'}</details><details class="mt"><summary>Все пассажиры и статусы</summary>${r.recipients.map(ncPerson).join('')}</details><div class="nc-run-action"><button class="btn" onclick="ncTab('prepare')">Подготовить / дослать</button><button class="btn ghost" onclick="ncTab('history')">История запусков</button></div>`;}
+ <details><summary>Не уведомлены · ${s.attention}</summary>${unresolved.length?'<div class="nc-run-action"><button type="button" class="btn ghost" onclick="ncCopyUndelivered(this)">Скопировать всех</button><span class="small muted" role="status"></span></div>':''}${unresolved.map(ncPerson).join('')||'<p>Нет неуведомлённых получателей.</p>'}</details><details class="mt"><summary>Все пассажиры и статусы</summary>${r.recipients.map(ncPerson).join('')}</details><div class="nc-run-action"><button class="btn" onclick="ncTab('prepare')">Подготовить / дослать</button><button class="btn ghost" onclick="ncTab('history')">История запусков</button></div>`;}
 async function ncCall(id){if(!confirm('Подтвердить, что пассажир уведомлён звонком?'))return;try{await ncApi('notification.call',{manifest_id:manifestId(),passenger_id:id});await ncOverview();}catch(e){alert(e.message);}}
 async function ncHistory(page=1){const box=document.getElementById('ncHistoryItems');if(!box)return;try{const r=await ncApi('notification.history',{manifest_id:manifestId(),date:document.getElementById('ncHistoryDate').value,page});box.innerHTML=r.runs.map(run=>`<article class="nc-history-row"><b>${esc(run.created_at)} · ${esc({reminder:'Напоминание',repeat:'Повтор',change:'Изменение'}[run.purpose]||run.purpose)}</b><p>${esc(run.actor_name)}</p><button class="btn ghost sm" onclick="ncDetail(${run.id})">Получатели, тексты и статусы</button></article>`).join('')||'<p>Запусков за выбранный период нет.</p>';if(r.legacy.length)box.innerHTML+=`<details class="mt"><summary>Исторические сообщения · без объединения в запуски</summary>${r.legacy.map(m=>`<article class="nc-history-row"><b>${esc(m.created_at)} · ${esc(m.channel)}</b><p>${esc(m.recipient)}</p><pre>${esc(m.body)}</pre></article>`).join('')}</details>`;box.innerHTML+=`<div class="nc-pagination"><button class="btn ghost" ${page===1?'disabled':''} onclick="ncHistory(${page-1})">Назад</button><span>Страница ${page}</span><button class="btn ghost" ${r.runs.length<20&&r.legacy.length<20?'disabled':''} onclick="ncHistory(${page+1})">Далее</button></div>`;}catch(e){box.textContent=e.message;}}
 function ncDialog(html){document.getElementById('ncDialog')?.remove();const d=document.createElement('dialog');d.id='ncDialog';d.className='nc-dialog';d.innerHTML=html;document.body.appendChild(d);d.addEventListener('close',()=>d.remove());d.showModal();return d;}
