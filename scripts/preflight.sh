@@ -18,6 +18,7 @@ node --check public/assets/notifications.js
 echo "[4/4] Regression tests"
 php tests/notification_groups_test.php
 php tests/notification_test.php
+php tests/notification_correction_test.php
 php tests/route_schedule_test.php
 php tests/conversations_test.php
 php tests/sales_parser_test.php
