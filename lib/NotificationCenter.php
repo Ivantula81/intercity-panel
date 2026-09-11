@@ -49,6 +49,8 @@ final class NotificationCenter
         $active=$this->rows("SELECT COUNT(*) n FROM broadcast_deliveries d JOIN broadcast_jobs j ON j.id=d.job_id WHERE j.manifest_id=? AND d.status IN ('queued','sending','accepted')",[$mid])[0]['n'];
         $launched=(bool)$attempts || (bool)$calls || (bool)$this->rows('SELECT id FROM notification_runs WHERE manifest_id=? LIMIT 1',[$mid]);
         $summary['state']=!$launched?'new':($active?'running':($summary['attention'] || !$summary['recipients'] ? 'attention':'done'));
+        $summary['lifecycle']=!$launched?'new':($active?'running':'completed');
+        $summary['all_notified']=$summary['recipients']>0 && $summary['delivered']+$summary['called']===$summary['recipients'];
         return ['summary'=>$summary,'recipients'=>$people,'launched'=>$launched];
     }
     public function list(array $filter): array {
@@ -56,7 +58,7 @@ final class NotificationCenter
         if (!empty($filter['date'])) { self::date($filter['date']); $where[]='departure_at>=? AND departure_at<?';$args[]=$filter['date'].' 00:00:00';$args[]=date('Y-m-d',strtotime($filter['date'].' +1 day')).' 00:00:00'; }
         if (trim($filter['search']??'')!=='') {$where[]='trip_number LIKE ?';$args[]='%'.trim($filter['search']).'%';}
         $rows=$this->rows('SELECT id,trip_number,route,departure_at,created_at FROM manifests'.($where?' WHERE '.implode(' AND ',$where):'').' ORDER BY departure_at DESC,id DESC',$args);
-        $out=[]; foreach($rows as $m) {$m['summary']=$this->overview((int)$m['id'])['summary'];if(empty($filter['state'])||$filter['state']===$m['summary']['state'])$out[]=$m;}
+        $out=[]; foreach($rows as $m) {$m['summary']=$this->overview((int)$m['id'])['summary'];if(empty($filter['state'])||$filter['state']===$m['summary']['lifecycle']||$filter['state']===$m['summary']['state'])$out[]=$m;}
         $page=max(1,(int)($filter['page']??1));return ['items'=>array_slice($out,($page-1)*20,20),'total'=>count($out),'page'=>$page];
     }
     public static function date(string $date): void {
