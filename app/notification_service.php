@@ -16,6 +16,7 @@ function notification_prepare(array $request): array {
     foreach((array)($request['groups']??[]) as $selection){
         $key=(string)($selection['key']??'');$g=$byKey[$key]??null;if(!$g)throw new InvalidArgumentException('Направление не принадлежит ведомости.');
         $ids=array_values(array_unique(array_map('intval',(array)($selection['ids']??[]))));if(!$ids)continue;
+        if(!array_key_exists('revision',$selection)||(int)$selection['revision']!==(int)($g['schedule_revision']??0))throw new DomainException('Расписание изменилось. Обновите ведомость перед отправкой.');
         if(($selection['date']??'')!==$g['date']||($selection['time']??'')!==$g['time'])throw new DomainException('Время изменилось или не сохранено. Обновите расписание.');
         $dt=DateTimeImmutable::createFromFormat('!d.m.Y H:i',$g['date'].' '.$g['time']);
         if(!$dt||$dt->format('d.m.Y H:i')!==$g['date'].' '.$g['time']||!empty($g['time_warning']))throw new InvalidArgumentException('Проверьте дату и время посадки: '.$g['station']);
