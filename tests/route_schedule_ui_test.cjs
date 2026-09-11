@@ -5,7 +5,7 @@ const path = require('node:path');
 (async () => {
     const browser = await chromium.launch({headless:true, ...(process.env.CHROME_PATH ? {executablePath:process.env.CHROME_PATH} : {})});
     try {
-        const page = await browser.newPage({viewport:{width:1360,height:1000}});
+        const page = await browser.newPage({viewport:{width:1360,height:1000},locale:'en-US'});
         const errors=[];
         page.on('pageerror', e=>errors.push(e.message));
         const base=process.env.SCHEDULE_TEST_URL || 'http://127.0.0.1:8137';
@@ -18,6 +18,19 @@ const path = require('node:path');
         assert.equal(await page.locator('tr[data-index]').count(),8);
         const city=()=>page.locator('tr[data-index]').filter({has:page.locator('[data-field="station"][value="Грушевка (Судак)"]')});
         assert.match(await city().innerText(),/совпадает со стартом/i);
+        const timeField = city().locator('[data-field="time"]');
+        assert.equal(await timeField.getAttribute('type'),'text');
+        for (const value of ['00:00','13:00','23:59']) {
+            await timeField.fill(value);
+            assert(await timeField.evaluate(el=>el.checkValidity()));
+        }
+        for (const value of ['24:00','13:60','1:00','']) {
+            await timeField.fill(value);
+            await page.locator('#scheduleSave').click();
+            assert.match(await page.locator('#scheduleMessage').innerText(),/24-часовом/);
+            assert.equal(await timeField.inputValue(),value);
+        }
+
         await city().locator('[data-field="time"]').fill('15:20'); // synthetic correction, not verified real time
         await page.locator('#scheduleGds').click();
         await page.getByText('Тестовый сбой ГДС: данные не изменены.',{exact:true}).waitFor();

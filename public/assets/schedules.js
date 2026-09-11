@@ -74,7 +74,7 @@
             <td data-label="Ведомость" class="schedule-source">${esc(clock(r.source))}</td>
             <td data-label="ГДС" class="schedule-source"><div>${esc(clock(r.gds))}</div>${r.gds?.arrival ? `<div class="muted small">Приб. ${esc(clock(r.gds.arrival))}</div>` : ''}
                 ${r.gds && (r.gds.time || r.gds.terminal) ? '<button class="btn ghost sm" type="button" data-command="take">Взять из ГДС</button>' : ''}</td>
-            <td data-label="Отправление"><div class="schedule-time-pair"><label class="f"><span class="sr-only">Время отправления</span><input aria-label="Время отправления ${esc(r.station)}" data-field="time" type="time" value="${esc(r.time)}" ${r.terminal ? 'disabled' : ''}></label>
+            <td data-label="Отправление"><div class="schedule-time-pair"><label class="f"><span class="sr-only">Время отправления</span><input aria-label="Время отправления ${esc(r.station)}" data-field="time" type="text" inputmode="text" placeholder="ЧЧ:ММ" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" title="Время в формате ЧЧ:ММ, от 00:00 до 23:59" required value="${esc(r.time)}" ${r.terminal ? 'disabled' : ''}></label>
                 <label class="f"><span class="sr-only">День от выезда</span><select data-field="day" aria-label="День отправления ${esc(r.station)}">${Array.from({length:31},(_,d)=>`<option value="${d}" ${Number(r.day) === d ? 'selected' : ''}>${d===0 ? 'В день выезда' : '+'+d+' '+(d===1 ? 'день' : d<5 ? 'дня' : 'дней')}</option>`).join('')}</select></label></div>
                 ${r.saved ? `<div class="schedule-saved-value">Сохранено ${esc(clock(r.saved))}</div>` : ''}
             </td>
@@ -168,6 +168,13 @@
     }
     async function save() {
         if (busy) return;
+        for (const input of editor().querySelectorAll('[data-field="time"]:not(:disabled)')) {
+            if (!input.checkValidity()) {
+                const details = input.closest('details'); if (details) details.open = true;
+                message('Укажите время в 24-часовом формате ЧЧ:ММ: от 00:00 до 23:59.', true);
+                input.reportValidity(); return;
+            }
+        }
         if (!document.getElementById('scheduleConfirmed').checked) { message('Отметьте «Расписание проверено».', true); return; }
         const c = model.context, s = model.schedule;
         lock(true);
