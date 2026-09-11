@@ -15,7 +15,7 @@
 <div id="ncTrips" aria-live="polite"></div></div>
 <?php return; endif; ?>
 <?php if ($selected): ?>
-<header class="nc-trip"><a href="/?p=notifications">← Рейсы по дням</a><h2>№<?= e($selected['trip_number']) ?> · <?= $selected['departure_at'] ? date('d.m.Y H:i',strtotime($selected['departure_at'])) : 'Дата не указана' ?></h2><p><?= e($selected['route']) ?></p></header>
+<header class="nc-trip" data-trip-number="<?= e($selected['trip_number']) ?>" data-trip-date="<?= $selected['departure_at'] ? date('d.m.Y',strtotime($selected['departure_at'])) : '' ?>"><a href="/?p=notifications">← Рейсы по дням</a><h2>№<?= e($selected['trip_number']) ?> · <?= $selected['departure_at'] ? date('d.m.Y H:i',strtotime($selected['departure_at'])) : 'Дата не указана' ?></h2><p><?= e($selected['route']) ?></p></header>
 <nav class="nc-tabs" aria-label="Разделы ведомости"><button type="button" data-nc-tab="prepare" onclick="ncTab('prepare')">Подготовка</button><button type="button" data-nc-tab="result" onclick="ncTab('result')">Результат</button><button type="button" data-nc-tab="history" onclick="ncTab('history')">История</button></nav>
 <div id="ncPrepare">
 <?php endif; ?>
