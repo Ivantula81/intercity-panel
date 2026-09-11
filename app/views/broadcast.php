@@ -7,10 +7,7 @@
     <div class="head-actions"><span id="channelStatus" class="badge muted">проверяю канал…</span></div>
 </div>
 
-<div class="card queue-monitor" id="providerQueue" aria-live="polite">
-    <div><h2>Очередь отправки</h2><div class="muted small">Green API принимает сообщения и отправляет их с настроенной паузой. Обновление каждые 10 секунд.</div></div>
-    <div id="providerQueueState" class="muted small">Проверяю…</div>
-</div>
+<?php require PANEL_ROOT . '/app/views/queue_monitor.php'; ?>
 
 <div class="split">
     <div class="card">
@@ -49,9 +46,9 @@
         <div class="row">
             <label class="small"><input type="checkbox" id="bEmergency"> Экстренная отправка (обойти рабочее время)</label>
             <button class="btn" id="bSend" onclick="sendBroadcast()"><?= icon('send') ?> Отправить рассылку</button>
-            <span class="muted small">уходит сразу всем выбранным, без пауз — скоростью управляете сами</span>
+            <span class="muted small">текстовые сообщения отправляются через общую очередь</span>
         </div>
         <div id="bResult" class="mt"></div>
     </div>
 </div>
-<script>document.addEventListener('DOMContentLoaded', () => { channelStatusBadge(); broadcastLoadChannels(); providerQueueLoad(); setInterval(providerQueueLoad, 10000); });</script>
+<script>document.addEventListener('DOMContentLoaded', () => { channelStatusBadge(); broadcastLoadChannels(); });</script>

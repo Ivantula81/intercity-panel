@@ -557,6 +557,11 @@ if (str_starts_with($action, 'schedule.') || $action === 'gds.times') {
     exit;
 }
 
+if (str_starts_with($action, 'notification.')) {
+    require PANEL_ROOT . '/app/notification_api.php';
+    exit;
+}
+
 switch ($action) {
 
     /* ── Пассажиры и ведомость ── */
@@ -966,6 +971,7 @@ switch ($action) {
         json_out(['ok' => false, 'error' => $res['error'] ?? 'Ошибка отправки.']);
 
     case 'campaign.send':
+        json_out(['ok'=>false,'error'=>'Обновите страницу: отправка перенесена в центр уведомлений.'],409);
         set_time_limit(0);
         $manifest = get_manifest((int) $body['manifest_id']);
         require_once PANEL_ROOT . '/lib/Channels.php';
@@ -1260,6 +1266,29 @@ switch ($action) {
         $unsub = 0; // исключаем отписавшихся («стоп»)
         $phones = array_values(array_filter($phones, function ($p) use (&$unsub) { if (is_unsubscribed($p)) { $unsub++; return false; } return true; }));
 
+        if ($imagePath === '' && !array_diff($channels, ['max','telegram','whatsapp'])) {
+            require_once PANEL_ROOT . '/app/broadcast_queue.php';
+            $deliveries = [];
+            foreach ($phones as $phone) foreach ($channels as $channel) {
+                $resolved = resolve_send_target($channel, $phone, false);
+                if (empty($resolved['ok']) && $channel === 'max') $resolved = ['ok'=>true,'target'=>preg_replace('/\D/','',$phone).'@c.us'];
+                if (empty($resolved['ok'])) continue;
+                $deliveries[] = ['channel'=>$channel,'recipient'=>$phone,'target'=>$resolved['target'],'body'=>$text];
+            }
+            if (!$deliveries) json_out(['ok'=>false,'error'=>'Нет доступных адресов для отправки.'],422);
+            $key = (string)($body['request_key'] ?? '');
+            if (!preg_match('/^[a-zA-Z0-9-]{16,80}$/',$key)) json_out(['ok'=>false,'error'=>'Обновите страницу перед отправкой.'],409);
+            try {
+                db()->beginTransaction();
+                $job = BroadcastQueue::enqueue('broadcast',0,['request_key'=>$key,'deliveries'=>$deliveries,'emergency'=>!empty($body['emergency'])],audit_actor_id());
+                if (empty($job['duplicate'])) BroadcastQueue::materializeDeliveries((int)$job['id'],$deliveries);
+                db()->commit();
+                json_out(['ok'=>true,'queued'=>true,'deliveries'=>count($deliveries),'job'=>$job]);
+            } catch (Throwable $e) {
+                if (db()->inTransaction()) db()->rollBack();
+                json_out(['ok'=>false,'error'=>'Не удалось сохранить рассылку. Повторите запрос.'],503);
+            }
+        }
         $sent = 0; $failed = 0; $errors = []; $batch = 0;
         foreach ($phones as $phone) {
             $batch++;

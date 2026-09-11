@@ -80,7 +80,7 @@ ADMIN_FALLBACK_PASSWORD=          # пусто = аварийный вход в�
 ## Развёртывание (с нуля)
 1. nginx + PHP-FPM 8.3 + MariaDB. Создать БД `panel` и пользователя `panel`.
 2. Код — в `/var/www/panel` (корень сайта nginx — `/var/www/panel/public`).
-3. Применить схемы **по порядку**: `schema.sql`, затем `schema2.sql` … `schema26.sql`, плюс `seed_catalogs.sql`.
+3. Применить схемы **по порядку**: `schema.sql`, затем `schema2.sql` … `schema29.sql`, плюс `seed_catalogs.sql`. `schema29.sql` добавляет историю запусков центра уведомлений; миграция аддитивная.
 4. Заполнить `/etc/panel.env` (см. выше).
 5. Поднять Gotenberg (Docker) на `:3001` для генерации PDF.
 

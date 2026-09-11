@@ -65,6 +65,7 @@ $sheetKeys = ['sales', 'reporting', 'contacts', 'broadcast', 'catalogs', 'logs',
 <link rel="stylesheet" href="/assets/panel.css?v=<?= @filemtime(PANEL_ROOT . '/public/assets/panel.css') ?>">
 <?php if (($_GET['p'] ?? '') === 'schedules'): ?><link rel="stylesheet" href="/assets/schedules.css?v=<?= @filemtime(PANEL_ROOT . '/public/assets/schedules.css') ?>"><?php endif; ?>
 <script>window.CSRF = <?= json_encode(csrf_token()) ?>;</script>
+<?php if (in_array($page, ['notifications','broadcast'], true)): ?><link rel="stylesheet" href="/assets/notifications.css?v=<?= filemtime(PANEL_ROOT.'/public/assets/notifications.css') ?>"><?php endif; ?>
 </head>
 <body data-page="<?= e($page) ?>" class="<?= ($_GET['p'] ?? '') === 'schedules' ? 'schedule-page' : '' ?>">
 
@@ -116,6 +117,7 @@ $sheetKeys = ['sales', 'reporting', 'contacts', 'broadcast', 'catalogs', 'logs',
 
 <script src="/assets/panel.js?v=<?= @filemtime(PANEL_ROOT . '/public/assets/panel.js') ?>"></script>
 <script src="/assets/schedules.js?v=<?= @filemtime(PANEL_ROOT . '/public/assets/schedules.js') ?>"></script>
+<?php if (in_array($page, ['notifications','broadcast'], true)): ?><script src="/assets/notifications.js?v=<?= filemtime(PANEL_ROOT.'/public/assets/notifications.js') ?>"></script><?php endif; ?>
 <script>if('serviceWorker' in navigator){addEventListener('load',()=>navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{}));}</script>
 </body>
 </html>

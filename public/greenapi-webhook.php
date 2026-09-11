@@ -43,7 +43,7 @@ switch ($type) {
             $dst->execute([$waId, $messenger]);
             $delivery = $dst->fetch();
             if ($delivery && in_array($status, ['delivered','read'], true)) {
-                db()->prepare("UPDATE broadcast_deliveries SET status=?, delivered_at=COALESCE(delivered_at,NOW()), read_at=IF(?='read',COALESCE(read_at,NOW()),read_at) WHERE id=?")
+                db()->prepare("UPDATE broadcast_deliveries SET status=IF(read_at IS NOT NULL,'read',?), delivered_at=COALESCE(delivered_at,NOW()), read_at=IF(?='read',COALESCE(read_at,NOW()),read_at) WHERE id=?")
                     ->execute([$status, $status, (int)$delivery['id']]);
                 $payload = json_decode((string)$delivery['payload_json'], true) ?: [];
                 $body = (string)(($payload['bodies'] ?? [])[$delivery['body_hash']] ?? '');
@@ -57,7 +57,7 @@ switch ($type) {
                     $mid=(int)db()->lastInsertId();
                     try { require_once PANEL_ROOT.'/app/conversations.php'; $account=$messenger==='telegram'?'greenapi_tg':'greenapi'; $cid=conversation_ensure(['channel'=>$messenger,'account'=>$account,'external_chat_id'=>(string)($payload['targets'][$delivery['body_hash']] ?? $delivery['recipient']),'phone'=>(string)$delivery['recipient'],'name'=>$name,'manifest_id'=>(int)$delivery['manifest_id']]); conversation_append_legacy('messages',$mid,$cid); } catch(Throwable $e) {}
                 }
-            } elseif ($delivery && in_array($status, ['failed','noaccount','notinwhitelist'], true)) {
+            } elseif ($delivery && empty($delivery['delivered_at']) && empty($delivery['read_at']) && in_array($status, ['failed','noaccount','notinwhitelist'], true)) {
                 $description = trim((string)($p['description'] ?? ''));
                 $reason = 'Green API: ' . $status . ($description !== '' ? ' — ' . $description : '');
                 // Лимит проверки контактов временный: возвращаем доставку
@@ -78,7 +78,7 @@ switch ($type) {
             } elseif ($status === 'read') {
                 db()->prepare('UPDATE messages SET delivered_at = COALESCE(delivered_at, NOW()), read_at = COALESCE(read_at, NOW()) WHERE wa_id = ? AND channel=?')->execute([$waId,$messenger]);
             } elseif (in_array($status, ['failed', 'noaccount', 'notinwhitelist'], true)) {
-                db()->prepare("UPDATE messages SET status='failed', error=? WHERE wa_id = ? AND channel=? AND status<>'failed'")->execute(['Green API: ' . $status, $waId,$messenger]);
+                db()->prepare("UPDATE messages SET status='failed', error=? WHERE wa_id = ? AND channel=? AND status<>'failed' AND delivered_at IS NULL AND read_at IS NULL")->execute(['Green API: ' . $status, $waId,$messenger]);
             }
             try {
                 require_once PANEL_ROOT . '/app/conversations.php';
