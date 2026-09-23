@@ -1,0 +1,231 @@
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=Inter:wght@400;500;600&display=swap">
+<style>
+#terra-desk-v2{--td-bg:light-dark(#fff,#1c2028);--td-soft:light-dark(#f5f6f8,#222832);--td-side:light-dark(#f0f2f5,#191e26);--td-text:light-dark(#202a3b,#e8edf6);--td-muted:light-dark(#626d7e,#a6b2c5);--td-line:light-dark(#dce1e8,#384252);--td-blue:light-dark(#2854a0,#a1c3ff);--td-tint:light-dark(#e9effa,#283950);--td-good:light-dark(#26714f,#86d8ae);--td-warn:light-dark(#865319,#f4c47e);--td-error:light-dark(#ab3543,#ffadb5);--td-family:Inter,system-ui,sans-serif;--td-pad:14px;--td-type:15px;--td-control:40px;font-family:var(--td-family);font-size:var(--td-type);line-height:1.5;color:var(--td-text);background:var(--td-bg);border:1px solid var(--td-line);border-radius:12px;overflow:clip;width:100%;text-align:left}
+#terra-desk-v2 *{box-sizing:border-box}#terra-desk-v2 [hidden]{display:none!important}
+#terra-desk-v2 button,#terra-desk-v2 input,#terra-desk-v2 select,#terra-desk-v2 textarea{font:inherit;color:inherit}#terra-desk-v2 button{cursor:pointer}#terra-desk-v2 button:disabled{cursor:default;opacity:.6}#terra-desk-v2 button:active:not(:disabled){filter:brightness(.96)}
+#terra-desk-v2 h2,#terra-desk-v2 h3,#terra-desk-v2 p{margin:0}#terra-desk-v2 h2{font-size:26px;line-height:1.25;font-weight:600;letter-spacing:-.025em}#terra-desk-v2 h3{font-size:16px;font-weight:600;letter-spacing:-.01em}#terra-desk-v2 small{font-size:13px;color:var(--td-muted)}#terra-desk-v2 strong{font-weight:600}
+#terra-desk-v2 .td-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:16px 20px;border-bottom:1px solid var(--td-line)}#terra-desk-v2 .td-brand{font-weight:600;display:flex;align-items:center;gap:9px;letter-spacing:-.02em}#terra-desk-v2 .td-logo{width:28px;height:28px;display:grid;place-items:center;background:var(--td-tint);color:var(--td-blue);border-radius:8px}#terra-desk-v2 .td-demo{font-size:12px;color:var(--td-muted)}
+#terra-desk-v2 .td-shell{display:grid;grid-template-columns:168px minmax(0,1fr)}#terra-desk-v2 .td-nav{padding:18px 10px;background:var(--td-side);border-right:1px solid var(--td-line);display:flex;flex-direction:column;gap:5px}#terra-desk-v2 .td-nav button{display:flex;align-items:center;gap:10px;text-align:left;border:0;background:transparent;border-radius:7px;padding:10px;min-height:42px;font-size:14px}#terra-desk-v2 .td-nav button[aria-current=page]{background:var(--td-bg);color:var(--td-blue);font-weight:600}#terra-desk-v2 .td-nav button:hover{background:var(--td-bg)}#terra-desk-v2 .td-nav-label{font-size:12px;color:var(--td-muted);padding:22px 10px 5px}#terra-desk-v2 .td-nav-bottom{margin-top:auto;padding:28px 10px 4px;font-size:12px;color:var(--td-muted)}
+#terra-desk-v2 .td-main{padding:26px;min-width:0;min-height:580px}#terra-desk-v2 .td-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:25px}#terra-desk-v2 .td-sub{color:var(--td-muted);font-size:13px;margin-top:7px}#terra-desk-v2 .td-kicker{color:var(--td-muted);font-size:12px;margin-bottom:7px;letter-spacing:.025em}
+#terra-desk-v2 .td-button{border:1px solid var(--td-line);background:var(--td-bg);border-radius:7px;padding:8px 12px;min-height:var(--td-control);display:inline-flex;align-items:center;justify-content:center;gap:7px;font-size:13px;text-decoration:none}#terra-desk-v2 .td-primary{background:var(--td-blue);border-color:transparent;color:var(--td-bg)}#terra-desk-v2 .td-link{color:var(--td-blue);border:0;background:transparent;padding:6px 0;text-align:left;min-height:32px;font-size:13px}#terra-desk-v2 .td-button[aria-pressed=true]{background:var(--td-tint);color:var(--td-blue);border-color:transparent}
+#terra-desk-v2 .td-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}#terra-desk-v2 .td-input{padding:8px 11px;border:1px solid var(--td-line);border-radius:7px;background:var(--td-bg);min-width:0;min-height:var(--td-control);font-size:14px}#terra-desk-v2 #td-search{flex:1;min-width:130px}#terra-desk-v2 .td-section{margin-top:25px}#terra-desk-v2 .td-section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+#terra-desk-v2 .td-task{display:grid;grid-template-columns:6px minmax(0,1fr) auto;gap:16px;align-items:center;padding:18px 0;border-bottom:1px solid var(--td-line)}#terra-desk-v2 .td-task-marker{width:6px;height:30px;border-radius:4px;background:var(--td-line)}#terra-desk-v2 .td-task-marker[data-tone=warn]{background:var(--td-warn)}#terra-desk-v2 .td-task small{display:block;margin-top:4px}#terra-desk-v2 .td-task-title{font-weight:500}
+#terra-desk-v2 .td-resume{display:flex;align-items:center;justify-content:space-between;gap:15px;background:var(--td-tint);padding:17px;border-radius:9px;margin-top:26px}#terra-desk-v2 .td-resume small{display:block;margin-top:4px}#terra-desk-v2 .td-status{display:inline-flex;align-items:center;gap:6px;font-size:13px}#terra-desk-v2 .td-status[data-tone=warn]{color:var(--td-warn)}#terra-desk-v2 .td-status[data-tone=good]{color:var(--td-good)}#terra-desk-v2 .td-dot{width:6px;height:6px;flex-shrink:0;border-radius:50%;background:currentColor}
+#terra-desk-v2 .td-table{border-collapse:collapse;width:100%;table-layout:fixed}#terra-desk-v2 .td-table th{font-weight:500;color:var(--td-muted);font-size:12px;text-align:left;padding:10px 8px;border-bottom:1px solid var(--td-line)}#terra-desk-v2 .td-table td{padding:var(--td-pad) 8px;border-bottom:1px solid var(--td-line);vertical-align:middle;overflow-wrap:anywhere}#terra-desk-v2 .td-table tbody tr:hover{background:var(--td-soft)}#terra-desk-v2 .td-table small{display:block;margin-top:4px}#terra-desk-v2 .td-table .td-route{color:var(--td-text);border:0;background:transparent;text-align:left;padding:0;min-height:32px;font-weight:500}#terra-desk-v2 .td-table .td-route:hover{color:var(--td-blue)}#terra-desk-v2 .td-num{font-variant-numeric:tabular-nums}#terra-desk-v2 .td-right{text-align:right!important}#terra-desk-v2 .td-empty{padding:28px 0;color:var(--td-muted);font-size:14px}
+#terra-desk-v2 .td-breadcrumb{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px;font-size:13px;color:var(--td-muted)}#terra-desk-v2 .td-tabs{display:flex;gap:18px;flex-wrap:wrap;border-bottom:1px solid var(--td-line);margin-bottom:22px}#terra-desk-v2 .td-tabs button{border:0;border-bottom:2px solid transparent;padding:0 0 12px;min-height:36px;background:transparent;color:var(--td-muted);font-size:14px}#terra-desk-v2 .td-tabs button[aria-pressed=true]{color:var(--td-blue);border-color:var(--td-blue)}
+#terra-desk-v2 .td-two-col{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:26px}#terra-desk-v2 .td-facts{margin:0}#terra-desk-v2 .td-facts div{padding:11px 0;border-bottom:1px solid var(--td-line)}#terra-desk-v2 .td-facts dt{font-size:12px;color:var(--td-muted);margin-bottom:4px}#terra-desk-v2 .td-facts dd{margin:0;font-size:14px}#terra-desk-v2 .td-label{display:block;font-size:13px;font-weight:500;margin-bottom:8px}#terra-desk-v2 textarea{width:100%;min-height:112px;resize:vertical;background:var(--td-bg);border:1px solid var(--td-line);border-radius:8px;padding:11px;line-height:1.6;font-size:14px}#terra-desk-v2 .td-field-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:10px}#terra-desk-v2 .td-field-state{font-size:12px;color:var(--td-muted)}#terra-desk-v2 .td-field-state[data-error=true]{color:var(--td-error)}#terra-desk-v2 .td-notice{background:var(--td-soft);padding:14px 16px;border-radius:8px;font-size:13px;margin-top:18px}#terra-desk-v2 .td-notice strong{display:block;margin-bottom:5px}#terra-desk-v2 .td-checkline{display:flex;align-items:center;gap:8px;padding:11px 0;border-bottom:1px solid var(--td-line);font-size:14px}#terra-desk-v2 .td-checkline small{margin-left:auto}#terra-desk-v2 .td-checkline input{width:17px;height:17px;accent-color:var(--td-blue)}
+#terra-desk-v2 .td-timeline{list-style:none;padding:0;margin:0}#terra-desk-v2 .td-timeline li{padding:13px 0;border-bottom:1px solid var(--td-line);font-size:14px}#terra-desk-v2 .td-timeline small{display:block;margin-top:4px}
+#terra-desk-v2 .td-inbox{display:grid;grid-template-columns:210px minmax(0,1fr);border:1px solid var(--td-line);border-radius:9px;overflow:clip}#terra-desk-v2 .td-threads{background:var(--td-soft);border-right:1px solid var(--td-line)}#terra-desk-v2 .td-thread{display:block;width:100%;text-align:left;padding:var(--td-pad);border:0;border-bottom:1px solid var(--td-line);background:transparent;font-size:14px}#terra-desk-v2 .td-thread[aria-pressed=true]{background:var(--td-tint)}#terra-desk-v2 .td-thread small{display:block;margin-top:5px;font-size:12px}#terra-desk-v2 .td-draft-tag{color:var(--td-blue)}#terra-desk-v2 .td-conversation{min-width:0;padding:20px}#terra-desk-v2 .td-message{background:var(--td-soft);border-radius:2px 10px 10px;padding:13px 15px;margin:23px 0;max-width:370px;font-size:14px}#terra-desk-v2 .td-preview{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;padding:14px;background:var(--td-tint);border-radius:8px;margin-top:18px}
+#terra-desk-v2 .td-summary{background:var(--td-soft);padding:19px;border-radius:9px}#terra-desk-v2 .td-money{display:flex;justify-content:space-between;gap:16px;padding:9px 0;font-size:14px;font-variant-numeric:tabular-nums}#terra-desk-v2 .td-money.total{border-top:1px solid var(--td-line);margin-top:8px;padding-top:15px;font-weight:600;font-size:17px}#terra-desk-v2 .td-pill{padding:4px 9px;background:var(--td-soft);border-radius:5px;font-size:12px;color:var(--td-muted)}#terra-desk-v2 .td-footer{border-top:1px solid var(--td-line);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:12px 18px;font-size:12px;color:var(--td-muted)}#terra-desk-v2 .td-footer button{font-size:12px;min-height:28px}#terra-desk-v2 .td-storage-warning{color:var(--td-warn)}
+@media(max-width:740px){#terra-desk-v2 .td-shell{grid-template-columns:1fr}#terra-desk-v2 .td-nav{flex-direction:row;flex-wrap:wrap;padding:8px;border-right:0;border-bottom:1px solid var(--td-line)}#terra-desk-v2 .td-nav button{flex:1;justify-content:center;padding:9px 6px;min-width:105px}#terra-desk-v2 .td-nav-label,#terra-desk-v2 .td-nav-bottom,#terra-desk-v2 .td-nav .td-secondary-nav{display:none}#terra-desk-v2 .td-main{padding:20px;min-height:460px}#terra-desk-v2 .td-two-col{grid-template-columns:1fr}#terra-desk-v2 .td-inbox{grid-template-columns:1fr}#terra-desk-v2 .td-threads{display:flex;border-right:0;border-bottom:1px solid var(--td-line)}#terra-desk-v2 .td-thread{flex:1;min-width:0;border-bottom:0}#terra-desk-v2 .td-conversation{padding:16px}}
+@media(max-width:510px){#terra-desk-v2 .td-main{padding:18px 14px}#terra-desk-v2 h2{font-size:23px}#terra-desk-v2 .td-task{grid-template-columns:5px minmax(0,1fr);gap:12px}#terra-desk-v2 .td-task>.td-button{grid-column:2;justify-self:start}#terra-desk-v2 .td-resume{flex-wrap:wrap}#terra-desk-v2 .td-table thead{display:none}#terra-desk-v2 .td-table tbody,#terra-desk-v2 .td-table tr,#terra-desk-v2 .td-table td{display:block;width:auto}#terra-desk-v2 .td-table tr{padding:12px 0;border-bottom:1px solid var(--td-line)}#terra-desk-v2 .td-table td{border:0;padding:4px 0}#terra-desk-v2 .td-table td[data-label]:before{content:attr(data-label) " · ";color:var(--td-muted);font-size:12px}#terra-desk-v2 .td-table small{display:inline;margin-left:5px}#terra-desk-v2 .td-threads{flex-direction:column}#terra-desk-v2 .td-thread{padding:12px 14px}#terra-desk-v2 .td-right{text-align:left!important}}
+@media(pointer:coarse){#terra-desk-v2 button,#terra-desk-v2 .td-input{min-height:44px}#terra-desk-v2 input,#terra-desk-v2 textarea{font-size:16px}}
+@media(prefers-reduced-motion:reduce){#terra-desk-v2 *{transition:none!important;scroll-behavior:auto!important}}
+</style>
+<div id="terra-desk-v2" aria-label="TerraTrans · рабочее пространство, версия 2">
+  <header class="td-top"><div class="td-brand"><span class="td-logo">T</span> TerraTrans</div><span class="td-demo">Демонстрационные данные · 24 сентября 2026</span></header>
+  <div class="td-shell">
+    <nav class="td-nav" aria-label="Разделы рабочего пространства">
+      <button type="button" data-nav="today" aria-current="page"><i data-lucide="house" aria-hidden="true"></i>Сегодня</button>
+      <button type="button" data-nav="trips"><i data-lucide="bus-front" aria-hidden="true"></i>Рейсы</button>
+      <button type="button" data-nav="inbox"><i data-lucide="messages-square" aria-hidden="true"></i>Сообщения</button>
+      <button type="button" data-nav="finance"><i data-lucide="wallet" aria-hidden="true"></i>Финансы</button>
+      <div class="td-nav-label">ЛИЧНЫЕ ВИДЫ</div>
+      <button type="button" class="td-secondary-nav" id="td-attention-nav"><i data-lucide="circle-alert" aria-hidden="true"></i>На проверку</button>
+      <div class="td-nav-bottom">Рабочее пространство<br>Концепция 02</div>
+    </nav>
+    <main class="td-main">
+      <section data-screen="today" aria-label="Сегодня">
+        <div class="td-heading"><div><div class="td-kicker">ЧЕТВЕРГ · 24 СЕНТЯБРЯ</div><h2>Рабочий день</h2><p class="td-sub">Сначала — то, что требует вашего решения</p></div><button type="button" class="td-button" data-go="trips">Все рейсы <i data-lucide="arrow-right" aria-hidden="true"></i></button></div>
+        <div class="td-section-head"><h3>К выполнению</h3><span class="td-pill">3 задачи в примере</span></div>
+        <div class="td-task"><span class="td-task-marker" data-tone="warn"></span><div><div class="td-task-title">Уточнить время посадки</div><small>T-022 · Москва → Симферополь · 25 сентября, 10:00</small><small>Расписание и исходные данные требуют сверки</small></div><button type="button" class="td-button" data-trip="B">К рейсу</button></div>
+        <div class="td-task"><span class="td-task-marker"></span><div><div class="td-task-title">Ответить на вопрос об остановке</div><small>Диалог A · MAX · рейс T-021</small></div><button type="button" class="td-button" data-chat="A">Открыть</button></div>
+        <div class="td-task"><span class="td-task-marker"></span><div><div class="td-task-title">Проверить подтверждение выплаты</div><small>Возврат R-01 · статус билета уже известен</small></div><button type="button" class="td-button" id="td-open-refund">К возврату</button></div>
+        <div class="td-resume"><div><strong>Продолжить работу</strong><small id="td-resume-label">Рейсы · список выездов</small></div><button type="button" class="td-button" id="td-resume">Продолжить <i data-lucide="arrow-right" aria-hidden="true"></i></button></div>
+        <div class="td-section"><div class="td-section-head"><h3>Данные рабочего дня</h3></div><p class="td-sub">Показаны только три условных рейса и два диалога. Эти значения не являются показателями бизнеса.</p></div>
+      </section>
+      <section data-screen="trips" aria-label="Список рейсов" hidden>
+        <div class="td-heading"><div><h2>Рейсы</h2><p class="td-sub">Выезд, подготовка и результат связи — в одном месте</p></div><span class="td-pill">24–26 сентября</span></div>
+        <div class="td-toolbar"><input id="td-search" class="td-input" type="search" aria-label="Найти маршрут или рейс" placeholder="Маршрут или номер рейса"><button type="button" class="td-button" id="td-attention" aria-pressed="false">На проверку</button><button type="button" class="td-link" id="td-reset-filters">Сбросить</button></div>
+        <table class="td-table"><thead><tr><th style="width:25%">Отправление · МСК</th><th style="width:45%">Рейс</th><th style="width:30%">Состояние</th></tr></thead><tbody>
+          <tr data-trip-row="A"><td data-label="Выезд" class="td-num">24 сентября<small>08:30 · МСК</small></td><td><button type="button" class="td-route" data-trip="A">Симферополь → Москва</button><small>T-021 · 2 пассажира в примере</small></td><td data-label="Состояние"><span class="td-status" data-tone="good"><span class="td-dot"></span>Данные проверены</span></td></tr>
+          <tr data-trip-row="B"><td data-label="Выезд" class="td-num">25 сентября<small>10:00 · МСК</small></td><td><button type="button" class="td-route" data-trip="B">Москва → Симферополь</button><small>T-022 · 2 пассажира в примере</small></td><td data-label="Состояние"><span class="td-status" data-tone="warn"><span class="td-dot"></span>Проверить время</span></td></tr>
+          <tr data-trip-row="C"><td data-label="Выезд" class="td-num">26 сентября<small>09:00 · МСК</small></td><td><button type="button" class="td-route" data-trip="C">Севастополь → Москва</button><small>T-023 · 2 пассажира в примере</small></td><td data-label="Состояние"><span class="td-status" data-tone="good"><span class="td-dot"></span>Данные проверены</span></td></tr>
+        </tbody></table>
+        <p class="td-empty" id="td-empty" hidden>Рейсы не найдены. Измените запрос или сбросьте фильтры.</p><p class="td-sub" id="td-trip-count">Показано 3 из 3 условных рейсов</p>
+      </section>
+      <section data-screen="trip" aria-label="Карточка рейса" hidden>
+        <div class="td-breadcrumb"><button type="button" class="td-link" data-go="trips">← К списку рейсов</button><span>/</span><span id="td-trip-code">T-021</span></div>
+        <div class="td-heading"><div><h2 id="td-trip-route">Симферополь → Москва</h2><p class="td-sub" id="td-trip-date">24 сентября · 08:30 МСК</p></div><button type="button" class="td-button" id="td-trip-chat">Связанный диалог</button></div>
+        <div class="td-tabs" aria-label="Разделы рейса"><button type="button" data-trip-tab="prep" aria-pressed="true">Подготовка</button><button type="button" data-trip-tab="passengers" aria-pressed="false">Пассажиры</button><button type="button" data-trip-tab="history" aria-pressed="false">История</button></div>
+        <div data-trip-panel="prep"><div class="td-two-col"><div><h3>Перед выездом</h3><dl class="td-facts"><div><dt>Автобус</dt><dd>Условный автобус · 49 мест</dd></div><div><dt>Ведомость</dt><dd>Версия 1 · 2 записи в примере</dd></div><div><dt>Время посадки</dt><dd id="td-trip-timing">Проверено по расписанию</dd></div><div><dt>Уведомление</dt><dd>Не запускалось</dd></div></dl></div><div><label class="td-label" for="td-note">Рабочая заметка</label><textarea id="td-note" placeholder="Заметка для этого рейса"></textarea><div class="td-field-foot"><span id="td-note-state" class="td-field-state" aria-live="polite">Нет изменений</span><button type="button" id="td-save-note" class="td-button">Применить в примере</button></div><div class="td-notice"><strong>Контекст этого рейса</strong>Заметка и открытая вкладка останутся при переходе в сообщения.</div></div></div></div>
+        <div data-trip-panel="passengers" hidden><div class="td-section-head"><h3>Пассажиры в примере</h3><span id="td-selected-count" class="td-pill">Никто не выбран</span></div><label class="td-checkline"><input type="checkbox" data-passenger="P1"><span>Пассажир A · место 6</span><small>Посадка 1</small></label><label class="td-checkline"><input type="checkbox" data-passenger="P2"><span>Пассажир B · место 7</span><small>Посадка 1</small></label><div class="td-notice">Выбор относится только к этому рейсу. Перед массовой операцией состав и данные нужно проверить заново.</div></div>
+        <div data-trip-panel="history" hidden><ul class="td-timeline"><li>Ведомость загружена<small>Версия 1 · учебный пример</small></li><li id="td-history-check">Данные выезда проверены</li><li>Уведомление не запускалось<small>Отсутствие запуска не является ошибкой доставки</small></li></ul></div>
+      </section>
+      <section data-screen="inbox" aria-label="Сообщения" hidden>
+        <div class="td-heading"><div><h2>Сообщения</h2><p class="td-sub">Отдельный контекст и черновик для каждого диалога</p></div><button type="button" class="td-button" id="td-return-work">Вернуться к работе</button></div>
+        <div class="td-inbox"><div class="td-threads" aria-label="Список диалогов"><button type="button" class="td-thread" data-chat="A" aria-pressed="true"><strong>A · Место посадки</strong><small>MAX · T-021</small><small class="td-draft-tag" data-draft-tag="A" hidden>Есть черновик</small></button><button type="button" class="td-thread" data-chat="B" aria-pressed="false"><strong>B · Вопрос о багаже</strong><small>MAX · T-022</small><small class="td-draft-tag" data-draft-tag="B" hidden>Есть черновик</small></button></div><div class="td-conversation"><h3 id="td-chat-title">A · Место посадки</h3><button type="button" class="td-link" id="td-chat-trip">Рейс T-021 →</button><div class="td-message" id="td-chat-message">Подскажите, где будет посадка?</div><label class="td-label" for="td-reply" id="td-reply-label">Черновик ответа · диалог A</label><textarea id="td-reply" placeholder="Введите пробный ответ"></textarea><div class="td-field-foot"><span class="td-field-state" id="td-reply-state" aria-live="polite">Черновик пуст</span><button type="button" class="td-button td-primary" id="td-preview">Предпросмотр</button></div><div class="td-preview" id="td-preview-text" hidden></div></div></div>
+      </section>
+      <section data-screen="finance" aria-label="Финансы" hidden>
+        <div class="td-heading"><div><h2>Финансы</h2><p class="td-sub">Расчёты и денежное исполнение с проверяемым основанием</p></div><span class="td-pill">Условные суммы</span></div>
+        <div class="td-tabs" aria-label="Финансовые процессы"><button type="button" data-finance-tab="reports" aria-pressed="true">Расчёты рейсов</button><button type="button" data-finance-tab="refunds" aria-pressed="false">Возвраты</button></div>
+        <div data-finance-panel="reports"><div class="td-section-head"><h3>T-021 · Симферополь → Москва</h3><span class="td-status"><span class="td-dot"></span>Черновик расчёта</span></div><div class="td-two-col"><div><dl class="td-facts"><div><dt>Основание</dt><dd>Искусственный пример · версия 1</dd></div><div><dt>Полнота</dt><dd>Требуется сверка условий договора</dd></div><div><dt>Формула примера</dt><dd>Поступления − возвраты − перевозчику</dd></div></dl><button type="button" class="td-link" id="td-source-toggle" aria-expanded="false" aria-controls="td-source-detail">Показать исходные значения</button><div id="td-source-detail" class="td-notice" hidden>24 000 ₽ поступлений; 4 000 ₽ возвратов; 18 000 ₽ перевозчику. Значения заданы для демонстрации структуры, не получены из учётной системы.</div></div><div class="td-summary"><div class="td-money"><span>Поступления</span><span>24 000 ₽</span></div><div class="td-money"><span>Возвраты</span><span>−4 000 ₽</span></div><div class="td-money"><span>Перевозчику</span><span>−18 000 ₽</span></div><div class="td-money total"><span>Результат примера</span><span>2 000 ₽</span></div><p class="td-sub">Не утверждённый финансовый результат</p></div></div></div>
+        <div data-finance-panel="refunds" hidden><div class="td-section-head"><h3>Возврат R-01</h3><span class="td-status" data-tone="warn"><span class="td-dot"></span>Нужна сверка</span></div><dl class="td-facts"><div><dt>Состояние билета</dt><dd>Возвращён · условное событие</dd></div><div><dt>Выплата</dt><dd>Подтверждение не приложено</dd></div><div><dt>Что известно</dt><dd>Отмена билета зафиксирована в примере</dd></div><div><dt>Следующее действие</dt><dd>Сверить платёжный документ и дату исполнения</dd></div></dl><div class="td-notice">Отсутствие подтверждения не доказывает, что деньги не выплачены. Статусы билета и выплаты рассматриваются отдельно.</div></div>
+      </section>
+    </main>
+  </div>
+  <footer class="td-footer"><span id="td-storage-state" aria-live="polite">Контекст этого примера</span><span id="td-style-label">Inter · комфортный</span><button type="button" class="td-link" id="td-forget">Начать пример заново</button></footer>
+</div>
+<script>
+(() => {
+  const root=document.getElementById('terra-desk-v2');
+  const q=s=>root.querySelector(s), all=s=>Array.from(root.querySelectorAll(s));
+  const trips={A:{number:'T-021',route:'Симферополь → Москва',date:'24 сентября · 08:30 МСК',attention:false},B:{number:'T-022',route:'Москва → Симферополь',date:'25 сентября · 10:00 МСК',attention:true},C:{number:'T-023',route:'Севастополь → Москва',date:'26 сентября · 09:00 МСК',attention:false}};
+  const chats={A:{title:'A · Место посадки',trip:'A',message:'Подскажите, где будет посадка?'},B:{title:'B · Вопрос о багаже',trip:'B',message:'Можно уточнить условия провоза багажа?'}};
+  const screens=['today','trips','trip','inbox','finance'];
+  const fresh=()=>({page:'today',lastWork:'trips',beforeInbox:'trips',tripsView:'trips',trip:'A',chat:'A',tabs:{A:'prep',B:'prep',C:'prep'},notes:{A:'Проверить, что место посадки указано точно.',B:'',C:''},applied:{A:'Проверить, что место посадки указано точно.',B:'',C:''},drafts:{A:'',B:''},search:'',attention:false,financeTab:'reports',sourceOpen:false,font:'Inter',density:'Комфортная'});
+  const prefix='terratrans-concept-v2:',expiry=24*60*60*1000;
+  let state=fresh(),persistent=false,restored=false,workspace='';
+  let selection={A:[],B:[],C:[]};
+  const behavior={saving:'Обычное сохранение'};
+  function string(value,max=4000){return typeof value==='string'?value.slice(0,max):''}
+  function safeState(raw){
+    const s=fresh();if(!raw||typeof raw!=='object')return s;
+    for(const k of ['page','lastWork','beforeInbox'])if(screens.includes(raw[k]))s[k]=raw[k];
+    if(['trips','trip'].includes(raw.tripsView))s.tripsView=raw.tripsView;
+    if(Object.hasOwn(trips,raw.trip))s.trip=raw.trip;
+    if(Object.hasOwn(chats,raw.chat))s.chat=raw.chat;
+    for(const id of Object.keys(trips)){
+      if(['prep','passengers','history'].includes(raw.tabs?.[id]))s.tabs[id]=raw.tabs[id];
+      if(typeof raw.notes?.[id]==='string')s.notes[id]=string(raw.notes[id]);
+      if(typeof raw.applied?.[id]==='string')s.applied[id]=string(raw.applied[id]);
+    }
+    for(const id of Object.keys(chats))s.drafts[id]=string(raw.drafts?.[id]);
+    s.search=string(raw.search,120);s.attention=raw.attention===true;
+    s.financeTab=raw.financeTab==='refunds'?'refunds':'reports';s.sourceOpen=raw.sourceOpen===true;
+    if(['Inter','Golos Text','Системный'].includes(raw.font))s.font=raw.font;
+    if(['Комфортная','Компактная'].includes(raw.density))s.density=raw.density;
+    return s;
+  }
+  function readStored(key){
+    let saved;try{saved=JSON.parse(localStorage.getItem(key)||'null')}catch(error){if(error instanceof SyntaxError){localStorage.removeItem(key);return null}throw error}
+    if(saved&&saved.version===2&&Number.isFinite(saved.at)&&Date.now()-saved.at<expiry&&saved.at<=Date.now()+60000)return safeState(saved.state);
+    if(saved)localStorage.removeItem(key);return null;
+  }
+  try{
+    const remembered=sessionStorage.getItem(prefix+'tab');
+    workspace=crypto.randomUUID();
+    let candidate=remembered&&/^[a-z0-9-]{8,80}$/.test(remembered)?readStored(prefix+'workspace:'+remembered):null;
+    if(!candidate&&!remembered){
+      const last=localStorage.getItem(prefix+'last');
+      if(last&&/^[a-z0-9-]{8,80}$/.test(last))candidate=readStored(prefix+'workspace:'+last);
+    }
+    if(candidate){state=candidate;restored=true}
+    sessionStorage.setItem(prefix+'tab',workspace);
+    persistent=true;
+  }catch(_){persistent=false}
+  function persist(){
+    if(persistent){try{localStorage.setItem(prefix+'workspace:'+workspace,JSON.stringify({version:2,at:Date.now(),state}));localStorage.setItem(prefix+'last',workspace)}catch(_){persistent=false}}
+    q('#td-storage-state').textContent=persistent?'Контекст на устройстве · окно восстановления 24 ч':'Контекст в памяти · восстановление после закрытия недоступно';
+    q('#td-storage-state').classList.toggle('td-storage-warning',!persistent);
+  }
+  function draftStatus(){return persistent?'Черновик сохранён на этом устройстве':'Черновик в памяти открытого примера'}
+  function drawNoteStatus(message='',error=false){
+    const dirty=state.notes[state.trip]!==state.applied[state.trip];
+    q('#td-note-state').textContent=message||(dirty?draftStatus()+' · не применён':'Нет неприменённых изменений');
+    q('#td-note-state').dataset.error=String(error);
+  }
+  function drawStyle(){
+    root.style.setProperty('--td-family',state.font==='Системный'?'system-ui,sans-serif':'"'+state.font+'",system-ui,sans-serif');
+    root.style.setProperty('--td-pad',state.density==='Компактная'?'9px':'14px');
+    root.style.setProperty('--td-control',state.density==='Компактная'?'36px':'40px');
+    q('#td-style-label').textContent=state.font+' · '+state.density.toLowerCase();
+  }
+  function drawTrips(){
+    q('#td-search').value=state.search;q('#td-attention').setAttribute('aria-pressed',String(state.attention));
+    let count=0;all('[data-trip-row]').forEach(el=>{const trip=trips[el.dataset.tripRow];const match=(!state.attention||trip.attention)&&(trip.route+' '+trip.number).toLowerCase().includes(state.search.toLowerCase());el.hidden=!match;if(match)count++});
+    q('#td-empty').hidden=count>0;q('#td-trip-count').textContent='Показано '+count+' из 3 условных рейсов';
+  }
+  function drawSelection(){
+    all('[data-passenger]').forEach(el=>el.checked=selection[state.trip].includes(el.dataset.passenger));
+    q('#td-selected-count').textContent=selection[state.trip].length?'Выбрано '+selection[state.trip].length+' из 2':'Никто не выбран';
+  }
+  function drawTrip(){
+    const trip=trips[state.trip],tab=state.tabs[state.trip];
+    q('#td-trip-code').textContent=trip.number;q('#td-trip-route').textContent=trip.route;q('#td-trip-date').textContent=trip.date;
+    q('#td-trip-timing').textContent=trip.attention?'Требуется сверка исходных данных':'Проверено по расписанию';
+    q('#td-history-check').textContent=trip.attention?'Время посадки направлено на проверку':'Данные выезда проверены';
+    q('#td-note').value=state.notes[state.trip];q('#td-trip-chat').hidden=state.trip==='C';
+    all('[data-trip-tab]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.tripTab===tab)));
+    all('[data-trip-panel]').forEach(el=>el.hidden=el.dataset.tripPanel!==tab);
+    drawSelection();drawNoteStatus();
+  }
+  function drawTags(){all('[data-draft-tag]').forEach(el=>el.hidden=!state.drafts[el.dataset.draftTag].trim())}
+  function drawChat(){
+    const chat=chats[state.chat];q('#td-chat-title').textContent=chat.title;q('#td-chat-trip').textContent='Рейс '+trips[chat.trip].number+' →';
+    q('#td-chat-message').textContent=chat.message;q('#td-reply-label').textContent='Черновик ответа · диалог '+state.chat+' · MAX';
+    q('#td-reply').value=state.drafts[state.chat];q('#td-reply-state').textContent=state.drafts[state.chat]?draftStatus():'Черновик пуст';
+    all('.td-thread').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.chat===state.chat)));
+    q('#td-preview-text').hidden=true;drawTags();
+  }
+  function drawFinance(){
+    all('[data-finance-tab]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.financeTab===state.financeTab)));
+    all('[data-finance-panel]').forEach(el=>el.hidden=el.dataset.financePanel!==state.financeTab);
+    q('#td-source-detail').hidden=!state.sourceOpen;q('#td-source-toggle').setAttribute('aria-expanded',String(state.sourceOpen));
+    q('#td-source-toggle').textContent=state.sourceOpen?'Скрыть исходные значения':'Показать исходные значения';
+  }
+  function resumeLabel(){return state.lastWork==='trip'?'Рейс '+trips[state.trip].number+' · '+({prep:'подготовка',passengers:'пассажиры',history:'история'})[state.tabs[state.trip]]:state.lastWork==='inbox'?'Сообщения · диалог '+state.chat:state.lastWork==='finance'?'Финансы · '+(state.financeTab==='reports'?'расчёты рейсов':'возвраты'):'Рейсы · сохранённые фильтры'}
+  function drawPage(){
+    all('[data-screen]').forEach(el=>el.hidden=el.dataset.screen!==state.page);
+    all('[data-nav]').forEach(el=>{if(el.dataset.nav===(state.page==='trip'?'trips':state.page))el.setAttribute('aria-current','page');else el.removeAttribute('aria-current')});
+    q('#td-resume-label').textContent=resumeLabel();
+  }
+  function navigate(page){
+    if(!screens.includes(page))return;
+    if(page==='inbox'&&state.page!=='inbox')state.beforeInbox=state.page==='today'?state.lastWork:state.page;
+    if(page==='trips'||page==='trip')state.tripsView=page;
+    state.page=page;if(page!=='today')state.lastWork=page;
+    persist();drawPage();
+  }
+  function openTrip(id){if(!Object.hasOwn(trips,id))return;state.trip=id;drawTrip();navigate('trip')}
+  function openChat(id){if(!Object.hasOwn(chats,id))return;state.chat=id;navigate('inbox');drawChat()}
+  root.addEventListener('click',event=>{
+    const button=event.target.closest('button');if(!button||!root.contains(button))return;
+    if(button.dataset.nav){navigate(button.dataset.nav==='trips'?state.tripsView:button.dataset.nav)}
+    else if(button.dataset.go)navigate(button.dataset.go);
+    else if(button.dataset.trip)openTrip(button.dataset.trip);
+    else if(button.dataset.chat)openChat(button.dataset.chat);
+    else if(button.dataset.tripTab){state.tabs[state.trip]=button.dataset.tripTab;persist();drawTrip()}
+    else if(button.dataset.financeTab){state.financeTab=button.dataset.financeTab;persist();drawFinance()}
+  });
+  q('#td-search').maxLength=120;q('#td-note').maxLength=4000;q('#td-reply').maxLength=4000;
+  q('#td-search').addEventListener('input',event=>{state.search=event.target.value;drawTrips();persist()});
+  q('#td-attention').addEventListener('click',()=>{state.attention=!state.attention;drawTrips();persist()});
+  q('#td-attention-nav').addEventListener('click',()=>{state.attention=true;drawTrips();navigate('trips')});
+  q('#td-reset-filters').addEventListener('click',()=>{state.search='';state.attention=false;drawTrips();persist()});
+  q('#td-resume').addEventListener('click',()=>navigate(state.lastWork));
+  q('#td-return-work').addEventListener('click',()=>navigate(state.beforeInbox==='inbox'?'trips':state.beforeInbox));
+  q('#td-trip-chat').addEventListener('click',()=>openChat(state.trip==='B'?'B':'A'));
+  q('#td-chat-trip').addEventListener('click',()=>openTrip(chats[state.chat].trip));
+  q('#td-note').addEventListener('input',event=>{state.notes[state.trip]=event.target.value;persist();drawNoteStatus()});
+  q('#td-save-note').addEventListener('click',()=>{
+    if(behavior.saving==='Ошибка сохранения'){drawNoteStatus('Не применено. Ввод остаётся в черновике.',true);return}
+    state.applied[state.trip]=state.notes[state.trip];persist();drawNoteStatus('Применено в примере · рабочая CRM не изменена');
+  });
+  all('[data-passenger]').forEach(el=>el.addEventListener('change',()=>{const id=el.dataset.passenger;selection[state.trip]=el.checked?[...new Set([...selection[state.trip],id])]:selection[state.trip].filter(p=>p!==id);drawSelection()}));
+  q('#td-reply').addEventListener('input',event=>{state.drafts[state.chat]=event.target.value;persist();q('#td-reply-state').textContent=state.drafts[state.chat]?draftStatus():'Черновик пуст';q('#td-preview-text').hidden=true;drawTags()});
+  q('#td-preview').addEventListener('click',()=>{const value=state.drafts[state.chat].trim();q('#td-preview-text').textContent=value?'Диалог '+state.chat+' · MAX · только предпросмотр\n\n'+value:'Сначала введите пробный ответ.';q('#td-preview-text').hidden=false});
+  q('#td-open-refund').addEventListener('click',()=>{state.financeTab='refunds';drawFinance();navigate('finance')});
+  q('#td-source-toggle').addEventListener('click',()=>{state.sourceOpen=!state.sourceOpen;drawFinance();persist()});
+  function redraw(){drawStyle();drawTrips();drawTrip();drawChat();drawFinance();drawPage()}
+  q('#td-forget').addEventListener('click',()=>{const next=fresh();Object.keys(state).forEach(k=>delete state[k]);Object.assign(state,next);selection={A:[],B:[],C:[]};persist();redraw()});
+  persist();redraw();
+  if(restored&&persistent)q('#td-storage-state').textContent='Рабочее место восстановлено · данные примера на этом устройстве';
+  if(globalThis.Tweak){
+    const tweak=new Tweak({container:root,onChange:()=>{drawStyle();persist()}});
+    tweak.addSelect(state,'font',{label:'Шрифт',options:['Inter','Golos Text','Системный']});
+    tweak.addSelect(state,'density',{label:'Плотность',options:['Комфортная','Компактная']});
+    tweak.addSelect(behavior,'saving',{label:'Сценарий заметки',options:['Обычное сохранение','Ошибка сохранения']});
+  }
+})();
+</script>
