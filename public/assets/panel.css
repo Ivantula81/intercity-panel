@@ -1136,3 +1136,14 @@ select.attendance-unknown { color: var(--muted); }
     .main { margin: 0; padding: 0; max-width: 100%; }
     .card { box-shadow: none; border: 0; padding: 0; }
 }
+
+/* Field persistence: text feedback accompanies the field outline. */
+.save-feedback { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.save-feedback > div { flex:1 1 220px; overflow-wrap:anywhere; }
+.save-feedback .save-error { color:var(--err); }
+.save-feedback button { min-height:44px; white-space:normal; }
+.save-feedback button[hidden] { display:none; }
+input.cell[data-save-state="error"] { outline:2px solid var(--err); outline-offset:-2px; }
+input.cell[data-save-state="changed"], input.cell[data-save-state="saving"] { box-shadow:inset 0 -2px var(--warn); }
+.chat-draft-hint { padding:0 16px 8px; font-size:12px; line-height:1.5; color:var(--muted); }
+.chat-channel-note { overflow-wrap:anywhere; }
