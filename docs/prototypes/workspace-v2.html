@@ -21,6 +21,13 @@
 @media(max-width:510px){#terra-desk-v2 .td-main{padding:18px 14px}#terra-desk-v2 h2{font-size:23px}#terra-desk-v2 .td-task{grid-template-columns:5px minmax(0,1fr);gap:12px}#terra-desk-v2 .td-task>.td-button{grid-column:2;justify-self:start}#terra-desk-v2 .td-resume{flex-wrap:wrap}#terra-desk-v2 .td-table thead{display:none}#terra-desk-v2 .td-table tbody,#terra-desk-v2 .td-table tr,#terra-desk-v2 .td-table td{display:block;width:auto}#terra-desk-v2 .td-table tr{padding:12px 0;border-bottom:1px solid var(--td-line)}#terra-desk-v2 .td-table td{border:0;padding:4px 0}#terra-desk-v2 .td-table td[data-label]:before{content:attr(data-label) " · ";color:var(--td-muted);font-size:12px}#terra-desk-v2 .td-table small{display:inline;margin-left:5px}#terra-desk-v2 .td-threads{flex-direction:column}#terra-desk-v2 .td-thread{padding:12px 14px}#terra-desk-v2 .td-right{text-align:left!important}}
 @media(pointer:coarse){#terra-desk-v2 button,#terra-desk-v2 .td-input{min-height:44px}#terra-desk-v2 input,#terra-desk-v2 textarea{font-size:16px}}
 @media(prefers-reduced-motion:reduce){#terra-desk-v2 *{transition:none!important;scroll-behavior:auto!important}}
+#terra-desk-v2 *{line-height:1.5}
+#terra-desk-v2 .td-shell{grid-template-columns:minmax(168px,max-content) minmax(0,1fr)}
+#terra-desk-v2 .td-nav svg{flex-shrink:0}
+#terra-desk-v2 .td-money{flex-wrap:wrap}
+#terra-desk-v2 .td-money span:last-child{white-space:nowrap;margin-left:auto}
+@media(max-width:740px){#terra-desk-v2 .td-shell{grid-template-columns:1fr}#terra-desk-v2 .td-nav button{min-width:max(105px,9em)}}
+@media(pointer:coarse){#terra-desk-v2 button,#terra-desk-v2 .td-input{min-height:44px!important}#terra-desk-v2 input,#terra-desk-v2 textarea{font-size:16px!important}}
 </style>
 <div id="terra-desk-v2" aria-label="TerraTrans · рабочее пространство, версия 2">
   <header class="td-top"><div class="td-brand"><span class="td-logo">T</span> TerraTrans</div><span class="td-demo">Демонстрационные данные · 24 сентября 2026</span></header>
