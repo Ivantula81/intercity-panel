@@ -30,6 +30,7 @@ date_default_timezone_set('Europe/Moscow');
 mb_internal_encoding('UTF-8');
 
 define('PANEL_ROOT', dirname(__DIR__));
+require_once PANEL_ROOT . '/app/workspace.php';
 
 function db(): PDO
 {
@@ -122,6 +123,7 @@ function authenticate(string $login, string $password): bool
 
     if ($u && password_verify($password, $u['password_hash'])) {
         session_regenerate_id(true);
+        unset($_SESSION['workspace_crypto']);
         $_SESSION['panel_user'] = (int) $u['id'];
         $_SESSION['user_name'] = $u['name'];
         $_SESSION['user_role'] = $u['role'];
@@ -139,6 +141,7 @@ function authenticate(string $login, string $password): bool
     }
     if ($u === null && $fallbackPw !== '' && $login === 'admin' && $password === $fallbackPw) {
         session_regenerate_id(true);
+        unset($_SESSION['workspace_crypto']);
         $_SESSION['panel_user'] = 'admin';
         $_SESSION['user_name'] = 'Администратор';
         $_SESSION['user_role'] = 'admin';

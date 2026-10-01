@@ -22,6 +22,7 @@ if ($page === 'login') {
 }
 
 if ($page === 'logout') {
+    $workspaceScope = (string) ($_SESSION['workspace_crypto']['scope'] ?? '');
     audit_event('auth.logout', 'auth', 'session', null, 'success');
     $_SESSION = [];
     if (ini_get('session.use_cookies')) {
@@ -29,7 +30,7 @@ if ($page === 'logout') {
         setcookie(session_name(), '', time() - 42000, $p['path'], $p['domain'], $p['secure'], $p['httponly']);
     }
     session_destroy();
-    header('Location: /?p=login');
+    workspace_logout_page($workspaceScope);
     exit;
 }
 
@@ -102,7 +103,7 @@ switch ($page) {
         $st = db()->prepare('SELECT * FROM manifests WHERE id=?');
         $st->execute([(int) ($_GET['id'] ?? 0)]);
         $manifest = $st->fetch();
-        if (!$manifest) { http_response_code(404); die('Рейс не найден'); }
+        if (!$manifest) { workspace_missing('reporting'); break; }
         $ps = db()->prepare('SELECT * FROM passengers WHERE manifest_id=? ORDER BY sort,id');
         $ps->execute([$manifest['id']]);
         $passengers = $ps->fetchAll();
@@ -163,7 +164,7 @@ switch ($page) {
         $m = db()->prepare('SELECT * FROM manifests WHERE id = ?');
         $m->execute([(int) ($_GET['id'] ?? 0)]);
         $manifest = $m->fetch();
-        if (!$manifest) { http_response_code(404); die('Ведомость не найдена'); }
+        if (!$manifest) { workspace_missing('manifests'); break; }
         $ps = db()->prepare('SELECT * FROM passengers WHERE manifest_id = ? ORDER BY sort, id');
         $ps->execute([$manifest['id']]);
         $passengers = $ps->fetchAll();
@@ -454,7 +455,7 @@ switch ($page) {
         $st = db()->prepare('SELECT * FROM contacts WHERE id = ?');
         $st->execute([(int) ($_GET['id'] ?? 0)]);
         $contact = $st->fetch();
-        if (!$contact) { http_response_code(404); die('Контакт не найден'); }
+        if (!$contact) { workspace_missing('contacts'); break; }
         $hist = db()->prepare('SELECT * FROM messages WHERE recipient = ? ORDER BY id DESC LIMIT 100');
         $hist->execute([$contact['phone']]);
         $history = $hist->fetchAll();

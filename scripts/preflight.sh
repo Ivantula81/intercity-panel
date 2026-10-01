@@ -12,6 +12,7 @@ find app lib public tests scripts -name '*.php' -print0 | xargs -0 -n1 php -l
 
 echo "[3/4] JavaScript syntax"
 node --check public/assets/panel.js
+node --check public/assets/workspace.js
 node --check public/assets/schedules.js
 node --check public/assets/notifications.js
 
@@ -21,6 +22,7 @@ php tests/notification_test.php
 php tests/notification_correction_test.php
 php tests/route_schedule_test.php
 php tests/conversations_test.php
+php tests/workspace_crypto_test.php
 php tests/sales_parser_test.php
 php tests/sales_classifier_test.php
 php tests/sales_ingestor_test.php
