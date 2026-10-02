@@ -1,4 +1,5 @@
 <?php
+header('Cache-Control: private, no-store');
 /** @var string $title @var string $page @var callable $content */
 
 function icon(string $name): string
@@ -64,7 +65,7 @@ $sheetKeys = ['sales', 'reporting', 'contacts', 'broadcast', 'catalogs', 'logs',
 <link rel="icon" type="image/svg+xml" href="/assets/icons/app-icon.svg">
 <link rel="stylesheet" href="/assets/panel.css?v=<?= @filemtime(PANEL_ROOT . '/public/assets/panel.css') ?>">
 <?php if (($_GET['p'] ?? '') === 'schedules'): ?><link rel="stylesheet" href="/assets/schedules.css?v=<?= @filemtime(PANEL_ROOT . '/public/assets/schedules.css') ?>"><?php endif; ?>
-<script>window.CSRF = <?= json_encode(csrf_token()) ?>;</script>
+<script>window.CSRF = <?= json_encode(csrf_token()) ?>; window.PANEL_WORKSPACE = <?= json_encode(workspace_config(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
 <?php if (in_array($page, ['notifications','broadcast'], true)): ?><link rel="stylesheet" href="/assets/notifications.css?v=<?= filemtime(PANEL_ROOT.'/public/assets/notifications.css') ?>"><?php endif; ?>
 </head>
 <body data-page="<?= e($page) ?>" class="<?= ($_GET['p'] ?? '') === 'schedules' ? 'schedule-page' : '' ?>">
@@ -93,6 +94,7 @@ $sheetKeys = ['sales', 'reporting', 'contacts', 'broadcast', 'catalogs', 'logs',
 
 <main class="main">
     <?php if (($f = flash()) !== ''): ?><div class="alert ok flash-top"><?= e($f) ?></div><?php endif; ?>
+    <div id="workspaceState" class="workspace-state muted small" role="status" aria-live="polite"></div>
     <?php $content(); ?>
 </main>
 
@@ -115,6 +117,7 @@ $sheetKeys = ['sales', 'reporting', 'contacts', 'broadcast', 'catalogs', 'logs',
     </div>
 </div>
 
+<script src="/assets/workspace.js?v=<?= @filemtime(PANEL_ROOT . '/public/assets/workspace.js') ?>"></script>
 <script src="/assets/panel.js?v=<?= @filemtime(PANEL_ROOT . '/public/assets/panel.js') ?>"></script>
 <script src="/assets/schedules.js?v=<?= @filemtime(PANEL_ROOT . '/public/assets/schedules.js') ?>"></script>
 <?php if (in_array($page, ['notifications','broadcast'], true)): ?><script src="/assets/notifications.js?v=<?= filemtime(PANEL_ROOT.'/public/assets/notifications.js') ?>"></script><?php endif; ?>

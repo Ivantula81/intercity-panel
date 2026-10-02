@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "checks": [
+    "encrypted snapshot, no-op flush, cross-section return without sending",
+    "root app launch resumes work even when the tab session survives",
+    "reload restores chat filters/drafts; Back/Forward selects original objects",
+    "SMS and email channel filters survive reload",
+    "URL filters, explicit reset and page scroll across sections",
+    "independent active tabs survive reload without overwriting each other",
+    "full browser process restart restores last workspace and draft",
+    "explicit object wins; denied chat reveals no draft; missing object has a return path",
+    "logout erases snapshot, other tabs exit, another login has no old draft",
+    "corrupted copy fails closed without a runtime error",
+    "expired encrypted copy is not restored",
+    "long draft round-trip without silent truncation",
+    "restored pending send shows uncertainty and never resends",
+    "write quota failure preserves input and recovers without losing the next edit",
+    "new login invalidates an older active tab without exposing its draft",
+    "unavailable storage preserves input and retains leave warning",
+    "390px composer and wrapped state remain above bottom navigation"
+  ],
+  "pageErrors": [],
+  "externalSends": 0
+}

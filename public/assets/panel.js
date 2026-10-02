@@ -1825,7 +1825,7 @@ async function savePass() {
 /* ── Чаты / единый inbox ── */
 const chat = { conversationId: null, conversation: null, threads: [], poll: null, busy: false,
     queue: 'open', channelFilter: 'all', channelCounts: {}, counts: {}, users: [], currentUserId: 0,
-    cursor: null, beforeCursor: null, hasOlder: false, messages: [], events: [], searchTimer: null, drafts: new Map(), viewRevision: 0, messageRequest: 0, messageLoading: false, pendingSend: null };
+    cursor: null, beforeCursor: null, hasOlder: false, messages: [], events: [], searchTimer: null, drafts: new Map(), viewRevision: 0, messageRequest: 0, messageLoading: false, pendingSend: null, restoredScroll: null };
 const $id = id => document.getElementById(id);
 
 // Безопасный сброс клиентского кеша: не трогаем cookies, сессию и localStorage
@@ -1963,8 +1963,8 @@ function chatRenderTabs() {
     ['whatsapp','max','telegram','sms','email'].forEach(ch=>{const n=Number(c[ch]||0);if(!n && !alwaysCh.includes(ch))return;const m=CHAN_META[ch];html+=`<button class="cq channel${chat.channelFilter===ch?' active':''}" style="--chc:${m.color}" onclick="chatSetChannel('${ch}')"><span><i></i>${m.name}</span><b>${n}</b></button>`;});
     box.innerHTML=html;
 }
-function chatSetQueue(queue) { chat.queue=queue; chat.cursor=null; chatLoadThreads(); }
-function chatSetChannel(channel) { chat.channelFilter=channel; chat.cursor=null; chatLoadThreads(); }
+function chatSetQueue(queue) { chat.queue=queue; chat.cursor=null; chatPersist(); chatLoadThreads(); }
+function chatSetChannel(channel) { chat.channelFilter=channel; chat.cursor=null; chatPersist(); chatLoadThreads(); }
 function chatRenderThreads() {
     const box=$id('chatThreads'); if(!box)return;
     if(!chat.threads.length){box.innerHTML='<div class="chat-hint">В этой очереди пока нет диалогов.</div>';return;}
@@ -1976,10 +1976,19 @@ function chatRenderThreads() {
         return `<div class="chat-thread${Number(t.id)===chat.conversationId?' active':''}${Number(t.unread_count)>0?' unread':''}" data-id="${Number(t.id)}" onclick="chatOpen(${Number(t.id)})"><span class="ct-ava">${esc(chatInitial(name,t.contact_phone))}</span><div class="ct-main"><div class="ct-top"><span class="ct-name">${priority}${esc(name)}</span><span class="ct-time">${esc(chatTime(t.last_message_at))}</span></div><div class="ct-bot"><span class="ct-last">${esc(preview)}</span>${chTag}${badge}</div><div class="ct-owner">${esc(t.assignee_name||'Без оператора')}</div></div></div>`;
     }).join('')+(chat.cursor?'<button class="chat-more" onclick="chatLoadThreads(true)">Показать ещё</button>':'');
 }
-function chatFilter() { clearTimeout(chat.searchTimer); chat.searchTimer=setTimeout(()=>{chat.cursor=null;chatLoadThreads();},260); }
+function chatFilter() { chatPersist(); clearTimeout(chat.searchTimer); chat.searchTimer=setTimeout(()=>{chat.cursor=null;chatLoadThreads();},260); }
 
-// Drafts live only in this page's memory, keyed by the server conversation ID
-// (which identifies the channel account too). Nothing is stored on the device.
+// The server conversation ID also identifies the channel account.
+// Persistent copies, when available, belong to the current authenticated login.
+function chatPersist() {
+    if (!window.panelWorkspace) return;
+    panelWorkspace.setChat({queue:chat.queue, channel:chat.channelFilter,
+        search:$id('chatSearch')?.value||'', selected:chat.conversationId,
+        bodyScroll:chat.restoredScroll?.bodyScroll ?? $id('chatBody')?.scrollTop ?? 0,
+        listScroll:chat.restoredScroll?.listScroll ?? $id('chatThreads')?.scrollTop ?? 0,
+        drafts:[...chat.drafts].map(([id,d])=>({id,...d,pending:chat.pendingSend?.id===id}))});
+    panelWorkspace.remember();
+}
 function chatDraft(id = chat.conversationId) {
     if (!chat.drafts.has(id)) chat.drafts.set(id, {text: '', revision: 0, error: ''});
     return chat.drafts.get(id);
@@ -1987,7 +1996,7 @@ function chatDraft(id = chat.conversationId) {
 function chatCaptureDraft() {
     if (!chat.conversationId) return;
     const draft = chatDraft(), text = $id('chatText').value;
-    if (draft.text !== text) {draft.text = text; draft.revision++;}
+    if (!$id('chatText').disabled && draft.text !== text) {draft.text = text; draft.revision++; chatPersist();}
 }
 function chatResizeInput() {
     const ta = $id('chatText');
@@ -2001,14 +2010,14 @@ function chatRenderSendState() {
     $id('chatChannelNote').textContent = ownPending ? 'Отправляется…'
         : chat.conversationId ? chatDraft().error : '';
 }
-async function chatOpen(id) {
+async function chatOpen(id, navigation = 'push') {
     chatCaptureDraft();
     const active = Number(id), view = ++chat.viewRevision;
     chat.conversationId = active; chat.conversation = null; chat.beforeCursor = null;
     chat.messages = []; chat.events = [];
-    $id('chatText').value = chatDraft().text; chatRenderSendState();
+    $id('chatText').value = ''; $id('chatText').disabled = true; chatRenderSendState();
     $id('chatEmpty').hidden=true;$id('chatPane').hidden=false;$id('chatWrap').classList.add('conv-open');
-    chatResizeInput(); $id('chatText').focus();
+    chatResizeInput();
     const thread = chat.threads.find(t => Number(t.id) === active);
     $id('chatName').textContent = thread?.contact_name || thread?.contact_phone || 'Загрузка диалога…';
     for (const name of ['chatAva', 'chatPhone', 'chatHeadChannel']) $id(name).textContent = '';
@@ -2016,7 +2025,8 @@ async function chatOpen(id) {
     document.querySelectorAll('.chat-head-controls select, .chat-note-btn').forEach(el => el.disabled = true);
     chatRenderThreads(); chatRenderNotes();
     $id('chatBody').innerHTML='<div class="chat-hint">Загрузка…</div>';
-    history.replaceState(null,'','/?p=chats&conversation_id='+active);
+    if (navigation !== 'none') history[navigation === 'replace' ? 'replaceState' : 'pushState'](null,'','/?p=chats&conversation_id='+active);
+    chatPersist();
     // Reading history does not depend on markread succeeding.
     chatInboxApi('markread', {conversation_id: active}).then(() => {
         if (view !== chat.viewRevision) return;
@@ -2027,12 +2037,12 @@ async function chatOpen(id) {
     // Loading a conversation must not take focus back from a control the user
     // has already moved to while waiting for the server.
 }
-function chatCloseConv() {
+function chatCloseConv(navigation = 'push') {
     chatCaptureDraft(); chat.viewRevision++;
     chat.conversationId=null;chat.conversation=null;
     $id('chatText').value='';chatRenderSendState();
     $id('chatWrap').classList.remove('conv-open');$id('chatPane').hidden=true;$id('chatEmpty').hidden=false;
-    history.replaceState(null,'','/?p=chats');chatRenderThreads();
+    if(navigation !== 'none')history.pushState(null,'','/?p=chats');chatRenderThreads();chatPersist();
 }
 function bindChatSwipeBack() {
     const pane = $id('chatPane');
@@ -2057,16 +2067,20 @@ async function chatLoadMessages(force=false,before=false) {
     const isCurrent=()=>active===chat.conversationId && view===chat.viewRevision && request===chat.messageRequest;
     try{
         const r=await chatInboxApi('messages',{conversation_id:active,before_cursor:before?chat.beforeCursor:null});if(!isCurrent())return;
+        if(Number(r.conversation?.id)!==active)throw new Error('Диалог недоступен. Обновите список диалогов.');
         chat.conversation=r.conversation;chat.events=r.events||[];chat.beforeCursor=r.before_cursor||null;chat.hasOlder=!!r.has_more;
         chat.messages=before?(r.messages||[]).concat(chat.messages):(r.messages||[]);
         chatRenderHeader();chatRenderNotes();chatRenderSendState();
+        if($id('chatText').disabled){$id('chatText').value=chatDraft().text;$id('chatText').disabled=false;chatResizeInput();}
         const body=$id('chatBody');const atBottom=body.scrollHeight-body.scrollTop-body.clientHeight<90;
         const mixed=chat.conversation?.mixed_history?'<div class="alert warn chat-mixed-warning">⚠ В истории есть сообщения других получателей. Проверяйте номер перед ответом.</div>':'';
         const html=mixed+(chat.hasOlder?'<button class="chat-load-older" onclick="chatLoadOlder()">Показать предыдущие сообщения</button>':'')+(chat.messages.length?chat.messages.map(chatMessageHtml).join(''):'<div class="chat-hint">Сообщений пока нет — напишите первым.</div>')
             +(chat.pendingSend?.id===active ? chatMessageHtml(chat.pendingSend.message) : '');
         if(before){const oldHeight=body.scrollHeight;body.innerHTML=html;body.scrollTop=body.scrollHeight-oldHeight;}
         else {body.innerHTML=html;if(force||atBottom)body.scrollTop=body.scrollHeight;}
-    }catch(e){if(isCurrent())$id('chatBody').innerHTML=`<div class="chat-hint error">${esc(e.message)}</div>`;}
+        if(chat.restoredScroll){body.scrollTop=chat.restoredScroll.bodyScroll??body.scrollHeight;$id('chatThreads').scrollTop=chat.restoredScroll.listScroll||0;chat.restoredScroll=null;}
+        if(force||before)chatPersist();
+    }catch(e){if(isCurrent())$id('chatBody').innerHTML=`<div class="chat-hint error">${esc(e.message)}<br><button type="button" class="btn ghost" onclick="chatLoadMessages(true)">Повторить загрузку</button></div>`;}
     finally{if(request===chat.messageRequest)chat.messageLoading=false;}
 }
 async function chatLoadOlder(){if(chat.beforeCursor)await chatLoadMessages(false,true);}
@@ -2089,12 +2103,12 @@ async function chatSend(e) {
     if (e) e.preventDefault();
     chatCaptureDraft();
     const id = chat.conversationId;
-    if (!id || !chat.conversation || chat.busy) return;
+    if (!id || !chat.conversation || chat.busy || window.panelWorkspace?.isInvalidated()) return;
     const draft = chatDraft(id), text = draft.text.trim(), revision = draft.revision;
     if (!text) return;
     chat.busy = true; draft.error = '';
     const message = {dir:'out', body:text, ts:new Date().toISOString(), channel:chat.conversation.channel, pending:true};
-    chat.pendingSend = {id, message}; chatRenderSendState();
+    chat.pendingSend = {id, message}; chatRenderSendState(); chatPersist();
     const body = $id('chatBody');
     body.insertAdjacentHTML('beforeend', chatMessageHtml(message)); body.scrollTop = body.scrollHeight;
     const r = await api('chat.send', {conversation_id:id, text});
@@ -2112,13 +2126,35 @@ async function chatSend(e) {
         draft.error = (r?.error || 'Отправка не подтверждена.') + ' Проверьте историю перед повторной отправкой.';
     }
     if (chat.conversationId === id) body.querySelector('[data-pending="1"]')?.remove();
-    chatRenderSendState();
+    chatRenderSendState(); chatPersist();
 }
 async function chatInit(){
+    await window.panelWorkspace?.ready;
+    const restored=window.panelWorkspace?.getChat();
+    if(restored){
+        chat.queue=restored.queue||'open';chat.channelFilter=restored.channel||'all';
+        $id('chatSearch').value=restored.search||'';
+        for(const d of restored.drafts||[])chat.drafts.set(d.id,{text:d.text,revision:d.revision,error:d.pending?'Результат предыдущей отправки неизвестен. Проверьте историю перед повтором.':d.error});
+    }
     bindChatSwipeBack();
+    const ta=$id('chatText');
+    ta.addEventListener('input',()=>{chatCaptureDraft();chatResizeInput();});
+    ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();chatSend();}});
+    for(const id of ['chatBody','chatThreads'])$id(id).addEventListener('scroll',()=>{if(!chat.messageLoading)chatPersist();},{passive:true});
+    window.addEventListener('popstate',()=>{
+        const id=new URL(location.href).searchParams.get('conversation_id');
+        if(id && /^\d+$/.test(id))chatOpen(Number(id),'none');else chatCloseConv('none');
+    });
     try{const b=await chatInboxApi('bootstrap');chat.users=b.users||[];chat.currentUserId=Number(b.current_user_id||0);}catch(e){}
-    await chatLoadThreads();const start=$id('chatWrap').dataset.start;if(start){const t=chat.threads.find(x=>x.contact_phone===start||String(x.id)===start);if(t)chatOpen(Number(t.id));}
-    const ta=$id('chatText');if(ta){ta.addEventListener('input',()=>{chatCaptureDraft();chatResizeInput();});ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();chatSend();}});}
+    await chatLoadThreads();
+    const start=$id('chatWrap').dataset.start;
+    // Explicit object links win even if the conversation is outside the first list page.
+    const directId=new URL(location.href).searchParams.get('conversation_id');
+    const id=start ? (directId && /^\d+$/.test(directId)?Number(directId):Number(chat.threads.find(x=>x.contact_phone===start||String(x.id)===start)?.id)) : restored?.selected;
+    if(id){
+        if(!start || Number(start)===restored?.selected)chat.restoredScroll=restored;
+        await chatOpen(id,'replace');
+    }else if(restored){$id('chatThreads').scrollTop=restored.listScroll||0;}
     chat.poll=setInterval(()=>{if(document.hidden)return;chatLoadThreads();if(chat.conversationId&&!chat.messageLoading)chatLoadMessages(false);},5000);
 }
 
@@ -2405,9 +2441,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (document.body.dataset.page === 'reporting') reportInit();
 });
 
-// Memory-only drafts cannot survive leaving this page; warn while work remains.
+// Warn until drafts have a confirmed local snapshot; in-flight sends remain unsafe to leave.
 window.addEventListener('beforeunload', event => {
+    if (window.panelWorkspace?.isInvalidated()) return;
     const dirtyCells = [...cellSaves.values()].some(s => s.input.isConnected && s.revision !== s.saved);
-    const dirtyChats = chat.busy || [...chat.drafts.values()].some(d => d.text.trim());
+    const dirtyChats = chat.busy || ([...chat.drafts.values()].some(d => d.text.trim()) && !window.panelWorkspace?.isSaved());
     if (dirtyCells || dirtyChats) {event.preventDefault(); event.returnValue = '';}
 });

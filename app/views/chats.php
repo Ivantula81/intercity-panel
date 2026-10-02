@@ -54,13 +54,13 @@
             <div class="chat-body" id="chatBody"><button class="chat-load-older" id="chatLoadOlder" hidden onclick="chatLoadOlder()">Показать предыдущие сообщения</button></div>
 
             <form class="chat-input" id="chatForm" onsubmit="chatSend(event); return false;">
-                <textarea id="chatText" aria-label="Сообщение" aria-describedby="chatDraftHint chatChannelNote" class="chat-text" placeholder="Введите сообщение…" rows="1"></textarea>
-                <button type="submit" class="chat-send-btn" id="chatSendBtn" aria-label="Отправить">
+                <textarea disabled id="chatText" aria-label="Сообщение" aria-describedby="chatDraftHint chatChannelNote" class="chat-text" placeholder="Введите сообщение…" rows="1"></textarea>
+                <button type="submit" class="chat-send-btn" id="chatSendBtn" disabled aria-label="Отправить">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>
                 </button>
             </form>
             <div class="chat-channel-note" id="chatChannelNote" role="status" aria-live="polite"></div>
-            <div class="chat-draft-hint" id="chatDraftHint">Черновики диалогов хранятся, пока эта страница открыта.</div>
+            <div class="chat-draft-hint" id="chatDraftHint">Черновики восстанавливаются на этом устройстве, пока действует вход. Проверяйте статус сохранения рабочего места.</div>
         </div>
     </section>
 </div>

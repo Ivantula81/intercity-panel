@@ -1147,3 +1147,14 @@ input.cell[data-save-state="error"] { outline:2px solid var(--err); outline-offs
 input.cell[data-save-state="changed"], input.cell[data-save-state="saving"] { box-shadow:inset 0 -2px var(--warn); }
 .chat-draft-hint { padding:0 16px 8px; font-size:12px; line-height:1.5; color:var(--muted); }
 .chat-channel-note { overflow-wrap:anywhere; }
+
+.workspace-state { padding:0 0 8px; line-height:1.5; overflow-wrap:anywhere; }
+.workspace-state:empty { display:none; }
+/* Keep the composer above mobile navigation when workspace feedback wraps. */
+body[data-page="chats"] .main { display:flex; flex-direction:column; }
+body[data-page="chats"] .workspace-state { flex:none; }
+body[data-page="chats"] .chat-wrap { flex:1; min-height:0; height:auto; }
+@media (max-width:860px) {
+    body[data-page="chats"] .main { height:calc(100dvh - var(--workspace-top,56px) - var(--workspace-bottom,70px)); }
+    body[data-page="chats"] .workspace-state { padding:4px 12px 8px; }
+}
