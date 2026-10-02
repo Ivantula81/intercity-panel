@@ -4,6 +4,7 @@
     "encrypted snapshot, no-op flush, cross-section return without sending",
     "root app launch resumes work even when the tab session survives",
     "reload restores chat filters/drafts; Back/Forward selects original objects",
+    "SMS and email channel filters survive reload",
     "URL filters, explicit reset and page scroll across sections",
     "independent active tabs survive reload without overwriting each other",
     "full browser process restart restores last workspace and draft",

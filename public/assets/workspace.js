@@ -55,7 +55,7 @@
         const c=value.chat;
         if(c && typeof c==='object') {
             clean.chat={queue:['open','new','mine','unassigned','pending','delivery_failed','resolved'].includes(c.queue)?c.queue:'open',
-                channel:['all','whatsapp','max','telegram'].includes(c.channel)?c.channel:'all',
+                channel:['all','whatsapp','max','telegram','sms','email'].includes(c.channel)?c.channel:'all',
                 search:typeof c.search==='string'?c.search.slice(0,1000):'',selected:Number.isSafeInteger(c.selected)&&c.selected>0?c.selected:null,
                 bodyScroll:Number.isFinite(c.bodyScroll)?Math.max(0,c.bodyScroll):null,
                 listScroll:Number.isFinite(c.listScroll)?Math.max(0,c.listScroll):0,drafts:[]};

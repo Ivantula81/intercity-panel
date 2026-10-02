@@ -71,6 +71,13 @@ const server=http.createServer((req,res)=>{
         await page.waitForFunction(()=>document.querySelector('#chatText')?.value==='Личный черновик A, версия 2');
         await page.goForward();await page.waitForFunction(()=>document.querySelector('#chatText')?.value==='Черновик B');
         checks.push('reload restores chat filters/drafts; Back/Forward selects original objects');
+        for(const channel of ['sms','email']){
+            await page.evaluate(channel=>chatSetChannel(channel),channel);await flush();await page.reload();
+            await page.waitForFunction(()=>!document.querySelector('#chatText')?.disabled);
+            assert.equal(await page.evaluate(()=>chat.channelFilter),channel,'Every supported channel restores');
+        }
+        checks.push('SMS and email channel filters survive reload');
+
 
         await page.goto(base+'/?p=contacts&q=Тест&sort=name');await flush();
         await page.locator('.nav-item').filter({hasText:'Ведомости'}).click();
