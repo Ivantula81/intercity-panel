@@ -1,0 +1,21 @@
+{
+  "ok": true,
+  "checks": [
+    "save and subsequent read",
+    "application failure, retained input, keyboard retry",
+    "offline, expired session, invalid JSON and null responses",
+    "serialized writes and coalesced new edits",
+    "aggregate status with failures and reordered independent replies",
+    "passenger identity, repeated binding, notifications binder ownership",
+    "390px save feedback, touch target and reduced motion",
+    "real notification binder and flush barrier keep failed edits and retry",
+    "slow history load is not starved by background polling",
+    "A/B/A and close/reopen independent drafts",
+    "captured recipient, double-submit guard, late success preserves B",
+    "late success preserves newer text, Enter sends and Shift+Enter edits",
+    "scoped send error, explicit retry, ambiguous timeout keeps draft without auto-send",
+    "A/B/A stale loads, stale failure, reverse poll replies, markread failure",
+    "mobile back/restore, accessible composer, unload warning"
+  ],
+  "pageErrors": []
+}

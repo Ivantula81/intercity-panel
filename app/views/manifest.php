@@ -71,5 +71,8 @@
             </tbody>
         </table>
     </div>
-    <div class="muted small mt" id="saveState">Все изменения сохранены</div>
+    <div class="save-feedback mt">
+        <div class="muted small" id="saveState" role="status" aria-live="polite">Все изменения сохранены</div>
+        <button type="button" class="btn ghost" id="saveRetry" hidden onclick="retryCellSaves()">Повторить сохранение</button>
+    </div>
 </div>

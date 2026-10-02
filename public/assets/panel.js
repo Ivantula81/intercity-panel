@@ -48,21 +48,66 @@ function setState(text) {
     const el = document.getElementById('saveState');
     if (el) el.textContent = text;
 }
+// One in-flight write per field prevents an older request overwriting newer input.
+const cellSaves = new Map();
+function renderCellSaves() {
+    const states = [...cellSaves.values()].filter(s => s.input.isConnected);
+    const failed = states.filter(s => s.error);
+    const saving = states.some(s => s.running);
+    const changed = states.some(s => s.revision !== s.saved);
+    for (const s of states) {
+        s.input.dataset.saveState = s.error ? 'error' : s.running ? 'saving' : s.revision !== s.saved ? 'changed' : 'saved';
+        s.input.setAttribute('aria-invalid', String(!!s.error));
+    }
+    const el = document.getElementById('saveState');
+    if (el) {
+        el.textContent = failed.length
+            ? `Не сохранено полей: ${failed.length}. ${failed[0].error}`
+            : saving ? 'Сохраняю…' : changed ? 'Есть несохранённые изменения' : 'Все изменения сохранены';
+        el.classList.toggle('save-error', !!failed.length);
+    }
+    const retry = document.getElementById('saveRetry');
+    if (retry) retry.hidden = !failed.length;
+}
+async function saveCell(s) {
+    if (s.running || s.timer || s.revision === s.saved || !s.input.isConnected) return;
+    const revision = s.revision, value = s.input.value;
+    s.running = true; s.error = ''; renderCellSaves();
+    const result = await api(s.action, {id: s.id, field: s.field, value});
+    s.running = false;
+    if (result?.ok === true) s.saved = revision;
+    else if (s.revision === revision) s.error = result?.error || 'Не удалось сохранить. Повторите попытку.';
+    renderCellSaves();
+    // An edit made during the request is a new operation; never retry a failed
+    // unchanged value automatically, and never mark the new version saved.
+    if (s.revision !== revision) saveCell(s);
+}
+function retryCellSaves() {
+    for (const s of cellSaves.values()) {
+        if (!s.error) continue;
+        clearTimeout(s.timer); s.timer = null;
+        saveCell(s);
+    }
+}
+function bindSaveCell(input, action, id) {
+    if (cellSaves.has(input)) return;
+    const s = {input, action, id, field: input.dataset.f, revision: 0, saved: 0, timer: null, running: false, error: ''};
+    cellSaves.set(input, s);
+    input.setAttribute('aria-describedby', 'saveState');
+    input.oninput = () => {
+        s.revision++; s.error = '';
+        clearTimeout(s.timer);
+        s.timer = setTimeout(() => {s.timer = null; saveCell(s);}, 500);
+        renderCellSaves();
+    };
+}
 function bindCells() {
-    document.querySelectorAll('#ptable input.cell').forEach(inp => {
-        inp.oninput = () => queueSave('p' + inp.closest('tr').dataset.id + inp.dataset.f, async () => {
-            setState('Сохраняю…');
-            await api('passenger.update', { id: +inp.closest('tr').dataset.id, field: inp.dataset.f, value: inp.value });
-            setState('Все изменения сохранены');
-        });
+    document.querySelectorAll('#ptable input.cell').forEach(input => {
+        bindSaveCell(input, 'passenger.update', +input.closest('tr').dataset.id);
     });
-    document.querySelectorAll('#tripFacts input.cell').forEach(inp => {
-        inp.oninput = () => queueSave('m' + inp.dataset.f, async () => {
-            setState('Сохраняю…');
-            await api('manifest.update', { id: +document.getElementById('tripFacts').dataset.id, field: inp.dataset.f, value: inp.value });
-            setState('Все изменения сохранены');
-        });
-    });
+    // Notifications owns a separate flush barrier before preparing a send.
+    // Keep its binder when that module is loaded.
+    bindTripFacts();
 }
 async function addPassenger(manifestId) {
     const r = await api('passenger.add', { manifest_id: manifestId });
@@ -138,10 +183,8 @@ function manifestId() {
 }
 
 function bindTripFacts() {
-    document.querySelectorAll('#tripFacts input.cell').forEach(inp => {
-        inp.oninput = () => queueSave('m' + inp.dataset.f, async () => {
-            await api('manifest.update', { id: manifestId(), field: inp.dataset.f, value: inp.value });
-        });
+    document.querySelectorAll('#tripFacts input.cell').forEach(input => {
+        bindSaveCell(input, 'manifest.update', +input.closest('#tripFacts').dataset.id);
     });
 }
 
@@ -1782,7 +1825,7 @@ async function savePass() {
 /* ── Чаты / единый inbox ── */
 const chat = { conversationId: null, conversation: null, threads: [], poll: null, busy: false,
     queue: 'open', channelFilter: 'all', channelCounts: {}, counts: {}, users: [], currentUserId: 0,
-    cursor: null, beforeCursor: null, hasOlder: false, messages: [], events: [], searchTimer: null };
+    cursor: null, beforeCursor: null, hasOlder: false, messages: [], events: [], searchTimer: null, drafts: new Map(), viewRevision: 0, messageRequest: 0, messageLoading: false, pendingSend: null };
 const $id = id => document.getElementById(id);
 
 // Безопасный сброс клиентского кеша: не трогаем cookies, сессию и localStorage
@@ -1935,16 +1978,62 @@ function chatRenderThreads() {
 }
 function chatFilter() { clearTimeout(chat.searchTimer); chat.searchTimer=setTimeout(()=>{chat.cursor=null;chatLoadThreads();},260); }
 
-async function chatOpen(id) {
-    chat.conversationId=Number(id); chat.beforeCursor=null;
-    $id('chatEmpty').hidden=true;$id('chatPane').hidden=false;$id('chatWrap').classList.add('conv-open');
-    document.querySelectorAll('#chatThreads .chat-thread').forEach(el=>el.classList.toggle('active',Number(el.dataset.id)===chat.conversationId));
-    $id('chatBody').innerHTML='<div class="chat-hint">Загрузка…</div>';
-    history.replaceState(null,'','/?p=chats&conversation_id='+chat.conversationId);
-    await chatInboxApi('markread',{conversation_id:chat.conversationId}); await chatLoadMessages(true);
-    const t=chat.threads.find(x=>Number(x.id)===chat.conversationId);if(t)t.unread_count=0;chatRenderThreads();$id('chatText').focus();
+// Drafts live only in this page's memory, keyed by the server conversation ID
+// (which identifies the channel account too). Nothing is stored on the device.
+function chatDraft(id = chat.conversationId) {
+    if (!chat.drafts.has(id)) chat.drafts.set(id, {text: '', revision: 0, error: ''});
+    return chat.drafts.get(id);
 }
-function chatCloseConv() { chat.conversationId=null;chat.conversation=null;$id('chatWrap').classList.remove('conv-open');$id('chatPane').hidden=true;$id('chatEmpty').hidden=false;history.replaceState(null,'','/?p=chats');chatRenderThreads(); }
+function chatCaptureDraft() {
+    if (!chat.conversationId) return;
+    const draft = chatDraft(), text = $id('chatText').value;
+    if (draft.text !== text) {draft.text = text; draft.revision++;}
+}
+function chatResizeInput() {
+    const ta = $id('chatText');
+    ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 140) + 'px';
+}
+function chatRenderSendState() {
+    const button = $id('chatSendBtn');
+    button.disabled = chat.busy || !chat.conversation;
+    button.setAttribute('aria-busy', String(chat.busy));
+    const ownPending = chat.pendingSend?.id === chat.conversationId;
+    $id('chatChannelNote').textContent = ownPending ? 'Отправляется…'
+        : chat.conversationId ? chatDraft().error : '';
+}
+async function chatOpen(id) {
+    chatCaptureDraft();
+    const active = Number(id), view = ++chat.viewRevision;
+    chat.conversationId = active; chat.conversation = null; chat.beforeCursor = null;
+    chat.messages = []; chat.events = [];
+    $id('chatText').value = chatDraft().text; chatRenderSendState();
+    $id('chatEmpty').hidden=true;$id('chatPane').hidden=false;$id('chatWrap').classList.add('conv-open');
+    chatResizeInput(); $id('chatText').focus();
+    const thread = chat.threads.find(t => Number(t.id) === active);
+    $id('chatName').textContent = thread?.contact_name || thread?.contact_phone || 'Загрузка диалога…';
+    for (const name of ['chatAva', 'chatPhone', 'chatHeadChannel']) $id(name).textContent = '';
+    $id('chatTripLink').hidden = true; $id('chatCard').hidden = true;
+    document.querySelectorAll('.chat-head-controls select, .chat-note-btn').forEach(el => el.disabled = true);
+    chatRenderThreads(); chatRenderNotes();
+    $id('chatBody').innerHTML='<div class="chat-hint">Загрузка…</div>';
+    history.replaceState(null,'','/?p=chats&conversation_id='+active);
+    // Reading history does not depend on markread succeeding.
+    chatInboxApi('markread', {conversation_id: active}).then(() => {
+        if (view !== chat.viewRevision) return;
+        if (thread) thread.unread_count = 0;
+        chatRenderThreads();
+    }).catch(() => {});
+    await chatLoadMessages(true);
+    // Loading a conversation must not take focus back from a control the user
+    // has already moved to while waiting for the server.
+}
+function chatCloseConv() {
+    chatCaptureDraft(); chat.viewRevision++;
+    chat.conversationId=null;chat.conversation=null;
+    $id('chatText').value='';chatRenderSendState();
+    $id('chatWrap').classList.remove('conv-open');$id('chatPane').hidden=true;$id('chatEmpty').hidden=false;
+    history.replaceState(null,'','/?p=chats');chatRenderThreads();
+}
 function bindChatSwipeBack() {
     const pane = $id('chatPane');
     if (!pane || !window.PointerEvent || !window.matchMedia('(max-width: 860px)').matches) return;
@@ -1963,22 +2052,29 @@ function bindChatSwipeBack() {
 }
 function chatMessageHtml(m){return `<div class="cm ${m.dir}${m.pending?' pending':''}"${m.pending?' data-pending="1"':''}><div class="cm-bubble">${chatMedia(m)}${chatText(m)}<span class="cm-meta">${chatChannelTag(m)}${m.pending?'отправляется…':esc(chatTime(m.ts))}${m.dir==='out'&&!m.pending?chatTicks(m):''}</span></div></div>`;}
 async function chatLoadMessages(force=false,before=false) {
-    if(!chat.conversationId)return; const active=chat.conversationId;
+    if(!chat.conversationId)return; const active=chat.conversationId, view=chat.viewRevision, request=++chat.messageRequest;
+    chat.messageLoading=true;
+    const isCurrent=()=>active===chat.conversationId && view===chat.viewRevision && request===chat.messageRequest;
     try{
-        const r=await chatInboxApi('messages',{conversation_id:active,before_cursor:before?chat.beforeCursor:null});if(active!==chat.conversationId)return;
+        const r=await chatInboxApi('messages',{conversation_id:active,before_cursor:before?chat.beforeCursor:null});if(!isCurrent())return;
         chat.conversation=r.conversation;chat.events=r.events||[];chat.beforeCursor=r.before_cursor||null;chat.hasOlder=!!r.has_more;
         chat.messages=before?(r.messages||[]).concat(chat.messages):(r.messages||[]);
-        chatRenderHeader();chatRenderNotes();
+        chatRenderHeader();chatRenderNotes();chatRenderSendState();
         const body=$id('chatBody');const atBottom=body.scrollHeight-body.scrollTop-body.clientHeight<90;
         const mixed=chat.conversation?.mixed_history?'<div class="alert warn chat-mixed-warning">⚠ В истории есть сообщения других получателей. Проверяйте номер перед ответом.</div>':'';
-        const html=mixed+(chat.hasOlder?'<button class="chat-load-older" onclick="chatLoadOlder()">Показать предыдущие сообщения</button>':'')+(chat.messages.length?chat.messages.map(chatMessageHtml).join(''):'<div class="chat-hint">Сообщений пока нет — напишите первым.</div>');
+        const html=mixed+(chat.hasOlder?'<button class="chat-load-older" onclick="chatLoadOlder()">Показать предыдущие сообщения</button>':'')+(chat.messages.length?chat.messages.map(chatMessageHtml).join(''):'<div class="chat-hint">Сообщений пока нет — напишите первым.</div>')
+            +(chat.pendingSend?.id===active ? chatMessageHtml(chat.pendingSend.message) : '');
         if(before){const oldHeight=body.scrollHeight;body.innerHTML=html;body.scrollTop=body.scrollHeight-oldHeight;}
         else {body.innerHTML=html;if(force||atBottom)body.scrollTop=body.scrollHeight;}
-    }catch(e){$id('chatBody').innerHTML=`<div class="chat-hint error">${esc(e.message)}</div>`;}
+    }catch(e){if(isCurrent())$id('chatBody').innerHTML=`<div class="chat-hint error">${esc(e.message)}</div>`;}
+    finally{if(request===chat.messageRequest)chat.messageLoading=false;}
 }
 async function chatLoadOlder(){if(chat.beforeCursor)await chatLoadMessages(false,true);}
 function chatRenderHeader(){
-    const c=chat.conversation;if(!c)return;const name=c.contact_name||c.contact_phone||c.external_chat_id;
+    const c=chat.conversation;if(!c)return;
+    $id('chatCard').hidden=false;
+    document.querySelectorAll('.chat-head-controls select, .chat-note-btn').forEach(el=>el.disabled=false);
+    const name=c.contact_name||c.contact_phone||c.external_chat_id;
     $id('chatAva').textContent=chatInitial(name,c.contact_phone);$id('chatName').textContent=name;$id('chatPhone').textContent=/^\+\d{10,15}$/.test(c.contact_phone||'')?c.contact_phone:'';
     $id('chatCard').href='/?p=contacts&q='+encodeURIComponent(c.contact_phone||'');$id('chatStatus').value=c.status;$id('chatPriority').value=c.priority;
     const trip=$id('chatTripLink');if(c.manifest_id){trip.hidden=false;trip.href='/?p=manifest&id='+Number(c.manifest_id);trip.textContent='Рейс №'+(c.trip_number||c.manifest_id)+' · '+(c.route||'');}else{trip.hidden=true;}
@@ -1989,19 +2085,41 @@ async function chatUpdateMeta(field,value){if(!chat.conversationId)return;try{aw
 function chatOpenNotes(){chatRenderNotes();$id('chatNotesDialog').showModal();}
 function chatRenderNotes(){const box=$id('chatNotesList');if(!box)return;const notes=chat.events.filter(e=>e.event_type==='note');box.innerHTML=notes.length?notes.map(n=>`<div class="chat-note"><div>${esc(n.body||'')}</div><small>${esc(n.actor_name||'')} · ${esc(chatTime(n.created_at))}</small></div>`).join(''):'<div class="chat-hint">Заметок пока нет.</div>';}
 async function chatAddNote(e){e.preventDefault();const ta=$id('chatNoteText');const body=ta.value.trim();if(!body)return;try{await chatInboxApi('note',{conversation_id:chat.conversationId,body});ta.value='';await chatLoadMessages();}catch(err){alert(err.message);}}
-async function chatSend(e){
-    if(e)e.preventDefault();const ta=$id('chatText');const text=ta.value.trim();if(!text||!chat.conversationId||chat.busy)return;chat.busy=true;const sendBtn=$id('chatSendBtn');sendBtn.disabled=true;sendBtn.setAttribute('aria-busy','true');$id('chatChannelNote').textContent='';
-    const body=$id('chatBody');const pending={dir:'out',body:text,ts:new Date().toISOString(),channel:chat.conversation?.channel||'',pending:true};
-    body.insertAdjacentHTML('beforeend',chatMessageHtml(pending));body.scrollTop=body.scrollHeight;
-    const r=await api('chat.send',{conversation_id:chat.conversationId,text});chat.busy=false;sendBtn.disabled=false;sendBtn.removeAttribute('aria-busy');
-    if(r.ok){ta.value='';ta.style.height='auto';await chatLoadMessages(true);chatLoadThreads();ta.focus();}else{$id('chatBody').querySelector('[data-pending="1"]')?.remove();$id('chatChannelNote').textContent='⚠ '+(r.error||'Не удалось отправить');}
+async function chatSend(e) {
+    if (e) e.preventDefault();
+    chatCaptureDraft();
+    const id = chat.conversationId;
+    if (!id || !chat.conversation || chat.busy) return;
+    const draft = chatDraft(id), text = draft.text.trim(), revision = draft.revision;
+    if (!text) return;
+    chat.busy = true; draft.error = '';
+    const message = {dir:'out', body:text, ts:new Date().toISOString(), channel:chat.conversation.channel, pending:true};
+    chat.pendingSend = {id, message}; chatRenderSendState();
+    const body = $id('chatBody');
+    body.insertAdjacentHTML('beforeend', chatMessageHtml(message)); body.scrollTop = body.scrollHeight;
+    const r = await api('chat.send', {conversation_id:id, text});
+    chat.busy = false; chat.pendingSend = null;
+    if (r?.ok === true) {
+        if (draft.revision === revision) {draft.text = ''; draft.revision++;}
+        if (chat.conversationId === id) {
+            $id('chatText').value = draft.text; chatResizeInput();
+            chatLoadMessages(true);
+        }
+        chatLoadThreads();
+    } else {
+        // The transport may have lost the response after the server sent it.
+        // Never retry a message automatically or claim definite non-delivery.
+        draft.error = (r?.error || 'Отправка не подтверждена.') + ' Проверьте историю перед повторной отправкой.';
+    }
+    if (chat.conversationId === id) body.querySelector('[data-pending="1"]')?.remove();
+    chatRenderSendState();
 }
 async function chatInit(){
     bindChatSwipeBack();
     try{const b=await chatInboxApi('bootstrap');chat.users=b.users||[];chat.currentUserId=Number(b.current_user_id||0);}catch(e){}
     await chatLoadThreads();const start=$id('chatWrap').dataset.start;if(start){const t=chat.threads.find(x=>x.contact_phone===start||String(x.id)===start);if(t)chatOpen(Number(t.id));}
-    const ta=$id('chatText');if(ta){ta.addEventListener('input',()=>{ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,140)+'px';});ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();chatSend();}});}
-    chat.poll=setInterval(()=>{if(document.hidden)return;chatLoadThreads();if(chat.conversationId)chatLoadMessages(false);},5000);
+    const ta=$id('chatText');if(ta){ta.addEventListener('input',()=>{chatCaptureDraft();chatResizeInput();});ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();chatSend();}});}
+    chat.poll=setInterval(()=>{if(document.hidden)return;chatLoadThreads();if(chat.conversationId&&!chat.messageLoading)chatLoadMessages(false);},5000);
 }
 
 async function reportApi(action, data = {}) {
@@ -2285,4 +2403,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (document.body.dataset.page === 'settings') { loadChannelDelays(); waAccounts(); }
     if (document.body.dataset.page === 'chats') chatInit();
     if (document.body.dataset.page === 'reporting') reportInit();
+});
+
+// Memory-only drafts cannot survive leaving this page; warn while work remains.
+window.addEventListener('beforeunload', event => {
+    const dirtyCells = [...cellSaves.values()].some(s => s.input.isConnected && s.revision !== s.saved);
+    const dirtyChats = chat.busy || [...chat.drafts.values()].some(d => d.text.trim());
+    if (dirtyCells || dirtyChats) {event.preventDefault(); event.returnValue = '';}
 });
