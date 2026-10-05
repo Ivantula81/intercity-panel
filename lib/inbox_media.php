@@ -84,13 +84,21 @@ function inbox_media_fetch(string $url): string
 }
 
 // [localUrl, mime] или ['',''] при неудаче.
-function inbox_save_media(string $url, string $mime = '', string $fileName = ''): array
+function inbox_save_media(string $url, string $mime = '', string $fileName = '', ?string $eventKey = null): array
 {
     if ($url === '') return ['', ''];
+    if ($eventKey !== null && !preg_match('/^[a-f0-9]{64}$/D', $eventKey)) throw new InvalidArgumentException('Invalid media key');
     $dir = inbox_media_storage_dir();
     if (!is_dir($dir)) @mkdir($dir, 0775, true);
     if (!is_dir($dir) || !is_writable($dir)) return ['', ''];
 
+    // Receipt transaction serializes writers for this event. A DB rollback can leave
+    // this complete file behind: the retry reuses it, without downloading a second copy.
+    $stableName = $eventKey === null ? null : $eventKey . '.bin';
+    if ($stableName !== null && is_file($dir . '/' . $stableName) && filesize($dir . '/' . $stableName) > 0) {
+        if ($mime === '') $mime = (string)(mime_content_type($dir . '/' . $stableName) ?: 'application/octet-stream');
+        return ['/?p=media&f=' . rawurlencode($stableName), $mime];
+    }
     $data = inbox_media_fetch($url);
     if ($data === '' || strlen($data) > 20 * 1024 * 1024) return ['', ''];
 
@@ -102,7 +110,17 @@ function inbox_save_media(string $url, string $mime = '', string $fileName = '')
     try { $name = bin2hex(random_bytes(8)) . '.' . $ext; }
     catch (Exception $e) { $name = 'm' . bin2hex((string) microtime(true)) . '.' . $ext; }
 
-    if (@file_put_contents($dir . '/' . $name, $data) === false) return ['', ''];
+    if ($stableName !== null) {
+        // Never expose a partial download as the cached result after a crash.
+        $tmp = tempnam($dir, '.incoming-');
+        if ($tmp === false) return ['', ''];
+        try {
+            if (file_put_contents($tmp, $data) !== strlen($data) || !rename($tmp, $dir . '/' . $stableName)) return ['', ''];
+        } finally {
+            if (is_file($tmp)) unlink($tmp);
+        }
+        $name = $stableName;
+    } elseif (@file_put_contents($dir . '/' . $name, $data) === false) return ['', ''];
     @chmod($dir . '/' . $name, 0644);
     // Выдача только через авторизованный контроллер, без прямого URL из docroot.
     return ['/?p=media&f=' . rawurlencode($name), $mime];
