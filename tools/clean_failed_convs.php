@@ -1,4 +1,6 @@
 <?php
+require_once dirname(__DIR__) . '/lib/BackgroundJobs.php';
+BackgroundJobs::enter('clean_failed_convs');
 // Разовая чистка: удалить «мусорные» диалоги, созданные ПРОВАЛЕННЫМИ отправками.
 // Артефакт бага: link_outgoing_conv вызывался и при ошибке, поэтому неудачные
 // MAX/Telegram («У номера нет MAX») заводили диалог с непроваленным сообщением.

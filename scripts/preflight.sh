@@ -8,7 +8,9 @@ echo "[1/4] Проверка diff"
 git diff --check
 
 echo "[2/4] PHP syntax"
-find app lib public tests scripts -name '*.php' -print0 | xargs -0 -n1 php -l
+find app lib public tests scripts tools -name '*.php' -print0 | xargs -0 -n1 php -l
+
+php -l backfill_contacts.php
 
 echo "[3/4] JavaScript syntax"
 node --check public/assets/panel.js
@@ -17,6 +19,7 @@ node --check public/assets/schedules.js
 node --check public/assets/notifications.js
 
 echo "[4/4] Regression tests"
+python3 tests/background_jobs_test.py
 php tests/notification_groups_test.php
 php tests/notification_test.php
 php tests/notification_correction_test.php

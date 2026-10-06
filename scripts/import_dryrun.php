@@ -1,4 +1,6 @@
 <?php
+require_once dirname(__DIR__) . '/lib/BackgroundJobs.php';
+BackgroundJobs::enter('import_dryrun');
 // СУХОЙ ПРОГОН импорта ведомости: всё в транзакции, в конце ROLLBACK — ничего не сохраняется.
 // Использование: php scripts/import_dryrun.php <путь_к_csv>
 require __DIR__ . '/../app/bootstrap.php';

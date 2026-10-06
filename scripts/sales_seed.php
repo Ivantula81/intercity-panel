@@ -1,4 +1,6 @@
 <?php
+require_once dirname(__DIR__) . '/lib/BackgroundJobs.php';
+BackgroundJobs::enter('sales_seed');
 // Разовый засев таблицы sales реальными письмами каналов (снимок на 11–14.06.2026),
 // прочитанными через Gmail-коннектор. Парсит через SalesParser, вставляет с дедупом по email_id.
 // Live-ингест (IMAP) — отдельно, когда будет app-password ящика.

@@ -1,4 +1,6 @@
 <?php
+require_once dirname(__DIR__) . '/lib/BackgroundJobs.php';
+BackgroundJobs::enter('reporting_agents_fix');
 
 // Наладка МАТЧИНГА агентов отчётности: алиасы и «где искать».
 //

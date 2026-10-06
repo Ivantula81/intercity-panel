@@ -1,4 +1,6 @@
 <?php
+require_once dirname(__DIR__) . '/lib/BackgroundJobs.php';
+BackgroundJobs::enter('merge_conv_dups');
 // Разовая миграция: слить legacy-дубли MAX/Telegram-диалогов (ключ по телефону)
 // в основной диалог (ключ по chatId), который создаётся из входящих.
 // Без аргумента — dry-run (только показывает). Применить:  php merge_conv_dups.php apply

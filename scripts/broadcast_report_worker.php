@@ -1,4 +1,6 @@
 <?php
+require_once dirname(__DIR__) . '/lib/BackgroundJobs.php';
+BackgroundJobs::enter('broadcast_report_worker');
 // Формирует промежуточный и итоговый отчёт по кампаниям и ставит его в outbox.
 require dirname(__DIR__) . '/app/bootstrap.php';
 require PANEL_ROOT . '/app/broadcast_queue.php';

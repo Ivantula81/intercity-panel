@@ -1,4 +1,6 @@
 <?php
+require_once dirname(__DIR__) . '/lib/BackgroundJobs.php';
+BackgroundJobs::enter('reporting_reset');
 
 // Полный сброс раздела «Отчётность» до чистой среды.
 //

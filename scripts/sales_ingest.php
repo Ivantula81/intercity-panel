@@ -1,4 +1,6 @@
 <?php
+require_once dirname(__DIR__) . '/lib/BackgroundJobs.php';
+BackgroundJobs::enter('sales_ingest');
 
 // Read-only импорт продаж/возвратов из Gmail.
 // --dry-run читает письма, но не пишет в БД и не двигает курсор.
