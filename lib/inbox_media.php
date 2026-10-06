@@ -75,12 +75,38 @@ function inbox_media_fetch(string $url): string
             CURLOPT_MAXFILESIZE => $max,
         ]);
         $d = curl_exec($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         curl_close($ch);
-        return is_string($d) ? $d : '';
+        // A whole-file GET must finish with 200, including after redirects.
+        // Error bodies and unsolicited partial responses are not attachments.
+        return $status === 200 && is_string($d) && strlen($d) <= $max ? $d : '';
     }
-    $ctx = stream_context_create(['http' => ['timeout' => 25, 'follow_location' => 1, 'max_redirects' => 3]]);
-    $d = @file_get_contents($url, false, $ctx, 0, $max);
-    return is_string($d) ? $d : '';
+    $ctx = stream_context_create(['http' => [
+        'timeout' => 25, 'follow_location' => 1, 'max_redirects' => 3, 'ignore_errors' => true,
+    ]]);
+    $stream = @fopen($url, 'rb', false, $ctx);
+    if ($stream === false) return '';
+    try {
+        $meta = stream_get_meta_data($stream);
+        $status = 0; $length = null;
+        foreach ($meta['wrapper_data'] ?? [] as $header) {
+            if (preg_match('~^HTTP/\S+\s+(\d{3})(?:\s|$)~i', $header, $match)) {
+                $status = (int) $match[1];
+                $length = null; // Headers of an earlier redirect must not describe the final body.
+            } elseif (preg_match('/^Content-Length:\s*(\d+)\s*$/i', $header, $match)) {
+                $length = (int) $match[1];
+            }
+        }
+        if ($status !== 200 || ($length !== null && $length > $max)) return '';
+        // Read one extra byte so an oversized response is rejected, never silently truncated.
+        $d = @stream_get_contents($stream, $max + 1);
+        $meta = stream_get_meta_data($stream);
+        if (!is_string($d) || !empty($meta['timed_out']) || strlen($d) > $max
+            || ($length !== null && strlen($d) !== $length)) return '';
+        return $d;
+    } finally {
+        fclose($stream);
+    }
 }
 
 // [localUrl, mime] или ['',''] при неудаче.
