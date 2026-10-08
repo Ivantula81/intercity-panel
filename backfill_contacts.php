@@ -1,4 +1,8 @@
 <?php
+if (PHP_SAPI === 'cli') {
+    require_once __DIR__ . '/lib/BackgroundJobs.php';
+    BackgroundJobs::enter('backfill_contacts');
+}
 
 // Разовое наполнение базы контактов из существующих отправок и пассажиров.
 // Запуск: php /var/www/panel/backfill_contacts.php  (или открыть под логином — см. ниже)

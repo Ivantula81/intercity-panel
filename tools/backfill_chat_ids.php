@@ -1,4 +1,6 @@
 <?php
+require_once dirname(__DIR__) . '/lib/BackgroundJobs.php';
+BackgroundJobs::enter('backfill_chat_ids');
 // Разовое заполнение contacts.max_chat_id / telegram_chat_id из уже известных диалогов.
 //
 // Зачем: MAX/Telegram адресуются по chatId. До schema18 панель узнавала его вызовом

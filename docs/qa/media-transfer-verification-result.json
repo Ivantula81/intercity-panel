@@ -1,0 +1,30 @@
+{
+  "tested_on": "2026-10-06",
+  "reported_on": "2026-10-07",
+  "fix_commit": "f42c43511893e66419418be2ae1e6c0e7be2d7ce",
+  "candidate_commit": "84f2091223eaaab03015f8f0eb68db27eb576ff8",
+  "previous_commit": "02f31c2ae0fa08f5ae418aaa3e7003ad27a2d38e",
+  "preflight": {
+    "fix_branch_passed": true,
+    "integrated_candidate_passed": true
+  },
+  "assertions": {
+    "local_media": 12,
+    "isolated_https": 32,
+    "integrated_rehearsal": 108
+  },
+  "https_transports": [
+    "curl",
+    "stream"
+  ],
+  "candidate_files_verified": 252,
+  "network_isolated": true,
+  "test_database_stopped": true,
+  "test_application_processes_remaining": 0,
+  "test_gates_closed": true,
+  "production_deployed": false,
+  "production_migration_applied": false,
+  "production_workers_adopted": false,
+  "release_ready": false,
+  "evidence_scope": "Aggregate metadata; private execution logs and restoration artifacts retained separately."
+}

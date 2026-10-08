@@ -1,4 +1,6 @@
 <?php
+require_once dirname(__DIR__) . '/lib/BackgroundJobs.php';
+BackgroundJobs::enter('backfill_conversations');
 
 require dirname(__DIR__) . '/app/bootstrap.php';
 require_once PANEL_ROOT . '/app/conversations.php';

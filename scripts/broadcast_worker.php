@@ -1,4 +1,6 @@
 <?php
+require_once dirname(__DIR__) . '/lib/BackgroundJobs.php';
+BackgroundJobs::enter('broadcast_worker');
 
 // Worker outbox рассылок. По умолчанию обрабатывает одну доставку за запуск;
 // запускать только после применения schema24 и настройки отдельного cron.
