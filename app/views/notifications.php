@@ -24,7 +24,7 @@ require_once PANEL_ROOT . '/lib/Channels.php';
 $primaryCh = Channels::primary();
 [$primaryLabel, $primaryColor] = msg_channel_meta($primaryCh);
 ?>
-<div class="wa-note" style="border-left:3px solid <?= e($primaryColor) ?>"><?= icon('bell') ?><span><b><?= e($primaryLabel) ?></b> — основной канал (меняется в Настройках). Наличие мессенджера у получателей проверяется автоматически; проблемные доставки появятся в общей сводке.</span></div>
+<div class="wa-note" style="border-left:3px solid <?= e($primaryColor) ?>"><?= icon('bell') ?><span><b><?= e($primaryLabel) ?></b> — основной канал (меняется в Настройках). Используются сохранённые адреса получателей. Сообщения ждут восстановления канала в очереди панели; ошибки и подтверждённая доставка появятся в сводке.</span></div>
 
 <?php if ($uploadError !== ''): ?><div class="alert err"><?= e($uploadError) ?></div><?php endif; ?>
 
@@ -118,7 +118,7 @@ $primaryCh = Channels::primary();
             <div id="notificationSchedule" class="mt" data-manifest-id="<?= (int) $selected['id'] ?>" aria-live="polite"></div>
             <div class="send-channel-panel mt">
                 <div><b>Каналы отправки</b><div class="muted small">Отмеченные каналы работают параллельно. По умолчанию выбран основной — <?= e($primaryLabel) ?>.</div></div>
-                <div id="sendChannels" class="send-channel-choices"><span class="muted small">проверяю подключения…</span></div>
+                <div id="sendChannels" class="send-channel-choices"><span class="muted small">загружаю каналы…</span></div>
                 <div id="sendChannelEstimate" class="small muted"></div>
             </div>
         </div>
