@@ -10,7 +10,7 @@ $pdo->exec("CREATE TABLE manifests(id INTEGER PRIMARY KEY,trip_number TEXT,route
  CREATE TABLE notification_runs(id INTEGER PRIMARY KEY AUTOINCREMENT,request_key TEXT UNIQUE,manifest_id INT,purpose TEXT,snapshot_json TEXT,created_by INT,actor_name TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
  CREATE TABLE notification_run_jobs(run_id INT,job_id INT UNIQUE);
  CREATE TABLE broadcast_jobs(id INTEGER PRIMARY KEY AUTOINCREMENT,idempotency_key TEXT UNIQUE,kind TEXT,manifest_id INT,payload_json TEXT,status TEXT DEFAULT 'queued',created_by INT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
- CREATE TABLE broadcast_deliveries(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id INT,passenger_id INT,channel TEXT,recipient TEXT,body_hash TEXT,status TEXT,provider_id TEXT DEFAULT '',last_error TEXT DEFAULT '',available_at TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,read_at TEXT,delivered_at TEXT,UNIQUE(job_id,passenger_id,channel,body_hash));
+ CREATE TABLE broadcast_deliveries(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id INT,passenger_id INT,channel TEXT,recipient TEXT,body_hash TEXT,status TEXT,attempts INT DEFAULT 0,provider_id TEXT DEFAULT '',last_error TEXT DEFAULT '',available_at TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,sent_at TEXT,read_at TEXT,delivered_at TEXT,UNIQUE(job_id,passenger_id,channel,body_hash));
  INSERT INTO manifests(id,trip_number,route,departure_at) VALUES(1,'101','А → Б','2026-09-11 13:00:00'),(2,'102','В → Г','2026-09-12 13:00:00');
  INSERT INTO passengers(id,manifest_id,name,phone,from_stop,to_stop) VALUES(1,1,'Тест Один','+70000000001','А','Б'),(2,1,'Тест Два','+70000000002','А','Б'),(3,1,'Тест Три','+70000000001','А','Б'),(4,2,'Тест Четыре','+70000000004','В','Г');");
 $center=new NotificationCenter($pdo);$checks=0;

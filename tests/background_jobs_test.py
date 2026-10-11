@@ -229,7 +229,7 @@ while (!is_file($argv[4])) { clearstatcache(); usleep(10000); }
             with sqlite3.connect(queue) as db:
                 db.execute('CREATE TABLE broadcast_deliveries (id INTEGER PRIMARY KEY, status TEXT)')
                 db.executemany('INSERT INTO broadcast_deliveries(status) VALUES (?)', [('queued',), ('accepted',), ('queued',)])
-            for name in ['app/broadcast_queue.php', 'app/conversations.php', 'lib/Channels.php']:
+            for name in ['app/broadcast_queue.php', 'app/conversations.php', 'lib/Channels.php', 'lib/NotificationDeadline.php', 'lib/NotificationDispatch.php']:
                 shutil.copyfile(ROOT / name, release / name)
             (release / 'app/bootstrap.php').write_text("""<?php
             define('PANEL_ROOT', dirname(__DIR__));

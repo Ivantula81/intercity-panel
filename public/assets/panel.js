@@ -164,6 +164,7 @@ async function delService(ev, id) {
 }
 
 /* ── Уведомления: экран-мастер ── */
+let QUEUE_CHANNELS = [], QUEUE_MODE = false;
 let GROUPS = [], TEMPLATES = [], BUS_PHOTO = '', GDS_LOADED = false, CHANNELS_ACTIVE = ['max'], CHANNELS_STATE = {}, MANIFEST_TEMPLATE = '', BLOCK_TEMPLATES = {}, TODAY_COUNTS = {}, DAILY_CAP = 200;
 // Основной канал рассылки — из «Настроек». От него считаются галочка по умолчанию и «запасные» каналы.
 let PRIMARY_CHANNEL = 'max', CHANNEL_LIMITED = [];
@@ -245,6 +246,8 @@ async function loadGroups(autoGds) {
     PRIMARY_CHANNEL = r.primary_channel || 'max';
     CHANNELS_ACTIVE = (r.channels_active && r.channels_active.length) ? r.channels_active : [PRIMARY_CHANNEL];
     CHANNELS_STATE = r.channels_state || {};
+    QUEUE_CHANNELS = r.queue_channels || [];
+    QUEUE_MODE = !!document.getElementById('ncPrepare') && Array.isArray(r.queue_channels);
     if (![...SELECTED_CHANNELS].some(channel => CHANNELS_ACTIVE.includes(channel))) {
         // По умолчанию — основной канал, если он настроен; иначе первый настроенный.
         SELECTED_CHANNELS = new Set([CHANNELS_ACTIVE.includes(PRIMARY_CHANNEL) ? PRIMARY_CHANNEL : (CHANNELS_ACTIVE[0] || PRIMARY_CHANNEL)]);
@@ -347,6 +350,7 @@ async function resetBlockToManifest(btn) {
 
 // Реально ли канал готов слать (авторизован/подключён), а не просто «ключи заданы».
 function channelReady(ch) {
+    if (QUEUE_MODE) return QUEUE_CHANNELS.includes(ch);
     const st = CHANNELS_STATE[ch] || (CHANNELS_ACTIVE.includes(ch) ? 'open' : 'unconfigured');
     return st === 'open' || st === 'ready';
 }
@@ -359,8 +363,8 @@ function renderSendChannels() {
     if (!box) return;
     box.innerHTML = Object.entries(CHANNEL_LABELS).map(([channel, label]) => {
         const st = CHANNELS_STATE[channel] || (CHANNELS_ACTIVE.includes(channel) ? 'open' : 'unconfigured');
-        const ready = st === 'open' || st === 'ready';
-        const note = ready ? '' : (st === 'unconfigured' ? '<small>не подключён</small>' : '<small class="chan-off">не авторизован</small>');
+        const ready = channelReady(channel);
+        const note = QUEUE_MODE && ready ? '<small>проверка перед отправкой</small>' : ready ? '' : (st === 'unconfigured' ? '<small>не подключён</small>' : '<small class="chan-off">не авторизован</small>');
         const checked = ready && SELECTED_CHANNELS.has(channel);
         return `<label class="send-channel-choice ${ready ? '' : 'disabled'}"><input type="checkbox" value="${channel}" ${checked ? 'checked' : ''} ${ready ? '' : 'disabled'} onchange="changeSendChannels(this)"><span>${label}</span>${note}</label>`;
     }).join('') + dailyCountsLine();
@@ -751,6 +755,7 @@ function updateChannelCells() {
 }
 
 async function autoCheckManifestChannels(force = false, checkAllMessengers = false) {
+    if (QUEUE_MODE) { CHANNEL_CHECKING = false; renderPreparationSummary(); return; }
     if (CHANNEL_CHECKING) {
         if (checkAllMessengers) FULL_CHANNEL_CHECK_REQUESTED = true;
         return;
@@ -1290,12 +1295,12 @@ async function providerQueueLoad() {
         if (!r || !r.ok) throw new Error(r?.error || 'ошибка');
         const parts = Object.entries(r.queues || {}).filter(([, q]) => q.configured).map(([ch, q]) => {
             const label = CHANNEL_LABELS[ch] || ch;
-            if (q.provider_count === null) return `${label}: нет ответа`;
+            if (q.provider_count === null) return `${label}: состояние не проверено`;
             return `${label}: ${q.provider_count} в очереди`;
         });
         const l = r.local || {};
         if (l.available) parts.push(`панель: ${l.deliveries_queued || 0} ожидают`);
-        box.className = parts.some(x => /[1-9]/.test(x)) ? 'queue-warn' : 'queue-ok';
+        box.className = parts.some(x => /[1-9]|не проверено/.test(x)) ? 'queue-warn' : 'queue-ok';
         box.textContent = parts.length ? parts.join(' · ') : 'Нет активных очередей';
         box.title = 'Проверено ' + new Date().toLocaleTimeString();
     } catch (e) {
@@ -1568,7 +1573,7 @@ async function delTpl(btn) {
 async function channelStatusBadge() {
     const el = document.getElementById('channelStatus');
     if (!el) return;
-    const r = await api('channels.states', {}).catch(() => null);
+    const r = await api('channels.states', {cached_only:true}).catch(() => null);
     if (r?.ok) {
         CHANNELS_STATE = r.states || {};
         PRIMARY_CHANNEL = r.primary || PRIMARY_CHANNEL;

@@ -60,6 +60,25 @@ class Channels
         return $c !== null && $c->isConfigured();
     }
 
+    public static function queueConfigured(string $ch): bool
+    {
+        $client = self::client($ch);
+        return $client instanceof GreenApiClient && $client->isConfigured();
+    }
+
+    // Reading a screen must never wait for the provider. Stale states are explicitly unknown.
+    public static function snapshot(): array
+    {
+        $cached = json_decode((string) opt('channel_states_cache'), true);
+        $fresh = is_array($cached) && isset($cached['at']) && time() - (int)$cached['at'] < 60;
+        $states = [];
+        foreach (array_merge(self::MESSENGERS, ['sms']) as $ch) {
+            $states[$ch] = !self::configured($ch) ? 'unconfigured'
+                : ($ch === 'sms' ? 'ready' : ($fresh ? ($cached['states'][$ch] ?? 'unknown') : 'unknown'));
+        }
+        return $states;
+    }
+
     // Список настроенных каналов — основной первым (фронт берёт [0] как канал по умолчанию).
     public static function active(): array
     {

@@ -9,6 +9,7 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 require PANEL_ROOT . '/app/broadcast_queue.php';
 require PANEL_ROOT . '/lib/Channels.php';
 require PANEL_ROOT . '/app/conversations.php';
+require PANEL_ROOT . '/lib/NotificationDispatch.php';
 
 function worker_record_message(array $delivery, array $job, string $providerId, string $body): void {
     $pdo = db();
@@ -64,6 +65,22 @@ try {
     fwrite(STDERR, "job read failed\n"); exit(1);
 }
 
+$finishNotification = function (string $status, string $error = '', int $retry = 0, string $providerId = '') use ($delivery): void {
+    BroadcastQueue::finishDelivery((int)$delivery['id'], $status, $providerId, $error, $retry);
+    if ($retry === 0) {
+        db()->prepare("UPDATE broadcast_jobs j SET status=IF(NOT EXISTS(SELECT 1 FROM broadcast_deliveries d WHERE d.job_id=j.id AND d.status IN ('queued','sending')), 'completed', 'running') WHERE j.id=?")
+            ->execute([(int)$delivery['job_id']]);
+    }
+};
+try {
+    $deadline = NotificationDeadline::forDelivery($payload, (string)$delivery['body_hash']);
+} catch (InvalidArgumentException $e) {
+    $finishNotification('skipped', $e->getMessage()); exit(0);
+}
+if ($deadline !== null && time() >= $deadline) {
+    $finishNotification('skipped', NotificationDeadline::EXPIRED); exit(0);
+}
+
 // Рабочее окно отправки по Москве. Экстренные задания могут явно передать
 // emergency=true в payload и обходят ограничение.
 $emergency = !empty($payload['emergency']);
@@ -77,6 +94,7 @@ if (!$emergency && opt('messaging_hours_enabled', '1') !== '0') {
     if ($now < $start || $now >= $end) {
         $next = $now < $start ? $start : new DateTimeImmutable('tomorrow ' . $from, $tz);
         $delay = max(60, $next->getTimestamp() - $now->getTimestamp());
+        if ($deadline !== null) $delay = max(1, min($delay, $deadline - time()));
         BroadcastQueue::finishDelivery((int)$delivery['id'], 'failed', '', 'Вне рабочего времени, перенос на ' . $next->format('d.m.Y H:i') . ' МСК', $delay);
         echo "deferred {$delivery['id']} until " . $next->format('Y-m-d H:i:s') . " MSK\n";
         exit(0);
@@ -86,7 +104,7 @@ if (!$emergency && opt('messaging_hours_enabled', '1') !== '0') {
 $stop = db()->prepare('SELECT unsubscribed_at FROM contacts WHERE phone=?');
 $stop->execute([(string)$delivery['recipient']]);
 if ($stop->fetchColumn()) {
-    BroadcastQueue::finishDelivery((int)$delivery['id'], 'skipped', '', 'Отписка до отправки'); exit(0);
+    $finishNotification('skipped', 'Отписка до отправки'); exit(0);
 }
 
 $hash = (string)$delivery['body_hash'];
@@ -98,6 +116,14 @@ if ($target === '' || $text === '') {
 
 $channel = (string)$delivery['channel'];
 $client = worker_client($channel);
+if ($deadline !== null) {
+    $result = NotificationDispatch::attempt($client, $target, $text, $deadline);
+    $status = $result['status'];
+    $finishNotification($status === 'queued' ? 'failed' : $status, $result['error'] ?? '',
+        (int)($result['retry_seconds'] ?? 0), (string)($result['provider_id'] ?? ''));
+    echo $status . ' ' . (int)$delivery['id'] . "\n";
+    exit(0);
+}
 if (!$client || !$client->isConfigured() || empty(($state = $client->connectionState())['ok']) || ($state['state'] ?? '') !== 'open') {
     BroadcastQueue::finishDelivery((int)$delivery['id'], 'failed', '', $channel . ': канал недоступен', 300);
     exit(0);

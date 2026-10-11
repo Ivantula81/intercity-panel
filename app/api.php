@@ -20,6 +20,9 @@ if ($action !== '') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
 }
+// API handlers read the authenticated identity but do not write session data.
+// A provider timeout must not hold every page for the same user behind this lock.
+if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
 
 function env_get(string $key): string
 {
@@ -634,7 +637,8 @@ switch ($action) {
             'bus_photo' => $bus && $bus['photo'] !== '' ? $bus['photo'] : '',
             'groups' => attach_channel_presence(build_groups($manifest)),
             'channels_active' => Channels::active(),
-            'channels_state' => wa_channel_states(),
+            'channels_state' => Channels::snapshot(),
+            'queue_channels' => array_values(array_filter(Channels::MESSENGERS, fn($ch) => Channels::queueConfigured($ch))),
             'primary_channel' => Channels::primary(),
             'templates' => db()->query('SELECT id, name, body FROM templates ORDER BY sort, id')->fetchAll(),
             'manifest_template' => (string) opt('notif_tpl_' . (int) $manifest['id'], ''),
@@ -1174,7 +1178,7 @@ switch ($action) {
 
     case 'channels.states': // единый статус каналов для UI (свободная рассылка и др.)
         require_once PANEL_ROOT . '/lib/Channels.php';
-        json_out(['ok' => true, 'states' => wa_channel_states(), 'today' => channel_today_counts(),
+        json_out(['ok' => true, 'states' => !empty($body['cached_only']) ? Channels::snapshot() : wa_channel_states(), 'today' => channel_today_counts(),
             'daily_cap' => (int) opt('daily_soft_cap', '200'), 'primary' => Channels::primary()]);
 
     case 'channels.delays': // серверная пауза Green API по каналам (мс). null = канал не через Green API.
@@ -1191,14 +1195,13 @@ switch ($action) {
         // проверок номеров или иных побочных эффектов — только чтение состояния.
         require_once PANEL_ROOT . '/lib/Channels.php';
         $queues = [];
+        $states = Channels::snapshot();
         foreach (['whatsapp', 'max', 'telegram'] as $ch) {
             $client = Channels::client($ch);
-            $item = ['configured' => false, 'state' => Channels::state($ch), 'provider_count' => null, 'error' => ''];
+            $item = ['configured' => false, 'state' => $states[$ch], 'provider_count' => null, 'error' => ''];
             if ($client instanceof GreenApiClient && $client->isConfigured()) {
                 $item['configured'] = true;
-                $r = $client->getMessagesCount();
-                if (!empty($r['ok'])) $item['provider_count'] = (int) $r['count'];
-                else $item['error'] = (string) ($r['error'] ?? 'Green API недоступен');
+                $item['error'] = 'Состояние очереди провайдера не проверено. Показана локальная очередь панели.';
             }
             $queues[$ch] = $item;
         }
