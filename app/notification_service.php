@@ -1,12 +1,14 @@
 <?php
-function notification_prepare(array $request): array {
+require_once dirname(__DIR__) . '/lib/NotificationDeadline.php';
+function notification_prepare(array $request, ?int $now = null): array {
+    $now ??= time();
     $mid=(int)($request['manifest_id']??0);$manifest=get_manifest($mid);
     $purpose=$request['purpose']??'reminder';if(!in_array($purpose,['reminder','repeat','change'],true))throw new InvalidArgumentException('Неизвестный вид уведомления.');
     $groups=build_groups($manifest);$byKey=[];foreach($groups as $g)$byKey[$g['route_key']]=$g;
     $center=new NotificationCenter(db());$overview=$center->overview($mid);$covered=[];foreach($overview['recipients'] as $p)if($p['covered'])$covered[$p['phone']]=true;
     $channels=array_values(array_unique((array)($request['channels']??[])));sort($channels);
     if(!$channels)throw new InvalidArgumentException('Выберите канал.');
-    foreach($channels as $ch)if(!in_array($ch,['max','telegram','whatsapp'],true)||!Channels::ready($ch))throw new InvalidArgumentException('Выбранный канал недоступен для очереди.');
+    foreach($channels as $ch)if(!in_array($ch,['max','telegram','whatsapp'],true)||!Channels::queueConfigured($ch))throw new InvalidArgumentException('Выбранный канал не настроен для очереди.');
     $ps=$center->rows('SELECT * FROM passengers WHERE manifest_id=?',[$mid]);$byId=[];foreach($ps as $p)$byId[(int)$p['id']]=$p;
     $contacts=[];foreach($center->rows('SELECT c.phone,c.has_max,c.has_telegram,c.has_whatsapp FROM contacts c JOIN passengers p ON p.phone=c.phone WHERE p.manifest_id=?',[$mid]) as $c)$contacts[$c['phone']]=$c;
     $tpl=(string)opt('notif_tpl_'.$mid,'');if($tpl==='')$tpl=(string)(db()->query('SELECT body FROM templates ORDER BY sort,id LIMIT 1')->fetchColumn()?:'');
@@ -23,11 +25,13 @@ function notification_prepare(array $request): array {
         $allowed=array_column($g['recipients'],'id');$text=$g['body']??($blocks[$g['station']]??$tpl);
         if(trim($text)==='')throw new InvalidArgumentException('Пустой шаблон сообщения.');
         if(($selection['text']??'')!==$text)throw new DomainException('Текст ещё не сохранён или изменён другим сотрудником.');
-        $selected[]=['key'=>$key,'station'=>$g['station'],'destination'=>$g['destination'],'date'=>$g['date'],'time'=>$g['time'],'ids'=>$ids];
+        $deadline=NotificationDeadline::fromBoarding($g['date'],$g['time']);
+        $deadlineLabel=(new DateTimeImmutable('@'.$deadline))->setTimezone(new DateTimeZone('Europe/Moscow'))->format('d.m.Y H:i');
+        $selected[]=['key'=>$key,'station'=>$g['station'],'destination'=>$g['destination'],'date'=>$g['date'],'time'=>$g['time'],'ids'=>$ids,'expires_at'=>$deadline,'send_before'=>$deadlineLabel];
         foreach($ids as $pid){
             if(!in_array($pid,$allowed,true)||!isset($byId[$pid]))throw new InvalidArgumentException('Пассажир не принадлежит выбранному направлению.');
             $p=$byId[$pid];$ph=$p['phone'];$why='';
-            if(!valid_phone($ph))$why='Некорректный телефон';elseif(is_unsubscribed($ph))$why='Отписка';elseif($purpose==='reminder'&&isset($covered[$ph]))$why='Уже уведомлён или в очереди';elseif(isset($seen[$ph]))$why='Один телефон в нескольких билетах';
+            if($now >= $deadline)$why=NotificationDeadline::EXPIRED;elseif(!valid_phone($ph))$why='Некорректный телефон';elseif(is_unsubscribed($ph))$why='Отписка';elseif($purpose==='reminder'&&isset($covered[$ph]))$why='Уже уведомлён или в очереди';elseif(isset($seen[$ph]))$why='Один телефон в нескольких билетах';
             if($why!==''){$exclusions[]=['passenger_id'=>$pid,'reason'=>$why];continue;}$seen[$ph]=true;
             $vars=group_vars($manifest,$p,$g,$opts);if(MessageTemplate::unknownVars($text,$vars))throw new InvalidArgumentException('В шаблоне есть неизвестные переменные.');
             $message=render_group_message($text,$vars,$manifest['extra_info']);
@@ -38,7 +42,7 @@ function notification_prepare(array $request): array {
                 $resolved=resolve_send_target($ch,$ph,false);
                 if(empty($resolved['ok'])&&$ch==='max')$resolved=['ok'=>true,'target'=>preg_replace('/\D/','',$ph).'@c.us'];
                 if(empty($resolved['ok'])){$exclusions[]=['passenger_id'=>$pid,'channel'=>$ch,'reason'=>'Нет сохранённого адреса канала'];continue;}
-                $items[]=['passenger_id'=>$pid,'name'=>$p['name'],'channel'=>$ch,'recipient'=>$ph,'target'=>$resolved['target'],'body'=>$message,'station'=>$g['station'],'date'=>$g['date'],'time'=>$g['time']];
+                $items[]=['passenger_id'=>$pid,'name'=>$p['name'],'channel'=>$ch,'recipient'=>$ph,'target'=>$resolved['target'],'body'=>$message,'station'=>$g['station'],'date'=>$g['date'],'time'=>$g['time'],'expires_at'=>$deadline];
             }
         }
     }
