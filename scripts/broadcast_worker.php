@@ -67,11 +67,10 @@ try {
 
 $finishNotification = function (string $status, string $error = '', int $retry = 0, string $providerId = '') use ($delivery): void {
     BroadcastQueue::finishDelivery((int)$delivery['id'], $status, $providerId, $error, $retry);
-    if ($retry === 0) {
-        db()->prepare("UPDATE broadcast_jobs j SET status=IF(NOT EXISTS(SELECT 1 FROM broadcast_deliveries d WHERE d.job_id=j.id AND d.status IN ('queued','sending')), 'completed', 'running') WHERE j.id=?")
-            ->execute([(int)$delivery['job_id']]);
-    }
 };
+if (!BroadcastQueue::dispatchAllowed((int)$delivery['id'])) {
+    $finishNotification('skipped', BroadcastQueue::STOPPED); exit(0);
+}
 try {
     $deadline = NotificationDeadline::forDelivery($payload, (string)$delivery['body_hash']);
 } catch (InvalidArgumentException $e) {
@@ -117,7 +116,7 @@ if ($target === '' || $text === '') {
 $channel = (string)$delivery['channel'];
 $client = worker_client($channel);
 if ($deadline !== null) {
-    $result = NotificationDispatch::attempt($client, $target, $text, $deadline);
+    $result = NotificationDispatch::attempt($client, $target, $text, $deadline, null, fn() => BroadcastQueue::dispatchAllowed((int)$delivery['id']));
     $status = $result['status'];
     $finishNotification($status === 'queued' ? 'failed' : $status, $result['error'] ?? '',
         (int)($result['retry_seconds'] ?? 0), (string)($result['provider_id'] ?? ''));
@@ -128,6 +127,9 @@ if (!$client || !$client->isConfigured() || empty(($state = $client->connectionS
     BroadcastQueue::finishDelivery((int)$delivery['id'], 'failed', '', $channel . ': канал недоступен', 300);
     exit(0);
 }
+if (!BroadcastQueue::dispatchAllowed((int)$delivery['id'])) {
+    $finishNotification('skipped', BroadcastQueue::STOPPED); exit(0);
+}
 $result = $client->sendText($target, $text);
 if (!empty($result['ok'])) {
     $providerId = (string)($result['data']['key']['id'] ?? '');
@@ -135,16 +137,10 @@ if (!empty($result['ok'])) {
     $delivery['target'] = $target;
     // Не создаём сообщение/чат на accepted: это лишь принятие запроса Green API.
     // Запись появится после подтверждённой доставки из webhook.
-    db()->prepare("UPDATE broadcast_jobs j SET status=IF(NOT EXISTS(SELECT 1 FROM broadcast_deliveries d WHERE d.job_id=j.id AND d.status IN ('queued','sending')), 'completed', 'running') WHERE j.id=?")->execute([(int)$delivery['job_id']]);
     echo "accepted {$delivery['id']}\n"; exit(0);
 }
 $error = substr((string)($result['error'] ?? 'Ошибка провайдера'), 0, 500);
-$attempts = (int)$delivery['attempts'];
-// Две повторные попытки для временных сбоев, затем финальная ошибка.
-$retryable = preg_match('/timeout|timed out|HTTP 429|HTTP 5\d\d|недоступ|лимит/i', $error);
-if ($retryable && $attempts < 3) {
-    BroadcastQueue::finishDelivery((int)$delivery['id'], 'failed', '', $error, min(900, 60 * $attempts));
-} else {
-    BroadcastQueue::finishDelivery((int)$delivery['id'], 'failed', '', $error);
-}
+// A failed POST may already have reached the provider. Do not turn it into an
+// unsent retry that cancellation could incorrectly report as never transmitted.
+BroadcastQueue::finishDelivery((int)$delivery['id'], 'failed', '', $error);
 fwrite(STDERR, "failed {$delivery['id']}\n");

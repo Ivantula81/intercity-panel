@@ -15,6 +15,14 @@ try {
         case 'notification.active': json_out(['ok'=>true,'items'=>$center->active(),'at'=>date('c')]);
         case 'notification.history': json_out(['ok'=>true]+$center->history((int)$body['manifest_id'],(string)($body['date']??''),(int)($body['page']??1)));
         case 'notification.detail': json_out(['ok'=>true,'run'=>$center->detail((int)$body['id'])]);
+        case 'notification.cancel':
+            if($_SERVER['REQUEST_METHOD']!=='POST')json_out(['ok'=>false,'error'=>'Используйте POST.'],405);
+            $runId=isset($body['run_id'])?filter_var($body['run_id'],FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]):0;
+            $jobId=isset($body['job_id'])?filter_var($body['job_id'],FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]):0;
+            if($runId===false||$jobId===false)throw new InvalidArgumentException('Некорректный номер запуска.');
+            $r=$center->cancel($runId,$jobId);
+            audit_event('notification.cancel','messaging',$runId?'notification_run':'broadcast_job',$runId?:$jobId,'success');
+            json_out(['ok'=>true]+$r);
         case 'notification.preview': json_out(['ok'=>true,'plan'=>notification_prepare($body)]);
         case 'notification.launch':
             if($_SERVER['REQUEST_METHOD']!=='POST')json_out(['ok'=>false,'error'=>'Используйте POST.'],405);
