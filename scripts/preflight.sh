@@ -24,6 +24,7 @@ php tests/notification_groups_test.php
 php tests/notification_test.php
 php tests/notification_correction_test.php
 php tests/notification_deadline_test.php
+php tests/notification_cancel_test.php
 php tests/route_schedule_test.php
 php tests/conversations_test.php
 php tests/incoming_webhooks_test.php

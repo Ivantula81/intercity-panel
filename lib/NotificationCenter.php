@@ -9,6 +9,7 @@ final class NotificationCenter
     public static function state(array $r): string {
         if (!empty($r['read_at']) || ($r['status'] ?? '') === 'read') return 'read';
         if (!empty($r['delivered_at']) || ($r['status'] ?? '') === 'delivered') return 'delivered';
+        if (($r['status'] ?? '') === 'skipped' && ($r['last_error'] ?? '') === BroadcastQueue::STOPPED) return 'cancelled';
         return ['sent'=>'accepted','pending'=>'queued'][$r['status'] ?? ''] ?? ($r['status'] ?? 'none');
     }
     public static function covered(string $state): bool { return in_array($state, ['queued','sending','accepted','delivered','read','called'], true); }
@@ -25,7 +26,7 @@ final class NotificationCenter
         $ps = $this->rows('SELECT id,name,phone,from_stop,to_stop FROM passengers WHERE manifest_id=? ORDER BY sort,id', [$mid]);
         $attempts = $this->attempts($mid); $byPhone = [];
         // Successful delivery remains evidence even after a subsequent failed attempt.
-        $rank = ['none'=>0,'skipped'=>1,'failed'=>2,'queued'=>3,'sending'=>4,'accepted'=>5,'delivered'=>6,'read'=>7,'called'=>8];
+        $rank = ['none'=>0,'skipped'=>1,'cancelled'=>2,'failed'=>2,'queued'=>3,'sending'=>4,'accepted'=>5,'delivered'=>6,'read'=>7,'called'=>8];
         foreach ($attempts as $a) {
             $state = self::state($a); $ph = $a['recipient']; $ch = $a['channel'];
             $old = $byPhone[$ph][$ch]['state'] ?? 'none';
@@ -71,13 +72,15 @@ final class NotificationCenter
           SUM(CASE WHEN d.status='accepted' THEN 1 ELSE 0 END) accepted,
           SUM(CASE WHEN d.status IN ('read','delivered') THEN 1 ELSE 0 END) delivered,
           SUM(CASE WHEN d.status='failed' THEN 1 ELSE 0 END) failed,
+          SUM(CASE WHEN d.status='skipped' AND d.last_error=? THEN 1 ELSE 0 END) stopped,
           MIN(CASE WHEN d.status='queued' THEN d.available_at END) next_at,
           MAX(CASE WHEN d.status IN ('queued','sending') THEN d.last_error ELSE '' END) reason
           FROM broadcast_jobs j JOIN broadcast_deliveries d ON d.job_id=j.id
           LEFT JOIN manifests m ON m.id=j.manifest_id LEFT JOIN notification_run_jobs rj ON rj.job_id=j.id
           GROUP BY j.id,j.manifest_id,j.kind,j.created_at,j.status,m.trip_number,m.departure_at,rj.run_id
           HAVING SUM(CASE WHEN d.status IN ('queued','sending','accepted') THEN 1 ELSE 0 END)>0
-          ORDER BY CASE WHEN j.manifest_id>0 THEN 0 ELSE 1 END,j.id");
+             OR (j.status='cancelled' AND j.created_at>=?)
+          ORDER BY CASE WHEN j.manifest_id>0 THEN 0 ELSE 1 END,j.id", [BroadcastQueue::STOPPED, date('Y-m-d H:i:s',time()-86400)]);
     }
     public function history(int $mid, string $date='', int $page=1): array {
         $where='manifest_id=?';$args=[$mid];if($date!==''){self::date($date);$where.=' AND created_at>=? AND created_at<?';$args[]=$date.' 00:00:00';$args[]=date('Y-m-d',strtotime($date.' +1 day')).' 00:00:00';}
@@ -91,7 +94,20 @@ final class NotificationCenter
     public function detail(int $id): array {
         $run=$this->rows('SELECT * FROM notification_runs WHERE id=?',[$id])[0]??null;if(!$run)throw new InvalidArgumentException('Запуск не найден.');
         $run['snapshot']=json_decode($run['snapshot_json'],true);unset($run['snapshot_json']);
-        $run['deliveries']=$this->rows('SELECT d.* FROM broadcast_deliveries d JOIN notification_run_jobs r ON r.job_id=d.job_id WHERE r.run_id=? ORDER BY d.id',[$id]);return $run;
+        $run['deliveries']=$this->rows('SELECT d.* FROM broadcast_deliveries d JOIN notification_run_jobs r ON r.job_id=d.job_id WHERE r.run_id=? ORDER BY d.id',[$id]);
+        $run['jobs']=$this->rows('SELECT j.id,j.status FROM broadcast_jobs j JOIN notification_run_jobs r ON r.job_id=j.id WHERE r.run_id=? ORDER BY j.id',[$id]);
+        return $run;
+    }
+    public function cancel(int $runId, int $jobId): array {
+        if (($runId > 0) === ($jobId > 0)) throw new InvalidArgumentException('Укажите один запуск или задание.');
+        if ($runId > 0) {
+            $jobs=$this->rows('SELECT job_id FROM notification_run_jobs WHERE run_id=? ORDER BY job_id',[$runId]);
+            return BroadcastQueue::cancel(array_column($jobs,'job_id'));
+        }
+        // A legacy queue item can be stopped directly, but a run is always stopped as a whole.
+        $run=$this->rows('SELECT run_id FROM notification_run_jobs WHERE job_id=?',[$jobId]);
+        if ($run) return $this->cancel((int)$run[0]['run_id'],0);
+        return BroadcastQueue::cancel([$jobId]);
     }
     public function launch(array $request, callable $prepare, ?int $actor, string $name): array {
         $key=(string)($request['request_key']??'');if(!preg_match('/^[a-zA-Z0-9-]{16,80}$/',$key))throw new InvalidArgumentException('Нужен ключ запуска.');
