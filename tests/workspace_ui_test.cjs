@@ -13,7 +13,7 @@ const threads=[1,2].map(id=>({id,contact_name:'Тестовый диалог '+i
 const server=http.createServer((req,res)=>{
     const url=new URL(req.url,'http://localhost');
     if(url.pathname.startsWith('/assets/')){
-        if(!/^\/assets\/(panel|workspace|schedules|notifications)\.(js|css)$/.test(url.pathname)){res.statusCode=204;return res.end();}
+        if(!/^\/assets\/(panel|workspace|schedules|notifications|trip-workspace)\.(js|css)$/.test(url.pathname)){res.statusCode=204;return res.end();}
         res.setHeader('Content-Type',url.pathname.endsWith('.js')?'text/javascript':'text/css');return res.end(fs.readFileSync(path.join(root,'public',url.pathname)));
     }
     if(url.pathname!=='/'){res.statusCode=204;return res.end();}

@@ -168,8 +168,10 @@ switch ($page) {
         $ps = db()->prepare('SELECT * FROM passengers WHERE manifest_id = ? ORDER BY sort, id');
         $ps->execute([$manifest['id']]);
         $passengers = $ps->fetchAll();
-        view('layout', ['title' => 'Ведомость №' . $manifest['trip_number'], 'page' => 'manifests',
-            'content' => fn() => view('manifest', ['manifest' => $manifest, 'passengers' => $passengers])]);
+        require_once PANEL_ROOT . '/app/trip_workspace.php';
+        $tripConversations = trip_conversations(db(), (int)$manifest['id']);
+        view('layout', ['title' => 'Рейс №' . $manifest['trip_number'], 'page' => 'manifests',
+            'content' => fn() => view('manifest', ['manifest' => $manifest, 'passengers' => $passengers, 'tripConversations' => $tripConversations])]);
         break;
 
     case 'document':

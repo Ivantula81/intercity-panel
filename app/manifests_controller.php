@@ -19,10 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['manifest'])) {
     }
 }
 
-$manifests = db()->query(
-    'SELECT m.*, (SELECT COUNT(*) FROM passengers p WHERE p.manifest_id = m.id) cnt
-     FROM manifests m ORDER BY m.id DESC LIMIT 50'
-)->fetchAll();
-
-view('layout', ['title' => 'Ведомости', 'page' => 'manifests',
-    'content' => fn() => view('manifests', ['manifests' => $manifests, 'uploadError' => $uploadError ?? ''])]);
+require_once PANEL_ROOT . '/app/trip_workspace.php';
+$list = trip_list(db(), trip_list_filters($_GET));
+view('layout', ['title' => 'Рейсы и ведомости', 'page' => 'manifests',
+    'content' => fn() => view('manifests', $list + ['uploadError' => $uploadError ?? ''])]);
