@@ -11,7 +11,7 @@ check(workspace_config()===$a, 'Key stable within current login');
 $_SESSION['panel_user']=2;
 $b=workspace_config();
 check($b!==$a, 'Another user cannot reuse key or namespace');
-unset($_SESSION['workspace_crypto']); // authenticate() resets it on each successful login.
+unset($_SESSION['workspace_crypto']); // Ordinary new login without an eligible same-user recovery context.
 check(workspace_config()!==$b, 'New login gets a fresh key');
 $_SESSION=[];
 check(workspace_config()===[], 'Logout removes access');

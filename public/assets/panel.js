@@ -11,7 +11,8 @@ async function api(action, data = {}) {
     } catch (e) {
         return { ok: false, error: 'Нет связи с сервером — проверьте интернет и повторите.' };
     }
-    if (r.status === 401 || r.status === 403) return { ok: false, error: 'Сессия истекла — обновите страницу и войдите снова.' };
+    if (r.status === 401) return { ok: false, error: 'Вход завершён — войдите снова. Действие не выполнено.' };
+    if (r.status === 403) return { ok: false, error: 'Недостаточно прав для этого действия.' };
     try { return await r.json(); }
     catch (e) { return { ok: false, error: 'Сервер ответил некорректно (код ' + r.status + '). Повторите позже.' }; }
 }
@@ -20,7 +21,8 @@ async function apiUpload(action, formData) {
     let r;
     try { r = await fetch('/?p=api&a=' + action, { method: 'POST', body: formData }); }
     catch (e) { return { ok: false, error: 'Нет связи с сервером — проверьте интернет и повторите.' }; }
-    if (r.status === 401 || r.status === 403) return { ok: false, error: 'Сессия истекла — обновите страницу.' };
+    if (r.status === 401) return { ok: false, error: 'Вход завершён — войдите снова. Действие не выполнено.' };
+    if (r.status === 403) return { ok: false, error: 'Недостаточно прав для этого действия.' };
     try { return await r.json(); }
     catch (e) { return { ok: false, error: 'Сервер ответил некорректно (код ' + r.status + ').' }; }
 }
@@ -2448,7 +2450,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Warn until drafts have a confirmed local snapshot; in-flight sends remain unsafe to leave.
 window.addEventListener('beforeunload', event => {
-    if (window.panelWorkspace?.isInvalidated()) return;
+    if (window.panelWorkspace?.isInvalidated() || window.panelSession?.isInvalidated()) return;
     const dirtyCells = [...cellSaves.values()].some(s => s.input.isConnected && s.revision !== s.saved);
     const dirtyChats = chat.busy || ([...chat.drafts.values()].some(d => d.text.trim()) && !window.panelWorkspace?.isSaved());
     if (dirtyCells || dirtyChats) {event.preventDefault(); event.returnValue = '';}

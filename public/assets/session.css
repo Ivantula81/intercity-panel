@@ -1,0 +1,14 @@
+.session-warning[hidden], .session-lock [hidden] { display:none!important; }
+.session-warning { position:fixed; z-index:80; bottom:90px; left:max(16px, calc((100vw - 760px)/2)); right:16px; max-width:760px; padding:16px; border:1px solid var(--warn); border-radius:12px; background:#fff8e9; box-shadow:var(--sh-2); display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
+.session-warning span { flex:1 1 100%; color:#6b450e; }
+.session-warning button, .session-lock .btn { min-height:44px; }
+.session-lock { position:fixed; inset:0; width:100vw; height:100dvh; max-width:none; max-height:none; margin:0; padding:24px; border:0; background:var(--bg); color:var(--ink); overflow:auto; }
+.session-lock::backdrop { background:var(--bg); }
+.session-lock-card { max-width:510px; margin:max(16px,5vh) auto; padding:24px; border:1px solid var(--line); border-radius:16px; background:var(--surface); }
+.session-lock h1 { font-size:24px; }
+.session-lock input { font-size:16px; min-height:44px; }
+.session-lock .btn { margin:8px 4px 0 0; white-space:normal; }
+body.session-locked > :not(#sessionLock):not(script) { visibility:hidden!important; }
+body.session-locked { overflow:hidden; }
+.session-lock :focus-visible { outline:3px solid var(--brand); outline-offset:3px; }
+@media(max-width:600px) { .session-lock { padding:12px; }.session-lock-card { padding:18px; margin:12px auto; }.session-warning { left:12px; right:12px; } }

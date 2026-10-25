@@ -68,6 +68,9 @@ $sheetKeys = ['sales', 'reporting', 'contacts', 'broadcast', 'catalogs', 'logs',
 <script>window.CSRF = <?= json_encode(csrf_token()) ?>; window.PANEL_WORKSPACE = <?= json_encode(workspace_config(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
 <?php if (in_array($page, ['notifications','broadcast'], true)): ?><link rel="stylesheet" href="/assets/notifications.css?v=<?= filemtime(PANEL_ROOT.'/public/assets/notifications.css') ?>"><?php endif; ?>
 <?php if (in_array($page, ['manifests','manifest','chats'], true)): ?><link rel="stylesheet" href="/assets/trip-workspace.css?v=<?= filemtime(PANEL_ROOT . '/public/assets/trip-workspace.css') ?>"><?php endif; ?>
+<link rel="stylesheet" href="/assets/session.css?v=<?= filemtime(PANEL_ROOT . '/public/assets/session.css') ?>">
+<?php if (function_exists('session_policy_config')): ?><script>window.PANEL_SESSION = <?= json_encode(session_policy_config(time()), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script><?php endif; ?>
+<script src="/assets/session.js?v=<?= filemtime(PANEL_ROOT . '/public/assets/session.js') ?>" defer></script>
 </head>
 <body data-page="<?= e($page) ?>" class="<?= ($_GET['p'] ?? '') === 'schedules' ? 'schedule-page' : '' ?>">
 
@@ -118,6 +121,7 @@ $sheetKeys = ['sales', 'reporting', 'contacts', 'broadcast', 'catalogs', 'logs',
     </div>
 </div>
 
+<?php require PANEL_ROOT . '/app/views/session_guard.php'; ?>
 <script src="/assets/workspace.js?v=<?= @filemtime(PANEL_ROOT . '/public/assets/workspace.js') ?>"></script>
 <script src="/assets/panel.js?v=<?= @filemtime(PANEL_ROOT . '/public/assets/panel.js') ?>"></script>
 <script src="/assets/schedules.js?v=<?= @filemtime(PANEL_ROOT . '/public/assets/schedules.js') ?>"></script>
