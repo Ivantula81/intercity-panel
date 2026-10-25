@@ -8,13 +8,13 @@
     const ttl = 7 * 24 * 60 * 60 * 1000;
     const maxBytes = 512 * 1024;
     const routes = {
-        dashboard: [], manifests: [], manifest: ['id'], schedules: ['manifest_id'],
-        contacts: ['q','sort'], contact: ['id'], chats: ['conversation_id','phone'],
+        dashboard: [], manifests: ['q','from','to','needs','page'], manifest: ['id','tab'], schedules: ['manifest_id'],
+        contacts: ['q','sort'], contact: ['id'], chats: ['conversation_id','phone','return_manifest'],
         notifications: ['manifest_id','fresh'], reporting: [], report_trip: ['id'],
         sales: ['period','from','to','agent','owner','carrier','sender','recipient','subject','q','page'],
     };
     const sections = {manifest:'manifests', schedules:'manifests', contact:'contacts', report_trip:'reporting'};
-    let state = {v:1, at:0, last:'/', sections:{}, positions:{}, chat:{}}, key;
+    let state = {v:1, at:0, last:'/', sections:{}, positions:{}, tripTabs:{}, manifestList:null, chat:{}}, key;
     let revision = 0, saved = 0, timer, pending, enabled = true, restoring = true;
     let message = '', invalidated = false, userMoved = false;
     for(const event of ['wheel','touchstart','keydown'])window.addEventListener(event,()=>{userMoved=true;},{once:true,passive:true});
@@ -30,7 +30,7 @@
             for (const [name, val] of u.searchParams) {
                 if(u.searchParams.getAll(name).length!==1)return null;
                 if (name !== 'p' && !routes[page].includes(name)) return null;
-                if (val.length > 1000 || (/^(id|manifest_id|conversation_id)$/.test(name) && !/^\d{1,12}$/.test(val))) return null;
+                if (val.length > 1000 || (/^(id|manifest_id|conversation_id|return_manifest)$/.test(name) && !/^\d{1,12}$/.test(val))) return null;
             }
             u.hash='';return u.pathname+u.search;
         } catch (_) {return null;}
@@ -45,12 +45,17 @@
     function failed() {tell('Не удалось сохранить рабочее место на устройстве. Не закрывайте страницу с незавершённым вводом.');}
     function normalize(value) {
         if (!value || value.v!==1 || !Number.isFinite(value.at) || Date.now()-value.at>ttl || value.at>Date.now()+60000) throw Error('Expired workspace');
-        const clean={v:1,at:value.at,last:safeUrl(value.last)||'/',sections:{},positions:{},chat:{}};
+        const clean={v:1,at:value.at,last:safeUrl(value.last)||'/',sections:{},positions:{},tripTabs:{},manifestList:null,chat:{}};
         for(const [section,url] of Object.entries(value.sections||{})) {
             const safe=safeUrl(url);if(safe && sectionOf(safe)===section)clean.sections[section]=safe;
         }
         for(const [url,pos] of Object.entries(value.positions||{}).slice(-40)) {
             if(safeUrl(url) && Array.isArray(pos) && pos.length===2 && pos.every(n=>Number.isFinite(n)&&n>=0&&n<=1000000))clean.positions[url]=pos;
+        }
+        const list=safeUrl(value.manifestList);
+        if(list && pageOf(list)==='manifests')clean.manifestList=list;
+        for(const [id,tab] of Object.entries(value.tripTabs||{}).slice(-80)){
+            if(/^\d{1,12}$/.test(id) && ['preparation','passengers','messages'].includes(tab))clean.tripTabs[id]=tab;
         }
         const c=value.chat;
         if(c && typeof c==='object') {
@@ -129,6 +134,7 @@
     }
     function remember() {
         const url=safeUrl(location.href);if(!url)return;
+        if(pageOf(url)==='manifests')state.manifestList=url;
         state.last=url;state.sections[sectionOf(url)]=url;changed();updateLinks();
     }
     function position() {
@@ -164,6 +170,9 @@
     }
     const ready=initialize();
     window.panelWorkspace={ready,flush,remember,
+        getManifestList:()=>state.manifestList,
+        getTripTab:id=>state.tripTabs[id],
+        setTripTab:(id,tab)=>{if(!/^\d{1,12}$/.test(String(id)) || !['preparation','passengers','messages'].includes(tab))return;state.tripTabs[id]=tab;const ids=Object.keys(state.tripTabs);if(ids.length>80)delete state.tripTabs[ids[0]];changed();},
         getChat:()=>structuredClone(state.chat),
         setChat:value=>{state.chat=value;changed();},
         isSaved:()=>enabled && saved===revision,

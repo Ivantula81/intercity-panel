@@ -1,4 +1,5 @@
 <?php /** @var string $startPhone */ ?>
+<a class="trip-chat-return" id="tripChatReturn" hidden href="/?p=manifests">← Вернуться к ведомости</a>
 <div class="chat-wrap" id="chatWrap" data-start="<?= e($startPhone) ?>">
 
     <nav class="chat-queues" id="chatQueues">

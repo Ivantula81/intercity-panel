@@ -67,6 +67,7 @@ $sheetKeys = ['sales', 'reporting', 'contacts', 'broadcast', 'catalogs', 'logs',
 <?php if (($_GET['p'] ?? '') === 'schedules'): ?><link rel="stylesheet" href="/assets/schedules.css?v=<?= @filemtime(PANEL_ROOT . '/public/assets/schedules.css') ?>"><?php endif; ?>
 <script>window.CSRF = <?= json_encode(csrf_token()) ?>; window.PANEL_WORKSPACE = <?= json_encode(workspace_config(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
 <?php if (in_array($page, ['notifications','broadcast'], true)): ?><link rel="stylesheet" href="/assets/notifications.css?v=<?= filemtime(PANEL_ROOT.'/public/assets/notifications.css') ?>"><?php endif; ?>
+<?php if (in_array($page, ['manifests','manifest','chats'], true)): ?><link rel="stylesheet" href="/assets/trip-workspace.css?v=<?= filemtime(PANEL_ROOT . '/public/assets/trip-workspace.css') ?>"><?php endif; ?>
 </head>
 <body data-page="<?= e($page) ?>" class="<?= ($_GET['p'] ?? '') === 'schedules' ? 'schedule-page' : '' ?>">
 
@@ -121,6 +122,7 @@ $sheetKeys = ['sales', 'reporting', 'contacts', 'broadcast', 'catalogs', 'logs',
 <script src="/assets/panel.js?v=<?= @filemtime(PANEL_ROOT . '/public/assets/panel.js') ?>"></script>
 <script src="/assets/schedules.js?v=<?= @filemtime(PANEL_ROOT . '/public/assets/schedules.js') ?>"></script>
 <?php if (in_array($page, ['notifications','broadcast'], true)): ?><script src="/assets/notifications.js?v=<?= filemtime(PANEL_ROOT.'/public/assets/notifications.js') ?>"></script><?php endif; ?>
+<?php if (in_array($page, ['manifests','manifest','chats'], true)): ?><script src="/assets/trip-workspace.js?v=<?= filemtime(PANEL_ROOT . '/public/assets/trip-workspace.js') ?>"></script><?php endif; ?>
 <script>if('serviceWorker' in navigator){addEventListener('load',()=>navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{}));}</script>
 </body>
 </html>

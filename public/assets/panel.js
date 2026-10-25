@@ -2030,7 +2030,7 @@ async function chatOpen(id, navigation = 'push') {
     document.querySelectorAll('.chat-head-controls select, .chat-note-btn').forEach(el => el.disabled = true);
     chatRenderThreads(); chatRenderNotes();
     $id('chatBody').innerHTML='<div class="chat-hint">Загрузка…</div>';
-    if (navigation !== 'none') history[navigation === 'replace' ? 'replaceState' : 'pushState'](null,'','/?p=chats&conversation_id='+active);
+    if (navigation !== 'none') history[navigation === 'replace' ? 'replaceState' : 'pushState'](null,'',chatViewUrl(active));
     chatPersist();
     // Reading history does not depend on markread succeeding.
     chatInboxApi('markread', {conversation_id: active}).then(() => {
@@ -2047,7 +2047,7 @@ function chatCloseConv(navigation = 'push') {
     chat.conversationId=null;chat.conversation=null;
     $id('chatText').value='';chatRenderSendState();
     $id('chatWrap').classList.remove('conv-open');$id('chatPane').hidden=true;$id('chatEmpty').hidden=false;
-    if(navigation !== 'none')history.pushState(null,'','/?p=chats');chatRenderThreads();chatPersist();
+    if(navigation !== 'none')history.pushState(null,'',chatViewUrl(null));chatRenderThreads();chatPersist();
 }
 function bindChatSwipeBack() {
     const pane = $id('chatPane');
@@ -2453,3 +2453,12 @@ window.addEventListener('beforeunload', event => {
     const dirtyChats = chat.busy || ([...chat.drafts.values()].some(d => d.text.trim()) && !window.panelWorkspace?.isSaved());
     if (dirtyCells || dirtyChats) {event.preventDefault(); event.returnValue = '';}
 });
+
+// Keep an explicit origin when switching conversations; it is navigation, not a relationship.
+function chatViewUrl(id) {
+    const url=new URL('/?p=chats',location.origin);
+    if(id)url.searchParams.set('conversation_id',String(id));
+    const origin=new URL(location.href).searchParams.get('return_manifest');
+    if(/^\d{1,12}$/.test(origin||'') && Number(origin)>0)url.searchParams.set('return_manifest',origin);
+    return url.pathname+url.search;
+}
