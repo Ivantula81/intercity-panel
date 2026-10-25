@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-// iOS запускает сайт с домашнего экрана в отдельном standalone-контексте.
-// Сессионная cookie без срока исчезала после выгрузки приложения, а сервер удалял
-// сессию через 24 минуты. Держим авторизацию 30 дней с безопасными флагами.
+// Storage retention permits same-user draft recovery. It does not grant access:
+// app/session_policy.php enforces independent idle and absolute deadlines.
+ini_set('session.use_strict_mode', '1');
 $sessionLifetime = 30 * 24 * 60 * 60;
 ini_set('session.gc_maxlifetime', (string) $sessionLifetime);
 session_set_cookie_params([
@@ -14,23 +14,14 @@ session_set_cookie_params([
     'httponly' => true,
     'samesite' => 'Lax',
 ]);
-$hadSessionCookie = isset($_COOKIE[session_name()]);
 session_start();
-// Новую cookie уже отправляет session_start(); существующую продлеваем скользяще.
-if ($hadSessionCookie && !headers_sent() && session_id() !== '') {
-    setcookie(session_name(), session_id(), [
-        'expires' => time() + $sessionLifetime,
-        'path' => '/',
-        'secure' => true,
-        'httponly' => true,
-        'samesite' => 'Lax',
-    ]);
-}
+// Do not renew the browser cookie on every poll. Login rotates its ID and lifetime.
 date_default_timezone_set('Europe/Moscow');
 mb_internal_encoding('UTF-8');
 
 define('PANEL_ROOT', dirname(__DIR__));
 require_once PANEL_ROOT . '/app/workspace.php';
+require_once PANEL_ROOT . '/app/session_policy.php';
 
 function db(): PDO
 {
@@ -96,59 +87,7 @@ function set_unsubscribed(string $phone, bool $on): void
     } catch (Throwable $e) { /* до миграции */ }
 }
 
-function logged_in(): bool
-{
-    return !empty($_SESSION['panel_user']);
-}
-
-function require_login(): void
-{
-    if (!logged_in()) {
-        header('Location: /?p=login');
-        exit;
-    }
-}
-
-// Вход по логину+паролю. Возвращает true и наполняет сессию при успехе.
-function authenticate(string $login, string $password): bool
-{
-    $login = trim($login);
-    try {
-        $st = db()->prepare('SELECT * FROM users WHERE login = ? AND active = 1');
-        $st->execute([$login]);
-        $u = $st->fetch();
-    } catch (Exception $e) {
-        $u = null; // таблицы users может не быть до применения schema5
-    }
-
-    if ($u && password_verify($password, $u['password_hash'])) {
-        session_regenerate_id(true);
-        unset($_SESSION['workspace_crypto']);
-        $_SESSION['panel_user'] = (int) $u['id'];
-        $_SESSION['user_name'] = $u['name'];
-        $_SESSION['user_role'] = $u['role'];
-        try { db()->prepare('UPDATE users SET last_login = NOW() WHERE id = ?')->execute([$u['id']]); } catch (Exception $e) {}
-        return true;
-    }
-
-    // запасной вход на случай, если users ещё не созданы (миграция).
-    // Пароль — только из окружения (ADMIN_FALLBACK_PASSWORD); по умолчанию выключен.
-    $fallbackPw = getenv('ADMIN_FALLBACK_PASSWORD') ?: '';
-    if ($fallbackPw === '' && is_readable('/etc/panel.env')) {
-        foreach (file('/etc/panel.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $__envLine) {
-            if (str_starts_with($__envLine, 'ADMIN_FALLBACK_PASSWORD=')) { $fallbackPw = substr($__envLine, strlen('ADMIN_FALLBACK_PASSWORD=')); break; }
-        }
-    }
-    if ($u === null && $fallbackPw !== '' && $login === 'admin' && $password === $fallbackPw) {
-        session_regenerate_id(true);
-        unset($_SESSION['workspace_crypto']);
-        $_SESSION['panel_user'] = 'admin';
-        $_SESSION['user_name'] = 'Администратор';
-        $_SESSION['user_role'] = 'admin';
-        return true;
-    }
-    return false;
-}
+require_once PANEL_ROOT . '/app/authentication.php';
 
 function current_user_name(): string
 {
@@ -178,23 +117,6 @@ function require_admin(): void
 function audit_actor_id(): ?int
 {
     return is_numeric($_SESSION['panel_user'] ?? null) ? (int) $_SESSION['panel_user'] : null;
-}
-
-function csrf_token(): string
-{
-    if (empty($_SESSION['csrf'])) {
-        $_SESSION['csrf'] = bin2hex(random_bytes(20));
-    }
-    return $_SESSION['csrf'];
-}
-
-function csrf_check(): void
-{
-    $token = $_POST['csrf'] ?? ($_SERVER['HTTP_X_CSRF'] ?? '');
-    if (!hash_equals(csrf_token(), (string) $token)) {
-        http_response_code(419);
-        die('CSRF');
-    }
 }
 
 function e(?string $v): string

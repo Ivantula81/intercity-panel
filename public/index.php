@@ -3,6 +3,9 @@
 require dirname(__DIR__) . '/app/bootstrap.php';
 
 $page = $_GET['p'] ?? 'dashboard';
+session_policy_check(time());
+
+if ($page === 'session') { require PANEL_ROOT . '/app/session_controller.php'; exit; }
 
 if ($page === 'login') {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -22,7 +25,7 @@ if ($page === 'login') {
 }
 
 if ($page === 'logout') {
-    $workspaceScope = (string) ($_SESSION['workspace_crypto']['scope'] ?? '');
+    $workspaceScope = (string) ($_SESSION['workspace_crypto']['scope'] ?? $_SESSION['auth_recovery']['crypto']['scope'] ?? '');
     audit_event('auth.logout', 'auth', 'session', null, 'success');
     $_SESSION = [];
     if (ini_get('session.use_cookies')) {
