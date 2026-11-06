@@ -26,7 +26,7 @@ const pause=ms=>new Promise(r=>setTimeout(r,ms));
     if(a==='channels.queue'){await providerWait;return route.fulfill({json:{ok:false,error:'Synthetic provider timeout'}});}
     if(a==='notification.active')return route.fulfill({json:{ok:true,at:new Date().toISOString(),items:[
      {id:1,run_id:1,status:stopped?'cancelled':'running',manifest_id:1,trip_number:'101',departure_at:'2027-01-01 13:00',created_at:'2027-01-01 10:00',queued:stopped?0:3,sending:1,accepted:2,delivered:0,failed:0,stopped:stopped?3:0},
-     {id:2,run_id:2,status:'queued',manifest_id:2,trip_number:'102',departure_at:'2027-01-02 13:00',created_at:'2027-01-01 11:00',queued:2,sending:0,accepted:0,delivered:0,failed:0}
+     {id:2,run_id:2,status:'queued',manifest_id:2,trip_number:'102',departure_at:'2027-01-02 13:00',created_at:'2027-01-01 11:00',queued:2,sending:0,accepted:0,delivered:0,failed:0,start_after:Math.floor(Date.now()/1000)+120}
     ]}});
     if(a==='notification.cancel'){
      cancels.push(route.request().postDataJSON());await cancelWait;
@@ -39,6 +39,11 @@ const pause=ms=>new Promise(r=>setTimeout(r,ms));
    const button=()=>page.locator('[data-stop-key="run:1"]');
    await button().waitFor();
    assert(await button().isVisible(),'stop available before provider health finishes');
+   assert.equal(await page.locator('[data-stop-key="run:2"]').innerText(),'Отменить запуск');
+   assert.match(await page.locator('[data-nc-countdown]').innerText(),/До начала [12]:/);
+   await page.evaluate(()=>{NC.serverOffset+=121000;ncTickGrace();});
+   assert.equal(await page.locator('[data-stop-key="run:2"]').innerText(),'Остановить оставшиеся');
+   await page.evaluate(()=>{NC.serverOffset-=121000;ncTickGrace();});
    await button().click();await page.getByText(/Остановка не подтверждена: Synthetic storage failure/).waitFor();
    await page.waitForFunction(()=>!NC.cancelling.size&&!NC.queueBusy);
    assert(await button().isEnabled(),'failed stop can be retried');

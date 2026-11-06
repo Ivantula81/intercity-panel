@@ -66,7 +66,7 @@ final class NotificationCenter
         $d=DateTimeImmutable::createFromFormat('!Y-m-d',$date);if(!$d||$d->format('Y-m-d')!==$date)throw new InvalidArgumentException('Некорректная дата.');
     }
     public function active(): array {
-        return $this->rows("SELECT j.id,j.manifest_id,j.kind,j.created_at,j.status,m.trip_number,m.departure_at,rj.run_id,
+        $items = $this->rows("SELECT j.id,j.manifest_id,j.kind,j.created_at,j.status,m.trip_number,m.departure_at,rj.run_id,
           SUM(CASE WHEN d.status='queued' THEN 1 ELSE 0 END) queued,
           SUM(CASE WHEN d.status='sending' THEN 1 ELSE 0 END) sending,
           SUM(CASE WHEN d.status='accepted' THEN 1 ELSE 0 END) accepted,
@@ -81,6 +81,11 @@ final class NotificationCenter
           HAVING SUM(CASE WHEN d.status IN ('queued','sending','accepted') THEN 1 ELSE 0 END)>0
              OR (j.status='cancelled' AND j.created_at>=?)
           ORDER BY CASE WHEN j.manifest_id>0 THEN 0 ELSE 1 END,j.id", [BroadcastQueue::STOPPED, date('Y-m-d H:i:s',time()-86400)]);
+        foreach ($items as &$item) {
+            $payload = json_decode((string)($this->rows('SELECT payload_json FROM broadcast_jobs WHERE id=?', [$item['id']])[0]['payload_json'] ?? ''), true) ?: [];
+            $item['start_after'] = (int)($payload['start_after'] ?? 0);
+        }
+        return $items;
     }
     public function history(int $mid, string $date='', int $page=1): array {
         $where='manifest_id=?';$args=[$mid];if($date!==''){self::date($date);$where.=' AND created_at>=? AND created_at<?';$args[]=$date.' 00:00:00';$args[]=date('Y-m-d',strtotime($date.' +1 day')).' 00:00:00';}
@@ -123,8 +128,12 @@ final class NotificationCenter
             if(!$plan['items'])throw new InvalidArgumentException('Нет новых получателей для отправки.');
             $st=$pdo->prepare('INSERT INTO notification_runs (request_key,manifest_id,purpose,snapshot_json,created_by,actor_name) VALUES (?,?,?,?,?,?)');
             $st->execute([$key,$mid,$request['purpose']??'reminder',json_encode($plan,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),$actor,$name]);$runId=(int)$pdo->lastInsertId();
-            $payload=['notification_run_id'=>$runId,'deliveries'=>$plan['items'],'emergency'=>!empty($request['emergency']),'reporting_opt_in'=>true];
+            // Server-owned grace period; applies to new runs only, including emergency.
+            // Browser timers and request parameters cannot shorten it.
+            $payload=['notification_run_id'=>$runId,'deliveries'=>$plan['items'],'emergency'=>!empty($request['emergency']),'reporting_opt_in'=>true,'start_after'=>time()+120];
             $job=BroadcastQueue::enqueue('campaign',$mid,$payload,$actor);BroadcastQueue::materializeDeliveries((int)$job['id'],$plan['items']);
+            $notBefore = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME)==='sqlite' ? "datetime(CURRENT_TIMESTAMP, '+120 seconds')" : 'DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 120 SECOND)';
+            $pdo->prepare("UPDATE broadcast_deliveries SET available_at=$notBefore WHERE job_id=? AND status='queued' AND attempts=0")->execute([$job['id']]);
             $pdo->prepare('INSERT INTO notification_run_jobs (run_id,job_id) VALUES (?,?)')->execute([$runId,$job['id']]);
             $pdo->commit();return ['run_id'=>$runId,'deliveries'=>count($plan['items']),'duplicate'=>false];
         }catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();throw $e;}
