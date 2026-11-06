@@ -62,19 +62,36 @@ async function ncHistory(page=1){const box=document.getElementById('ncHistoryIte
 function ncDialog(html){document.getElementById('ncDialog')?.remove();const d=document.createElement('dialog');d.id='ncDialog';d.className='nc-dialog';d.innerHTML=html;document.body.appendChild(d);d.addEventListener('close',()=>d.remove());d.showModal();return d;}
 async function ncDetail(id){try{const {run}=await ncApi('notification.detail',{id});const statuses=new Map(run.deliveries.map(d=>[d.channel+'|'+d.recipient,d.status==='skipped'&&d.last_error==='Остановлено сотрудником до передачи провайдеру.'?'cancelled':d.status]));ncDialog(`<h2>Запуск №${run.id}</h2>${run.jobs?.some(j=>j.status==='cancelled')?'<p class="badge warn">Отправка остановлена</p>':''}<p>${esc(run.created_at)} · ${esc(run.actor_name)}</p>${run.snapshot.items.map(i=>`<details class="nc-history-row"><summary>${esc(i.name)} · ${esc(i.channel)} · ${esc(ncLabel(statuses.get(i.channel+'|'+i.recipient)||'none'))}</summary><pre>${esc(i.body)}</pre></details>`).join('')}<footer><button class="btn" onclick="document.getElementById('ncDialog').close()">Закрыть</button></footer>`);}catch(e){alert(e.message);}}
 function ncStopKey(j){return j.run_id?'run:'+j.run_id:'job:'+j.id;}
+function ncGraceSeconds(j){return Math.max(0,Math.ceil(Number(j.start_after||0)-(Date.now()+(NC.serverOffset||0))/1000));}
+function ncTickGrace(){
+ document.querySelectorAll('[data-nc-countdown]').forEach(el=>{
+  const seconds=ncGraceSeconds({start_after:el.dataset.ncCountdown});
+  el.textContent=seconds?`До начала ${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}. Можно отменить запуск.`:'Период отмены завершён. Ожидает очереди отправки.';
+ });
+ document.querySelectorAll('[data-stop-key]').forEach(button=>{
+  const j=NC.queueItems.find(item=>ncStopKey(item)===button.dataset.stopKey);
+  if(j&&!NC.cancelling.has(button.dataset.stopKey))button.textContent=ncGraceSeconds(j)>0?'Отменить запуск':'Остановить оставшиеся';
+ });
+}
 function ncStopButton(j){
  const key=ncStopKey(j), busy=NC.cancelling.has(key);
  if(j.status==='cancelled')return '<span class="badge warn">Отправка остановлена</span>';
  if(!Number(j.queued)&&!Number(j.sending))return '';
- return `<button type="button" class="btn ghost" data-stop-key="${esc(key)}" ${busy?'disabled aria-busy="true"':''} onclick="ncStop(${Number(j.run_id)||0},${Number(j.run_id)?0:Number(j.id)})">${busy?'Останавливаю…':'Остановить отправку'}</button>`;
+ return `<button type="button" class="btn ghost" data-stop-key="${esc(key)}" ${busy?'disabled aria-busy="true"':''} onclick="ncStop(${Number(j.run_id)||0},${Number(j.run_id)?0:Number(j.id)})">${busy?'Останавливаю…':ncGraceSeconds(j)>0?'Отменить запуск':'Остановить оставшиеся'}</button>`;
 }
 function ncRenderQueue(items,at){
- NC.queueItems=items;NC.queueAt=at;
+ NC.queueItems=items;NC.queueAt=at;NC.serverOffset=new Date(at).getTime()-Date.now();
  const grouped=new Map();items.forEach(j=>{const key=ncStopKey(j);if(!grouped.has(key))grouped.set(key,{...j,queued:0,sending:0,accepted:0,delivered:0,failed:0,stopped:0});const g=grouped.get(key);['queued','sending','accepted','delivered','failed','stopped'].forEach(k=>g[k]+=Number(j[k]||0));if(j.reason)g.reason=j.reason;if(j.status==='cancelled')g.status='cancelled';});
  const groups=[...grouped.values()], head=document.getElementById('ncQueueSummary');
  head.className='muted';head.textContent=`${groups.reduce((n,j)=>n+j.queued+j.sending,0)} в панели · ${groups.reduce((n,j)=>n+j.accepted,0)} передано провайдеру`;
  document.getElementById('ncQueueDetails').innerHTML=groups.map(j=>`<article><b>${j.manifest_id?`Рейс №${esc(j.trip_number||j.manifest_id)} · ${esc(j.departure_at||'')}`:'Свободная рассылка'}</b><p class="small">Запуск ${esc(j.created_at)} · ожидает ${j.queued} · передаётся ${j.sending} · передано провайдеру ${j.accepted} · доставлено ${j.delivered} · остановлено ${j.stopped}</p>${ncStopButton(j)}${j.reason?`<p class="small nc-stale">${esc(j.reason)}${j.next_at?' · следующая попытка '+esc(j.next_at):''}</p>`:''}${j.manifest_id?`<p><a href="/?p=notifications&manifest_id=${j.manifest_id}">Открыть ведомость</a></p>`:''}</article>`).join('')||'<p class="muted">Нет активных отправок.</p>';
  document.getElementById('ncQueueUpdated').textContent='Обновлено '+new Date(at).toLocaleTimeString('ru-RU',{timeZone:'Europe/Moscow',hour12:false})+' МСК';
+ document.querySelectorAll('#ncQueueDetails > article').forEach((article,index)=>{
+  const j=groups[index];if(ncGraceSeconds(j)<=0||!Number(j.queued)||j.status==='cancelled')return;
+  const status=document.createElement('p');status.className='alert warn';status.dataset.ncCountdown=j.start_after;
+  article.querySelector('[data-stop-key]')?.before(status);
+ });
+ ncTickGrace();
 }
 async function ncStop(runId,jobId){
  const key=runId?'run:'+runId:'job:'+jobId;if(NC.cancelling.has(key))return;
@@ -112,7 +129,8 @@ async function ncSend(only=null,purpose='reminder'){
  const {plan}=await ncApi('notification.preview',req);if(!plan.items.length)throw new Error(plan.exclusions.length ? [...new Set(plan.exclusions.map(i=>i.reason))].join(' · ') : purpose==='reminder'?'Нет новых получателей. Для повторного сообщения выберите «Отправить исправление».':'Нет доступных получателей в выбранных блоках и каналах.');
  req.digest=plan.digest;req.request_key=crypto.randomUUID();const count=new Set(plan.items.map(i=>i.recipient)).size;
  const d=ncDialog(`<h2>${purpose==='reminder'?'Проверить отправку':'Отправить исправление'}</h2><p><b>№${esc(plan.manifest.trip_number)} · ${esc(plan.manifest.departure_at)}</b><br>${esc(plan.manifest.route)}</p><p><b>Актуальный автобус: ${esc(plan.manifest.bus||'Не указан')}</b></p><p>${count} получателей · ${plan.items.length} сообщений · ${plan.channels.map(esc).join(', ')}</p>${purpose!=='reminder'?'<p class="alert warn">Это новый запуск: выбранные пассажиры, включая уже уведомлённых и ожидающих в очереди, получат новое сообщение. Предыдущие задания не отменяются.</p>':''}<p>Сообщения сохранятся в панели. При недоступном канале очередь ждёт восстановления. Передача в Green API прекращается за час до посадки; уже принятые провайдером сообщения могут быть доставлены позже.</p><p>Исключено записей: ${plan.exclusions.length}</p><details><summary>Причины исключений</summary>${plan.exclusions.map(i=>`<p>${esc(i.reason)}</p>`).join('')}</details>${plan.groups.map(g=>`<p class="small">${esc(g.station)} → ${esc(g.destination)} · <b>${esc(g.date)} ${esc(g.time)}</b>${g.send_before?` · отправить до ${esc(g.send_before)} МСК`:""}</p>`).join('')}<details><summary>Точные сообщения</summary>${plan.items.map(i=>`<details class="nc-history-row"><summary>${esc(i.name)} · ${esc(i.channel)}</summary><pre>${esc(i.body)}</pre></details>`).join('')}</details><p id="ncLaunchError" role="alert"></p><footer><button class="btn ghost" id="ncCancel">Отмена</button><button class="btn" id="ncConfirm">Поставить в очередь · ${count}</button></footer>`);
- d.addEventListener('cancel',e=>{if(d.querySelector('#ncCancel').disabled)e.preventDefault();});d.querySelector('#ncCancel').onclick=()=>d.close();d.querySelector('#ncConfirm').onclick=async function(){if(this.disabled)return;this.disabled=true;d.querySelector('#ncCancel').disabled=true;try{const r=await ncApi('notification.launch',req);d.close();ncTab('result');document.getElementById('notificationQueue').open=true;await ncQueue();await ncOverview();}catch(e){d.querySelector('#ncLaunchError').textContent=e.message+' Повтор этой кнопкой использует тот же ключ запуска.';this.textContent='Повторить запрос';this.disabled=false;d.querySelector('#ncCancel').disabled=false;}};
+ const graceNote=document.createElement('p');graceNote.className='alert warn';graceNote.textContent='После подтверждения будет 2 минуты для отмены. Чтобы исправить данные, отмените запуск и подготовьте новый. Отсчёт не отменяет ограничение: передача прекращается за час до посадки.';d.querySelector('footer').before(graceNote);d.querySelector('#ncConfirm').textContent='Запустить через 2 минуты · '+count;
+ d.addEventListener('cancel',e=>{if(d.querySelector('#ncCancel').disabled)e.preventDefault();});d.querySelector('#ncCancel').onclick=()=>d.close();d.querySelector('#ncConfirm').onclick=async function(){if(this.disabled)return;this.disabled=true;d.querySelector('#ncCancel').disabled=true;try{const r=await ncApi('notification.launch',req);d.close();ncTab('result');document.getElementById('notificationQueue').scrollIntoView({block:'start'});await ncQueue();await ncOverview();}catch(e){d.querySelector('#ncLaunchError').textContent=e.message+' Повтор этой кнопкой использует тот же ключ запуска.';this.textContent='Повторить запрос';this.disabled=false;d.querySelector('#ncCancel').disabled=false;}};
  }catch(e){alert(e.message);}finally{NC.busy=false;ncSelectionSummary();}
 }
 // Retain the schedule editor's ordered draft persistence. Trip facts join that barrier.
@@ -140,4 +158,5 @@ sendAllGroups=()=>ncSend();
 sendBlock=btn=>ncSend(GROUPS.map((g,i)=>g.station===btn.closest('.notif-origin').dataset.station?i:-1).filter(i=>i>=0));
 sendGroup=(btn,gi)=>ncSend([gi]);
 providerQueueLoad=ncQueue;
+document.addEventListener('DOMContentLoaded',()=>setInterval(()=>{if(!document.hidden)ncTickGrace();},1000));
 document.addEventListener('DOMContentLoaded',()=>{document.getElementById('ncFilters')?.addEventListener('submit',e=>{e.preventDefault();ncList(1);});ncList();ncQueue();ncOverview();NC.timer=setInterval(()=>{if(!document.hidden){ncQueue();ncOverview();}},15000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){ncQueue();ncOverview();}});});
